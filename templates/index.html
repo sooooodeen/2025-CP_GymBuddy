@@ -8,6 +8,24 @@
     <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
 </head>
 <body>
-    <h1 class="text-red-600">Gym Buddy</h1>
+    <div class="wrapper h-[100dvh] w-full grid grid-rows-[10%_15%_75%]">
+        <div class="w-full flex justify-center h-full ">
+            <div class="header flex justify-between w-[30%] h-full items-center font-Helvetica text-xl">
+                <a class="" href="">Home</a>
+                <a href="">Features</a>
+                <a href="">About Us</a>
+                <a href="">Login</a>
+            </div>
+        </div>
+        <div class="flex flex-col justify-center items-center gap-2">
+            <h1 class="font-Helvetica font-bold text-8xl">Gym Buddy</h1>
+            <h3 class="font-Helvetica text-2xl">No failures. No Injuries. Ensures safety in workouts.</h3>
+         </div>
+         <div class="p-8 h-full w-full">
+            <div class="h-full w-full">
+                <img class="h-full w-full object-cover grayscale-25 rounded-3xl" src="/static/src/images/gymimg.jpeg" alt="">
+            </div>
+         </div>
+    </div>
 </body>
-</html>
+</html>        
