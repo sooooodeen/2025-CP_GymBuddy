@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
 </head>
 <body>
+    <!-- first section -->
     <div class="sec-one h-[100dvh] w-full grid grid-rows-[10%_15%_75%]">
         <div class="w-full flex justify-center h-full ">
             <div class="header flex justify-between w-[30%] h-full items-center font-Helvetica text-xl">
@@ -27,25 +28,66 @@
             </div>
          </div>
     </div>
+    <!-- endofFirstsec -->
     <hr class="border-t-1 border-black-500 w-[96%] rounded mx-auto my-4">
-    <div class="sec-two h-[100dvh] w-full">
+    <!-- second section -->
+    <div class="sec-two h-[100dvh] w-full mb-15">
         <div class="flex justify-around h-full items-center flex-col">
             <h1 class="font-Helvetica font-bold text-5xl my-5">Features</h1>
-            <div class="border-1 border-red-500 w-[70%] h-[80%] grid grid-cols-4 grid-rows-2 gap-5">
-                <div class="deadliftimg row-span-2 h-full">
-                    <img src="/static/src/images/deadliftimg.jpg" alt="">
+            <div class="w-[70%] h-[80%] grid grid-cols-4 grid-rows-2 gap-5">
+                <div class="deadliftimg row-span-2">
+                    <div class="relative h-full ">
+                        <img class="h-full object-cover rounded-2xl" src="/static/src/images/deadliftimg.jpg" alt="">
+                        <div class="absolute rounded-2xl bottom-0 left-0 w-full h-2/3 bg-gradient-to-t from-black to-transparent"></div>
+                        <div class="absolute bottom-5 left-5 z-10 text-white w-[80%]">
+                            <h2 class="text-xl font-bold font-Helvetica">Real-Time Form Detection </h2>
+                            <p class="text-sm font-Helvetica">Monitoring workout form to avoid failure injuries with quick response.</p>
+                        </div>
+                    </div>
+                </div>     
+                <div class="latraise col-span-2 h-full">
+                    <div class="relative h-full">
+                        <img class="h-full object-cover rounded-2xl" src="/static/src/images/latraiseimg.jpg" alt="">
+                        <div class="absolute rounded-2xl bottom-0 left-0 w-full h-2/3 bg-gradient-to-t from-black to-transparent"></div>
+                        <div class="absolute bottom-5 left-5 z-10 text-white w-[80%]">
+                            <h2 class="text-xl font-bold font-Helvetica">Multi-People Monitoring</h2>
+                            <p class="text-sm font-Helvetica">Assist you on keeping an eye to every person doing a workout.</p>
+                        </div>
+                    </div>
                 </div>
-                <div class="latraise col-span-2">
-                    <img src="/static/src/images/latraiseimg.jpg" alt="">
+                <div class="inclineimg col-span-2 h-full">
+                    <div class="relative h-full">
+                        <img class="h-full object-cover rounded-2xl" src="/static/src/images/inclineimg.jpg" alt="">
+                        <div class="absolute rounded-2xl bottom-0 left-0 w-full h-2/3 bg-gradient-to-t from-black to-transparent"></div>
+                        <div class="absolute bottom-5 left-5 z-10 text-white w-[80%]">
+                            <h2 class="text-xl font-bold font-Helvetica">Free Weight Focused</h2>
+                            <p class="text-sm font-Helvetica">Helps to maintain proper workout around dangerous free weights.</p>
+                        </div>
+                    </div>
                 </div>
-                <div class="inclineimg col-span-2">
-                    <img src="/static/src/images/inclineimg.jpg" alt="">
-                </div>
-                <div class="squatimg row-start-1 row-span-2 col-start-4">
-                    <img src="/static/src/images/squatimg.jpg" alt="">
+                <div class="squatimg row-start-1 row-span-2 col-start-4 ">
+                    <div class="relative h-full">
+                        <img class="h-full object-cover rounded-2xl" src="/static/src/images/squatimg.jpg" alt="">
+                        <div class="absolute rounded-2xl bottom-0 left-0 w-full h-2/3 bg-gradient-to-t from-black to-transparent"></div>
+                        <div class="absolute bottom-5 left-5 z-10 text-white w-[80%]">
+                            <h2 class="text-xl font-bold font-Helvetica">Improper Form Alert</h2>
+                            <p class="text-sm font-Helvetica">Alerts you immediately if improper form is detected.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
+    <!-- endofSecondsec -->
+     <!-- Third section -->
+     <div class="wrapper h-[100dvh]">
+        <div class="h-[40%] w-full relative">
+            <img class="h-full w-full object-cover [object-position:45%_55%]" src="/static/src/images/ThirdSectionIMG1.jpg" alt="">
+            <div class="absolute  bottom-0 left-0 w-full h-2/3 bg-gradient-to-t from-white to-transparent"></div>
+            <div class="absolute bottom-5 left-5 z-10 text-black w-full flex justify-center">
+                <h2 class="text-4xl font-bold font-Helvetica">About Us</h2>
+            </div>
+        </div>
+     </div>
 </body> 
 </html>        
