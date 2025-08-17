@@ -8,7 +8,8 @@
     <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
 </head>
 <body>
-    <div class="wrapper h-[100dvh] w-full grid grid-rows-[10%_15%_75%]">
+    <!-- first section -->
+    <div class="sec-one h-[100dvh] w-full grid grid-rows-[10%_15%_75%]">
         <div class="w-full flex justify-center h-full ">
             <div class="header flex justify-between w-[30%] h-full items-center font-Helvetica text-xl">
                 <a class="" href="">Home</a>
@@ -23,9 +24,85 @@
          </div>
          <div class="p-8 h-full w-full">
             <div class="h-full w-full">
-                <img class="h-full w-full object-cover grayscale-25 rounded-3xl" src="/static/src/images/gymimg.jpeg" alt="">
+                <img class="h-full w-full object-cover rounded-3xl" src="/static/src/images/gymimg.png" alt="">
             </div>
          </div>
     </div>
-</body>
+    <!-- endofFirstsec -->
+    <hr class="border-t-1 border-black-500 w-[96%] rounded mx-auto my-4">
+    <!-- second section -->
+    <div class="sec-two h-[100dvh] w-full mb-15">
+        <div class="flex justify-around h-full items-center flex-col">
+            <h1 class="font-Helvetica font-bold text-5xl my-5">Features</h1>
+            <div class="w-[70%] h-[80%] grid grid-cols-4 grid-rows-2 gap-5">
+                <div class="deadliftimg row-span-2">
+                    <div class="relative h-full ">
+                        <img class="h-full object-cover rounded-2xl" src="/static/src/images/deadliftimg.jpg" alt="">
+                        <div class="absolute rounded-2xl bottom-0 left-0 w-full h-2/3 bg-gradient-to-t from-black to-transparent"></div>
+                        <div class="absolute bottom-5 left-5 z-10 w-[80%]">
+                            <h2 class="text-3xl text-white font-bold font-Helvetica">Real-Time Form Detection </h2>
+                            <p class="text-lg text-gray-300 font-Helvetica">Monitoring workout form to avoid failure injuries with quick response.</p>
+                        </div>
+                    </div>
+                </div>     
+                <div class="latraise col-span-2 h-full">
+                    <div class="relative h-full">
+                        <img class="h-full object-cover rounded-2xl" src="/static/src/images/latraiseimg.jpg" alt="">
+                        <div class="absolute rounded-2xl bottom-0 left-0 w-full h-2/3 bg-gradient-to-t from-black to-transparent"></div>
+                        <div class="absolute bottom-5 left-5 z-10 w-[80%]">
+                            <h2 class="text-3xl text-white font-bold font-Helvetica">Multi-People Monitoring</h2>
+                            <p class="text-lg text-gray-300 font-Helvetica">Assist you on keeping an eye to every person doing a workout.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="inclineimg col-span-2 h-full">
+                    <div class="relative h-full">
+                        <img class="h-full object-cover rounded-2xl" src="/static/src/images/inclineimg.jpg" alt="">
+                        <div class="absolute rounded-2xl bottom-0 left-0 w-full h-2/3 bg-gradient-to-t from-black to-transparent"></div>
+                        <div class="absolute bottom-5 left-5 z-10 w-[80%]">
+                            <h2 class="text-3xl text-white font-bold font-Helvetica">Free Weight Focused</h2>
+                            <p class="text-lg text-gray-300 font-Helvetica">Helps to maintain proper workout around dangerous free weights.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="squatimg row-start-1 row-span-2 col-start-4 ">
+                    <div class="relative h-full">
+                        <img class="h-full object-cover rounded-2xl" src="/static/src/images/squatimg.jpg" alt="">
+                        <div class="absolute rounded-2xl bottom-0 left-0 w-full h-2/3 bg-gradient-to-t from-black to-transparent"></div>
+                        <div class="absolute bottom-5 left-5 z-10 w-[80%]">
+                            <h2 class="text-3xl text-white font-bold font-Helvetica">Improper Form Alert</h2>
+                            <p class="text-lg text-gray-300 font-Helvetica">Alerts you immediately if improper form is detected.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- endofSecondsec -->
+     <!-- Third section -->
+     <div class="wrapper h-[100dvh]">
+        <div class="h-[40%] w-full relative">
+            <img class="h-full w-full object-cover [object-position:45%_55%]" src="/static/src/images/ThirdSectionIMG1.jpg" alt="">
+            <div class="absolute  bottom-0 left-0 w-full h-2/3 bg-gradient-to-t from-white to-transparent"></div>
+            <div class="absolute bottom-5 left-5 z-10 text-black w-full flex justify-center">
+                <h2 class="text-4xl font-bold font-Helvetica">About Us</h2>
+            </div>
+        </div>
+        <div class="flex flex-col gap-10 pt-5 pb-20 items-center justify-center">
+            <div class="h-[350px] flex justify-center">
+                <div class="h-full flex w-[60%] gap-15 items-center">
+                    <img class="h-full rounded-2xl" src="/static/src/images/coached.jpg" alt="">
+                    <p class="text-2xl font-Helvetica text-justify"> At GymBuddy, we believe that everyone deserves safe, guided workouts—anytime, anywhere. We designed this system to support individuals or group at home in maintaining proper form during exercise with the support of a trainer. Even in group sessions on a commercial gym where trainers may not be able to focus on each individual, GymBuddy acts as an extra set of eyes—tracking movements and highlighting form issues that need attention.</p>
+                </div>
+            </div>
+            <div class="h-[350px] flex justify-center">
+                <div class="h-full flex w-[60%] gap-15 items-center">
+                    <p class="text-2xl font-Helvetica text-justify"> Our system uses AI-powered pose estimation to analyze your form and give instant feedback—helping you improve technique, avoid injury, and gain confidence with every rep. By combining real-time posture analysis with visual and audio cues, GymBuddy ensures that both trainers and users stay informed and engaged.</p>
+                    <img class="h-full rounded-2xl" src="/static/src/images/coached1.jpg" alt="">
+                </div>
+            </div>
+            <h1 class="text-4xl font-bold font-Helvetica">Train smart. Train confident. Train with GymBuddy.</h1>
+        </div>
+     </div>
+</body> 
 </html>        
