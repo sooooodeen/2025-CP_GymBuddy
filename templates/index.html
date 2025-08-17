@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
 </head>
 <body>
-    <div class="wrapper h-[100dvh] w-full grid grid-rows-[10%_15%_75%]">
+    <div class="sec-one h-[100dvh] w-full grid grid-rows-[10%_15%_75%]">
         <div class="w-full flex justify-center h-full ">
             <div class="header flex justify-between w-[30%] h-full items-center font-Helvetica text-xl">
                 <a class="" href="">Home</a>
@@ -23,9 +23,29 @@
          </div>
          <div class="p-8 h-full w-full">
             <div class="h-full w-full">
-                <img class="h-full w-full object-cover grayscale-25 rounded-3xl" src="/static/src/images/gymimg.jpeg" alt="">
+                <img class="h-full w-full object-cover grayscale-25 rounded-3xl" src="/static/src/images/gymimg.png" alt="">
             </div>
          </div>
     </div>
-</body>
+    <hr class="border-t-1 border-black-500 w-[96%] rounded mx-auto my-4">
+    <div class="sec-two h-[100dvh] w-full">
+        <div class="flex justify-around h-full items-center flex-col">
+            <h1 class="font-Helvetica font-bold text-5xl my-5">Features</h1>
+            <div class="border-1 border-red-500 w-[70%] h-[80%] grid grid-cols-4 grid-rows-2 gap-5">
+                <div class="deadliftimg row-span-2 h-full">
+                    <img src="/static/src/images/deadliftimg.jpg" alt="">
+                </div>
+                <div class="latraise col-span-2">
+                    <img src="/static/src/images/latraiseimg.jpg" alt="">
+                </div>
+                <div class="inclineimg col-span-2">
+                    <img src="/static/src/images/inclineimg.jpg" alt="">
+                </div>
+                <div class="squatimg row-start-1 row-span-2 col-start-4">
+                    <img src="/static/src/images/squatimg.jpg" alt="">
+                </div>
+            </div>
+        </div>
+    </div>
+</body> 
 </html>        
