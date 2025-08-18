@@ -1,1 +1,2 @@
 # GymBuddy: A Computer Vision-Based System for Detecting Improper Workout Form to Prevent Exercise-Related Injuries
+GymBuddy is a real-time AI personal trainer that uses your webcam to help you exercise safely and effectively. By leveraging computer vision and machine learning, it can identify the exercise you are performing and provide a foundation for future form correction, helping to prevent common exercise-related injuries.
