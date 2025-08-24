@@ -12,14 +12,22 @@
             <img class="object-cover h-full w-full rounded-2xl" src="/static/src/images/gymimg2.jpeg" alt="">
             <div class="absolute bottom-5 -left-12 z-10 w-[80%]">
                 <h2 class="text-[550px] text-white font-bold font-Helvetica italic -tracking-[50px] leading-110">GYM BUDDY</h2>
-                <h2 class="text-[550px] text-white font-bold font-Helvetica italic"></h2>
             </div>
            
         </div>
         
     </div>
     <div class="h-[50%] w-[25%] absolute right-30 bottom-70 z-11 shadow shadow-gray-500 rounded-xl bg-white">
-
+        <form class="h-full w-full flex flex-col p-5" action="">
+            <a href="{{ url_for('login') }}" class="self-start items-start">
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="currentColor" class="bi bi-arrow-bar-left" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M12.5 15a.5.5 0 0 1-.5-.5v-13a.5.5 0 0 1 1 0v13a.5.5 0 0 1-.5.5M10 8a.5.5 0 0 1-.5.5H3.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L3.707 7.5H9.5a.5.5 0 0 1 .5.5"/>
+                </svg>
+            </a>
+            <div class="flex items-center justify-center mt-2">
+                <h2 class="text-2xl font-bold font-Helvetica">Sign up</h2>
+            </div>
+        </form>
     </div>
 </body>
 </html>
