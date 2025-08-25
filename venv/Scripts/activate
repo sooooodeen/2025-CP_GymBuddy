@@ -35,7 +35,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="E:\Capstone\GymBuddy-A-Computer-Vision-Based-System-for-Detecting-Improper-Workout-Form-to-Prevent-Exercise-Rela\venv"
+VIRTUAL_ENV="C:\Users\User\capstone\venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
