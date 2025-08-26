@@ -13,21 +13,168 @@
             <div class="absolute bottom-5 -left-12 z-10 w-[80%]">
                 <h2 class="text-[550px] text-white font-bold font-Helvetica italic -tracking-[50px] leading-110">GYM BUDDY</h2>
             </div>
-           
         </div>
-        
     </div>
-    <div class="h-[50%] w-[25%] absolute right-30 bottom-70 z-11 shadow shadow-gray-500 rounded-xl bg-white">
-        <form class="h-full w-full flex flex-col p-5" action="">
-            <a href="{{ url_for('login') }}" class="self-start items-start">
-                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="currentColor" class="bi bi-arrow-bar-left" viewBox="0 0 16 16">
-                    <path fill-rule="evenodd" d="M12.5 15a.5.5 0 0 1-.5-.5v-13a.5.5 0 0 1 1 0v13a.5.5 0 0 1-.5.5M10 8a.5.5 0 0 1-.5.5H3.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L3.707 7.5H9.5a.5.5 0 0 1 .5.5"/>
-                </svg>
-            </a>
-            <div class="flex items-center justify-center mt-2">
-                <h2 class="text-2xl font-bold font-Helvetica">Sign up</h2>
-            </div>
-        </form>
+    <div class="w-[100dvw] top-0 absolute z-11 h-[100dvh] bg-black/25 flex items-center justify-end pr-30">
+    <!-- Registration Box -->
+        <div class="w-[23%]  shadow drop-shadow-xl/50 rounded-xl bg-white p-9">
+            <form id="regForm" class="h-full = flex flex-col font-Helvetica">
+                <!-- Back Arrow -->
+                <a href="{{ url_for('login') }}" class="self-start items-start">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="currentColor" class="bi bi-arrow-bar-left" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M12.5 15a.5.5 0 0 1-.5-.5v-13a.5.5 0 0 1 1 0v13a.5.5 0 0 1-.5.5M10 8a.5.5 0 0 1-.5.5H3.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L3.707 7.5H9.5a.5.5 0 0 1 .5.5"/>
+                    </svg>
+                </a>
+
+                <h2 class="text-2xl font-bold font-Helvetica text-center mb-3">Sign up</h2>
+
+                <!-- Step 1 -->
+                <div class="step active flex flex-col space-y-2">
+                    <label for="firstname" class="flex m-0">First Name<p class="text-red-400 text-xl">*</p></label>
+                    <input id="firstname" type="text" class="border rounded p-2" placeholder="e.g. Juan" required>
+
+                    <label for="middlename" class="m-0">Middle Name (Optional)</label>
+                    <input id="middlename" type="text" class="border rounded p-2">
+
+                    <label for="lastname" class="flex m-0">Last Name<p class="text-red-400 text-xl">*</p></label>
+                    <input id="lastname" type="text" class="border rounded p-2" placeholder="e.g. Dela Cruz" required>
+
+                    <label for="phoneNum" class="flex m-0">Phone Number<p class="text-red-400 text-xl">*</p></label>
+                    <input id="phoneNum" type="text" class="border rounded p-2" placeholder="09XXXXXXXXXXX" required>
+
+                    <label for="gender" class="flex m-0">Gender<p class="text-red-400 text-xl">*</p></label>
+                    <select id="gender" class="border rounded p-2" required>
+                        <option value="">Select Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+
+                    <label for="email" class="flex m-0">Email<p class="text-red-400 text-xl">*</p></label>
+                    <input id="email" type="email" class="border rounded p-2" placeholder="JuanDelaCruz@example.com" required>
+
+                    <button type="button" onclick="nextStep()" class="bg-[#2D2C2C] w-[30%] self-center py-2 px-5 mt-3 font-Helvetica rounded-4xl text-white cursor-pointer hover:bg-[#474646]">Next</button>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="step hidden flex flex-col space-y-2">
+                    <label for="password" class="flex m-0">Create Password<p class="text-red-400 text-xl">*</p></label>
+                    <div class="relative">
+                        <input id="password" type="password" class="border rounded p-2 w-full pr-10" required>
+                        <button type="button" onclick="togglePassword('password', this)" class="absolute inset-y-0 right-0 flex items-center pr-3">
+                            <!-- Eye (show) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" class="eye-icon cursor-pointer" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-icon lucide-eye"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+                            <!-- Eye slash (hide) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" class="eye-slash-icon cursor-pointer hidden" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-closed-icon lucide-eye-closed"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>
+                        </button>
+                    </div>
+                
+                    <label for="confirmPassword" class="flex m-0">Confirm Password<p class="text-red-400 text-xl">*</p></label>
+                    <div class="relative">
+                        <input id="confirmPassword" type="password" class="border rounded p-2 w-full pr-10" required>
+                        <button type="button" onclick="togglePassword('confirmPassword', this)" class="absolute inset-y-0 right-0 flex items-center pr-3">
+                            <!-- Eye (show) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" class="eye-icon cursor-pointer" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-icon lucide-eye"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+                            <!-- Eye slash (hide) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" class="eye-slash-icon cursor-pointer hidden" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-closed-icon lucide-eye-closed"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>
+                        </button>
+                    </div>
+                
+                    <div class="flex justify-center">
+                        <button type="button" onclick="nextStep()" class="bg-[#2D2C2C] w-[30%] self-center py-2 px-5 mt-3 font-Helvetica rounded-4xl text-white cursor-pointer hover:bg-[#474646]">Next</button>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="step hidden flex m-0 flex-col space-y-2">
+                    <select id="role" class="border rounded p-2 mt-2" required>
+                        <option value="">Select your Gym Role</option>
+                        <option value="Male">Trainer</option>
+                        <option value="Female">Gym Owner</option>
+                    </select>
+                    <label for="gymName" class="flex m-0">Gym Name<p class="text-red-400 text-xl">*</p></label>
+                    <input id="gymName" type="text" class="border rounded p-2" placeholder="e.g. KENO Fitness Center" required>
+
+                    <div class="flex justify-center">
+                        <button type="submit" class="bg-[#2D2C2C] w-[30%] self-center py-2 px-5 mt-3 font-Helvetica rounded-4xl text-white cursor-pointer hover:bg-[#474646]">Sign up</button>
+                    </div>
+                </div>
+            </form>
+        </div>
     </div>
+    <!-- JavaScript -->
+    <script>
+        let currentStep = 0;
+        const steps = document.querySelectorAll(".step");
+    
+        function showStep(n) {
+            steps.forEach((step, index) => {
+                step.classList.toggle("hidden", index !== n);
+                step.classList.toggle("active", index === n);
+            });
+        }
+    
+        function nextStep() {
+            // get all inputs in current step
+            const currentInputs = steps[currentStep].querySelectorAll("input, select");
+    
+            // check validity
+            for (let input of currentInputs) {
+                if (!input.checkValidity()) {
+                    input.reportValidity(); // show browser validation popup
+                    return; // stop if invalid
+                }
+            }
+    
+            // password match check (only step 2)
+            if (currentStep === 1) {
+                let pass = document.getElementById("password").value;
+                let confirmPass = document.getElementById("confirmPassword").value;
+                if (pass !== confirmPass) {
+                    alert("Passwords do not match!");
+                    return;
+                }
+            }
+    
+            // move to next step
+            if (currentStep < steps.length - 1) {
+                currentStep++;
+                showStep(currentStep);
+            }
+        }
+    
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                showStep(currentStep);
+            }
+        }
+    
+        // Handle final submit
+        document.getElementById("regForm").addEventListener("submit", function(e) {
+            e.preventDefault(); // stop auto submit
+    
+            let confirmed = confirm("Are you sure you want to submit your registration?");
+            if (confirmed) {
+                alert("Form submitted successfully!");
+                // TODO: send data to backend with fetch/ajax
+            }
+        });
+        function togglePassword(fieldId, btn) {
+            const input = document.getElementById(fieldId);
+            const eye = btn.querySelector(".eye-icon");
+            const eyeSlash = btn.querySelector(".eye-slash-icon");
+
+            if (input.type === "password") {
+                input.type = "text";
+                eye.classList.add("hidden");
+                eyeSlash.classList.remove("hidden");
+            } else {
+                input.type = "password";
+                eye.classList.remove("hidden");
+                eyeSlash.classList.add("hidden");
+            }
+        }
+    </script>
 </body>
 </html>

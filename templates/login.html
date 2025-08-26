@@ -8,8 +8,8 @@
 </head>
 <body>
     <div class="flex h-[100dvh] p-5 gap-5">
-        <img src="/static/src/images/loginIMG.jpg" alt="" class="rounded-3xl object-cover w-1/2">
-        <div class="flex flex-col items-center w-1/2">
+        <img src="/static/src/images/loginIMG.jpg" alt="" class="rounded-3xl object-cover">
+        <div class="flex flex-col items-center w-full">
             <div class="h-[10%] w-full flex justify-start items-start">
                 <a href="{{ url_for('home') }}" class="self-start items-start">
                     <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="currentColor" class="bi bi-arrow-bar-left" viewBox="0 0 16 16">
@@ -18,11 +18,8 @@
                 </a>
             </div>
             <div class="w-full h-[70%] flex flex-col items-center justify-center">
-                <p class="text-[#2D2C2C] font-Helvetica text-xl">Login with</p>
-                <h1 class="font-Helvetica font-bold text-7xl text-[#2D2C2C]">Gym Buddy</h1>
-
-                <!-- Display Flashed Messages (e.g., login errors) -->
-                {% with messages = get_flashed_messages(with_categories=true) %}
+                 <!-- Display Flashed Messages (e.g., login errors) -->
+                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
                         {% for category, message in messages %}
                             <div class="p-2 my-2 text-sm rounded-lg {% if category == 'error' %} bg-red-100 text-red-700 {% else %} bg-green-100 text-green-700 {% endif %}">
@@ -32,19 +29,34 @@
                     {% endif %}
                 {% endwith %}
 
+                <p class="text-[#2D2C2C] font-Helvetica text-xl">Login with</p>
+                <h1 class="font-Helvetica font-bold text-7xl text-[#2D2C2C]">Gym Buddy</h1>
+
+               
                 <!-- START: UPDATED FORM -->
                 <form class="flex flex-col gap-2 w-[60%] mt-7" method="POST" action="{{ url_for('login') }}">
                     <input class="border p-2 w-full rounded-lg font-Helvetica outline-none px-3" type="email" name="email" placeholder="Email" required>
-                    <input class="border p-2 w-full rounded-lg font-Helvetica outline-none px-3" type="password" name="password" placeholder="Password" required>
+                    
+                    <!-- Password with eye toggle -->
+                    <div class="relative">
+                        <input id="loginPassword" class="border p-2 w-full rounded-lg font-Helvetica outline-none px-3 pr-10" type="password" name="password" placeholder="Password" required>
+                        <button type="button" onclick="togglePassword('loginPassword', this)" class="absolute inset-y-0 right-0 flex items-center pr-3">
+                            <!-- Eye (show) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" class="eye-icon cursor-pointer" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-icon lucide-eye"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+                            <!-- Eye slash (hide) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" class="eye-slash-icon cursor-pointer hidden" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-closed-icon lucide-eye-closed"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>
+                        </button>
+                    </div>
+
                     <a href="" class="font-Helvetica text-xs hover:underline">Forgot Password</a>
                     
                     <div class="flex flex-col items-center w-full mt-5">
-                        <button type="submit" class="bg-[#2D2C2C] py-2 px-10 font-Helvetica rounded-xl text-white cursor-pointer hover:bg-[#474646]">Login</button>
+                        <button type="submit" class="bg-[#2D2C2C] py-2 px-10 font-Helvetica rounded-4xl text-white cursor-pointer hover:bg-[#474646]">Login</button>
                     </div>
                 </form>
                 <!-- END: UPDATED FORM -->
 
-                <a href="{{ url_for('register') }}" class="font-Helvetica text-base hover:underline mt-3">Create an account</a>
+                <a href="{{ url_for('register') }}" class="font-Helvetica text-base mt-2 rounded-4xl hover:bg-gray-100 py-2 px-5">Create an account</a>
                 <div class="flex w-[60%] gap-2 justify-center items-center">
                     <hr class="border-t-1 border-black-500 w-[70%] rounded mx-auto my-4">
                     <p>Or</p>
@@ -58,4 +70,21 @@
         </div>
     </div>
 </body>
+<script>
+    function togglePassword(fieldId, btn) {
+    const input = document.getElementById(fieldId);
+    const eye = btn.querySelector(".eye-icon");
+    const eyeSlash = btn.querySelector(".eye-slash-icon");
+
+    if (input.type === "password") {
+        input.type = "text";
+        eye.classList.add("hidden");
+        eyeSlash.classList.remove("hidden");
+    } else {
+        input.type = "password";
+        eye.classList.remove("hidden");
+        eyeSlash.classList.add("hidden");
+    }
+}
+</script>
 </html>

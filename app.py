@@ -75,7 +75,6 @@ def login():
         # Check if the user exists and the password is correct
         if user and bcrypt.check_password_hash(user.password_hash, password):
             # In a real app, you would set up a user session here
-            flash('Login successful!', 'success')
             return redirect(url_for('dashboard'))
         else:
             flash('Invalid email or password. Please try again.', 'error')
