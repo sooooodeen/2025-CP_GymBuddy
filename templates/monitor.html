@@ -1,0 +1,109 @@
+{% extends "house.html" %}
+{% block content %}
+
+<div class="p-10 h-full font-Helvetica flex flex-col gap-6">
+    <div id="header" class="w-full grid grid-cols-2 h-[7%]">
+        <h1 class="text-4xl font-semibold">Monitor<p class="text-lg text-gray-400 font-normal leading-[15px]">Live monitoring of users workout</p></h1>
+        <div class="flex justify-end items-center gap-2">
+            <h1 class="text-xl font-Helvetica font-semibold">"Email"
+        </div>
+    </div>
+    <div>
+        <label>
+          Camera 1:
+          <select id="select-camera-1"></select>
+        </label>
+        <label>
+          Camera 2:
+          <select id="select-camera-2"></select>
+        </label>
+    </div>
+    <div class="flex w-full gap-2">
+      <div class="w-1/2">
+        <video class="w-full h-full" id="camera1" controls autoplay playsinline></video>
+      </div>
+      <div class="w-1/2">
+        <video class="w-full h-full" id="camera2" controls autoplay playsinline></video>
+      </div>
+    </div>
+
+      <button id="btn-open-camera">Open Cameras</button>
+      <script>
+        var devices;
+        var camSelect1 = document.getElementById("select-camera-1");
+        var camSelect2 = document.getElementById("select-camera-2");
+        window.onload = async function(){
+          await listDevices()
+        }
+  
+        async function listDevices(){
+          devices = await getCameraDevices()
+          for (let index = 0; index < devices.length; index++) {
+            const device = devices[index];
+            camSelect1.appendChild(new Option(device.label ?? "Camera "+index,device.deviceId));
+            camSelect2.appendChild(new Option(device.label ?? "Camera "+index,device.deviceId));
+          }
+          camSelect2.selectedIndex = 1;
+        }
+  
+        async function getCameraDevices(){
+          await askForPermissions();
+          var allDevices = await navigator.mediaDevices.enumerateDevices();
+          var cameraDevices = [];
+          for (var i=0;i<allDevices.length;i++){
+            var device = allDevices[i];
+            if (device.kind == 'videoinput'){
+              cameraDevices.push(device);
+            }
+          }
+          return cameraDevices;
+        }
+  
+        async function askForPermissions(){
+          var stream;
+          try {
+            var constraints = {video: true, audio: false}; //ask for camera permission
+            stream = await navigator.mediaDevices.getUserMedia(constraints);  
+          } catch (error) {
+            console.log(error);
+          }
+          closeStream(stream);
+        }
+  
+        function closeStream(stream){
+          try{
+            if (stream){
+              stream.getTracks().forEach(track => track.stop());
+            }
+          } catch (e){
+            alert(e.message);
+          }
+        }
+  
+        document.getElementById("btn-open-camera").addEventListener("click",function(){
+          captureCamera(document.getElementById("camera1"),camSelect1.selectedOptions[0].value);
+          captureCamera(document.getElementById("camera2"),camSelect2.selectedOptions[0].value);
+        });
+  
+        function captureCamera(video, selectedCamera) {
+          var constraints = {
+            audio:false,
+            video:true
+          }
+          if (selectedCamera) {
+            constraints = {
+              video: {deviceId: selectedCamera},
+              audio: false
+            }
+          }
+          navigator.mediaDevices.getUserMedia(constraints).then(function(camera) {
+            video.srcObject = camera;
+          }).catch(function(error) {
+            alert('Unable to capture your camera. Please check console logs.');
+            console.error(error);
+          });
+        }
+      </script>
+</div>
+
+{% endblock %}
