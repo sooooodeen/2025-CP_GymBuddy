@@ -4,15 +4,52 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
 </head>
-<body class="bg-gray-100 flex items-center justify-center h-screen">
-    <div class="text-center bg-white p-10 rounded-lg shadow-lg">
-        <h1 class="text-4xl font-bold text-green-600">Login Successful!</h1>
-        <p class="text-gray-700 mt-2">Welcome to your GymBuddy Dashboard.</p>
-        <a href="{{ url_for('home') }}" class="mt-6 inline-block bg-blue-500 text-white font-bold py-2 px-4 rounded hover:bg-blue-700">
-            Go to Home
-        </a>
+    <style>
+        a:is(:link, :active, :visited).active{
+            background-color: #D9D9D9;
+        }
+        a.active svg{
+            stroke: #2D2C2C;
+        }
+    </style>
+<body>
+    <!-- wrapper -->
+    <div class="flex h-[100dvh]">
+        <!-- nav -->
+        <nav class="bg-[#2D2C2C] w-[64px] flex-shrink-0 py-4 flex flex-col items-center gap-3">
+            <!-- dashboard -->
+            <a href="{{ url_for('dashboard') }}" class="p-1 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-house-icon lucide-house"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            </a>
+            <!-- Monitor -->
+            <a href="{{ url_for('monitor') }}" class="p-1 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-monitor-icon lucide-monitor"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+            </a>
+            <!-- Settings -->
+            <a href="{{ url_for('settings') }}" class="p-1 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings-icon lucide-settings"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+            </a>
+            <!-- Profile -->
+            <a href="{{ url_for('profile') }}" class="p-1 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-user-round-icon lucide-circle-user-round"><path d="M18 20a6 6 0 0 0-12 0"/><circle cx="12" cy="10" r="4"/><circle cx="12" cy="12" r="10"/></svg>
+            </a>
+        </nav>
+        <!-- contents -->
+        <div class="flex-grow overflow-y-auto">
+            {% block content %} {% endblock %}
+        </div>
     </div>
 </body>
+<script>
+    // script for active page
+    const activePage = window.location.pathname;
+    const navLinks = document.querySelectorAll('a').
+    forEach(link => {
+        if (link.href.includes(`${activePage}`)) {
+            link.classList.add('active');
+        }
+    })
+</script>
 </html>

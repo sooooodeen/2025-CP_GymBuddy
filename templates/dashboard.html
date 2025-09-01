@@ -1,42 +1,25 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body>
-    <div class="h-[100dvh] w-[100dvw] grid grid-cols-[3%_1fr] grid-rows-1">
-        <div class="bg-[#2D2C2C] h-full">
-        
-        </div>
-        <div class="p-10 font-Helvetica flex flex-col gap-6">
-            <div id="header" class="w-full grid grid-cols-2 h-[7%]">
-                <h1 class="text-4xl font-semibold">Dashboard<p class="text-lg text-gray-400 font-normal leading-[10px]">Statistics for daily and monthly monitoring</p></h1>
-                <div class="flex justify-end items-center gap-2">
-                    <h1 class="text-xl font-Helvetica font-semibold">"Email" </h1><svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-user-round-icon lucide-circle-user-round"><path d="M18 20a6 6 0 0 0-12 0"/><circle cx="12" cy="10" r="4"/><circle cx="12" cy="12" r="10"/></svg>
-                </div>
-            </div>
-           <div id="box" class="h-[30%] grid grid-cols-4 gap-10">
-                <div class="bg-[#2D2C2C] h-full rounded-2xl p-6 flex items-center flex-col">
-                    <h1 class="text-white text-2xl">Potential Errors Detected</h1>
-                    <h1 class="text-5xl h-full w-full flex justify-center items-center text-white font-bold">10</h1>
-                </div>
-                <div class="bg-[#2D2C2C] h-full rounded-2xl p-6 flex items-center flex-col">
-                    <h1 class="text-white text-2xl">Critical Incorrect Form Detected</h1>
-                    <h1 class="text-5xl h-full w-full flex justify-center items-center text-white font-bold">10</h1>
-                </div>
-                <div class="bg-[#2D2C2C] h-full rounded-2xl p-6 flex items-center flex-col">
-                    <h1 class="text-white text-2xl">Counted Incorrect Form</h1>
-                    <h1 class="text-5xl h-full w-full flex justify-center items-center text-white font-bold">10</h1>
-                </div>
-                <div class="bg-[#2D2C2C] h-full rounded-2xl p-6 flex items-center flex-col">
-                    <h1 class="text-white text-2xl">Most Common Error</h1>
-                    <h1 class="text-5xl h-full w-full flex justify-center items-center text-white font-bold">Bicep Curls</h1>
-                </div>
-           </div>
+{% extends "house.html" %}
+{% block content %}
+<div class="p-10 h-full font-Helvetica flex flex-col gap-6">
+    <div id="header" class="w-full grid grid-cols-2 h-[7%]">
+        <h1 class="text-4xl font-semibold">Dashboard<p class="text-lg text-gray-400 font-normal leading-[15px]">Statistics for daily and monthly monitoring</p></h1>
+        <div class="flex justify-end items-center gap-2">
+            <h1 class="text-xl font-Helvetica font-semibold">"Email"
         </div>
     </div>
-</body>
-</html>
+    <div id="box" class="h-full w-[20%] flex flex-col gap-10">
+        <div class="bg-[#2D2C2C] h-full rounded-2xl p-6 flex items-center flex-col">
+            <h1 class="text-white text-center text-2xl">Critical Errors Detected</h1>
+            <h1 class="text-5xl h-full w-full flex justify-center items-center text-white font-bold">10</h1>
+        </div>
+        <div class="bg-[#2D2C2C] h-full rounded-2xl p-6 flex items-center flex-col">
+            <h1 class="text-white text-center text-2xl">Overall Incorrect Form Detected</h1>
+            <h1 class="text-5xl h-full w-full flex justify-center items-center text-white font-bold">10</h1>
+        </div>
+        <div class="bg-[#2D2C2C] h-full rounded-2xl p-6 flex items-center flex-col">
+            <h1 class="text-white text-center text-2xl">Common Workout Error this Week</h1>
+            <h1 class="text-5xl h-full w-full flex justify-center items-center text-white font-bold">Bicep Curls</h1>
+        </div>
+    </div>
+</div>
+ {% endblock %}

@@ -88,6 +88,17 @@ def dashboard():
     """Renders the dashboard page after a user successfully logs in."""
     return render_template("dashboard.html")
 
+@app.route("/monitor")
+def monitor():
+    return render_template("monitor.html")
+
+@app.route("/settings")
+def settings():
+    return render_template("settings.html")
+
+@app.route("/profile")
+def profile():
+    return render_template("profile.html")
 
 # --- Main Execution ---
 if __name__ == "__main__":
