@@ -18,7 +18,6 @@ if not current_angle:
 
 print(f"\n✅ Ready to record from the '{current_angle}' view.")
 
-# Define the exercises and their corresponding keys
 EXERCISE_KEY_MAP = {
     # Legs & Glutes
     's': 'squat',
