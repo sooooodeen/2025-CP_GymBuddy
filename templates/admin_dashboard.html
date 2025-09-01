@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
+</head>
+<body class="bg-gray-800 text-white flex items-center justify-center h-screen">
+    <div class="text-center p-10 bg-gray-900 rounded-xl shadow-lg">
+        <h1 class="text-4xl font-bold font-Helvetica mb-4">Admin Dashboard</h1>
+        <p class="text-lg text-gray-400 mb-8">Welcome, Gym Owner! This is a placeholder for your admin controls.</p>
+        <a href="{{ url_for('logout') }}" class="bg-red-600 py-3 px-8 font-Helvetica rounded-xl text-white text-xl cursor-pointer hover:bg-red-700">
+            Logout
+        </a>
+    </div>
+</body>
+</html>
