@@ -1,0 +1,69 @@
+<body>
+    <!-- wrapper -->
+    <div class="flex h-[100dvh]">
+        <!-- nav -->
+        <nav class="bg-[#2D2C2C] w-[64px] flex-shrink-0 py-4 flex flex-col items-center justify-between">
+            <div class="flex flex-col items-center gap-3">
+
+                <!-- JINJA IF/ELSE BLOCK: Shows links based on the user's role -->
+                {% if session.user_role == 'Gym Owner' %}
+                    <!-- ADMIN-SPECIFIC ICONS -->
+                    <a href="{{ url_for('admin_dashboard') }}" class="p-2 rounded-lg" title="Admin Dashboard">
+                        <i class="fas fa-shield-alt text-white fa-2x"></i>
+                    </a>
+                    <a href="{{ url_for('admin_trainer_view') }}" class="p-2 rounded-lg" title="Trainer View">
+                        <i class="fas fa-tachometer-alt text-white fa-2x"></i>
+                    </a>
+                    <a href="{{ url_for('manage_users') }}" class="p-2 rounded-lg" title="Manage Users">
+                        <i class="fas fa-users-cog text-white fa-2x"></i>
+                    </a>
+                    <a href="{{ url_for('admin_monitor') }}" class="p-2 rounded-lg" title="Monitor">
+                         <i class="fas fa-video text-white fa-2x"></i>
+                    </a>
+                    <a href="{{ url_for('admin_settings') }}" class="p-2 rounded-lg" title="Settings">
+                         <i class="fas fa-cog text-white fa-2x"></i>
+                    </a>
+                {% else %}
+                    <!-- TRAINER-SPECIFIC ICONS -->
+                    <a href="{{ url_for('dashboard') }}" class="p-1 rounded-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-house-icon lucide-house"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                    </a>
+                    <a href="{{ url_for('monitor') }}" class="p-1 rounded-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-monitor-icon lucide-monitor"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                    </a>
+                    <a href="{{ url_for('settings') }}" class="p-1 rounded-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings-icon lucide-settings"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+                    </a>
+                    <a href="{{ url_for('profile') }}" class="p-1 rounded-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-user-round-icon lucide-circle-user-round"><path d="M18 20a6 6 0 0 0-12 0"/><circle cx="12" cy="10" r="4"/><circle cx="12" cy="12" r="10"/></svg>
+                    </a>
+                {% endif %}
+            </div>
+
+             <!-- Logout Button -->
+             <div class="p-1">
+                <a href="{{ url_for('logout') }}" class="p-2 rounded-lg" title="Logout">
+                    <i class="fas fa-sign-out-alt text-white fa-2x"></i>
+                </a>
+            </div>
+        </nav>
+        <!-- contents -->
+        <div class="flex-grow overflow-y-auto">
+            {% block content %} {% endblock %}
+        </div>
+    </div>
+</body>
+<script>
+    // script for active page
+    document.addEventListener("DOMContentLoaded", function() {
+        const activePage = window.location.pathname;
+        const navLinks = document.querySelectorAll('nav a');
+
+        navLinks.forEach(link => {
+            const linkPath = link.pathname;
+            if (linkPath === activePage) {
+                link.classList.add('active');
+            }
+        });
+    });
+</script>
