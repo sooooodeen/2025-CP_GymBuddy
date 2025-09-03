@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard</title>
     <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
 </head>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -31,9 +30,9 @@
                             <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
                         <h1>Dashboard</h1>
                     </a>
-                    <a href="{{ url_for('manage_users') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#474646] transition delay-50 duration-150 ease-in-out" title="Manage Users">
+                    <a href="{{ url_for('trainers') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#474646] transition delay-50 duration-150 ease-in-out" title="Manage Users">
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users-icon lucide-users"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
-                        <h1>Manage Users</h1>
+                        <h1>Trainers</h1>
                     </a>
                     <a href="{{ url_for('admin_monitor') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#474646] transition delay-50 duration-150 ease-in-out" title="Monitor">
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-monitor-icon lucide-monitor"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>

@@ -154,11 +154,11 @@ def profile():
 def admin_dashboard():
     return render_template("admin_dashboard.html")
 
-@app.route("/admin/manage_users")
+@app.route("/admin/trainers")
 @admin_required
-def manage_users():
+def trainers():
     all_users = User.query.all()
-    return render_template("manage_users.html", users=all_users)
+    return render_template("trainers.html", users=all_users)
 
 @app.route("/admin/monitor")
 @admin_required

@@ -1,7 +1,18 @@
 {% extends "house.html" %}
 {% block content %}
-
-<div>
+<head>
+    <title>Profile | {{ session.get('user_gym_name', 'Admin') }}</title>
+</head>
+<div class="p-10 h-full font-Helvetica flex flex-col gap-6">
+    <div id="header" class="w-full grid grid-cols-2 h-[7%]">
+        <div>
+            <h1 class="text-4xl font-semibold">Profile</h1>
+            <p class="text-lg text-gray-400 font-normal leading-[15px]">Manage your profile</p>
+        </div>
+        <div class="flex justify-end items-center gap-2">
+            <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
+        </div>
+    </div>
     
 </div>
 
