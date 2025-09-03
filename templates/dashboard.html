@@ -4,7 +4,7 @@
     <div id="header" class="w-full grid grid-cols-2 h-[7%]">
         <h1 class="text-4xl font-semibold">Dashboard<p class="text-lg text-gray-400 font-normal leading-[15px]">Statistics for daily and monthly monitoring</p></h1>
         <div class="flex justify-end items-center gap-2">
-            <h1 class="text-xl font-Helvetica font-semibold">"Email"
+            <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
         </div>
     </div>
     <div id="box" class="h-full w-[20%] flex flex-col gap-10">
@@ -20,6 +20,7 @@
             <h1 class="text-white text-center text-2xl">Common Workout Error this Week</h1>
             <h1 class="text-5xl h-full w-full flex justify-center items-center text-white font-bold">Bicep Curls</h1>
         </div>
+        <h1>recent errors(?)</h1>
     </div>
 </div>
  {% endblock %}
