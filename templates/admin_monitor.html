@@ -1,24 +1,22 @@
 {% extends "house.html" %}
-
 {% block title %}Admin Monitor{% endblock %}
-
 {% block content %}
-<!-- This content is copied from the regular monitor.html to replicate the trainer's view -->
+<head>
+    <title>Monitor Workout | {{ session.get('user_gym_name', 'Admin') }}</title>
+</head>
 <div class="p-10 h-full font-Helvetica flex flex-col gap-6">
     <div id="header" class="w-full grid grid-cols-2 h-[7%]">
         <div>
-            <h1 class="text-4xl font-semibold">Monitor (Admin View)</h1>
+            <h1 class="text-4xl font-semibold">Monitor</h1>
             <p class="text-lg text-gray-400 font-normal leading-[15px]">Live monitoring of users workout</p>
         </div>
         <div class="flex justify-end items-center gap-2">
-            <h1 class="text-xl font-Helvetica font-semibold">Viewing as {{ session.get('user_firstname', 'Admin') }}</h1>
+            <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
         </div>
     </div>
     
-    <!-- Camera selection and video feeds will be displayed here -->
     <div class="mt-4">
         <p>Your camera selection and video streaming interface will go here.</p>
-        <!-- The JavaScript and video tags from your original monitor.html would be placed here -->
     </div>
 </div>
 {% endblock %}

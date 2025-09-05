@@ -107,10 +107,15 @@ def login():
             session['user_id'] = user.id
             session['user_role'] = user.role
             session['user_firstname'] = user.firstname
+            session['user_lastname'] = user.lastname
+            session['user_gym_name'] = user.gym_name
+            session['user_email'] = user.email
+
+
             
             if user.role == 'Gym Owner':
                 return redirect(url_for('admin_dashboard'))
-            else: # Assumes the other role is 'Trainer'
+            else:
                 return redirect(url_for('dashboard'))
         else:
             flash('Invalid email or password.', 'error')
@@ -149,16 +154,11 @@ def profile():
 def admin_dashboard():
     return render_template("admin_dashboard.html")
 
-@app.route("/admin/trainer_view")
+@app.route("/admin/trainers")
 @admin_required
-def admin_trainer_view():
-    return render_template("admin_trainer_view.html")
-
-@app.route("/admin/manage_users")
-@admin_required
-def manage_users():
+def trainers():
     all_users = User.query.all()
-    return render_template("manage_users.html", users=all_users)
+    return render_template("trainers.html", users=all_users)
 
 @app.route("/admin/monitor")
 @admin_required

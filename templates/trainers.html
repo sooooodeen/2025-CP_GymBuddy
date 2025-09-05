@@ -1,12 +1,13 @@
 {% extends "house.html" %}
-
-{% block title %}Account Management{% endblock %}
-
+{% block title %}Trainers{% endblock %}
 {% block content %}
+<head>
+    <title>Trainers | {{ session.get('user_gym_name', 'Admin') }}</title>
+</head>
 <div class="p-10 h-full font-Helvetica">
     <div class="flex justify-between items-center mb-6">
         <div>
-            <h1 class="text-4xl font-semibold">Account Management</h1>
+            <h1 class="text-4xl font-semibold">Trainers</h1>
             <p class="text-lg text-gray-400 font-normal">View and manage all user accounts.</p>
         </div>
         <button class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700">

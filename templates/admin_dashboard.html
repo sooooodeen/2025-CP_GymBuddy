@@ -1,8 +1,9 @@
 {% extends "house.html" %}
-
 {% block title %}Admin Dashboard{% endblock %}
-
 {% block content %}
+<head>
+    <title>Dashboard | {{ session.get('user_gym_name', 'Admin') }}</title>
+</head>
 <div class="p-10 h-full font-Helvetica flex flex-col gap-6">
     <div id="header" class="w-full grid grid-cols-2 h-[7%]">
         <div>
@@ -10,8 +11,7 @@
             <p class="text-lg text-gray-400 font-normal leading-[15px]">Admin View: Statistics for daily and monthly monitoring</p>
         </div>
         <div class="flex justify-end items-center gap-2">
-            <!-- Dynamically insert the admin's name from the session -->
-            <h1 class="text-xl font-Helvetica font-semibold">Welcome, {{ session.get('user_firstname', 'Admin') }}</h1>
+            <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
         </div>
     </div>
     <div id="box" class="h-full w-[20%] flex flex-col gap-10">
