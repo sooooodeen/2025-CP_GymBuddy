@@ -7,7 +7,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # --- 1. Load the ENGINEERED Dataset ---
-# This now points to your new, smarter dataset file
 dataset_filename = 'exercise_coords_engineered.csv'
 
 try:
@@ -20,30 +19,39 @@ except FileNotFoundError:
 print(f"Engineered dataset loaded successfully with {len(df)} samples.")
 
 # --- 2. Prepare the data ---
-# The features (X) now include all the original coordinates PLUS the new engineered angles and distances
-X = df.drop('class', axis=1) 
+# We explicitly define our feature set to be ONLY the engineered columns.
+# This prevents data leakage and forces the model to learn meaningful patterns.
+feature_cols = [
+    'angle_left_elbow', 'angle_left_shoulder', 'angle_left_hip', 'angle_left_knee',
+    'angle_right_elbow', 'angle_right_shoulder', 'angle_right_hip', 'angle_right_knee',
+    'dist_y_l_wrist_shoulder', 'dist_y_r_wrist_shoulder',
+    'dist_z_l_wrist_hip', 'dist_z_r_wrist_hip'
+]
+
+X = df[feature_cols]
 y = df['class']
 
 # Split data into training and testing sets
+# stratify=y ensures the class distribution is the same in train and test sets
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
 
 # --- 3. Build and Train the Model ---
-print("\nTraining the model on the engineered dataset...")
+print("\nTraining the model on the engineered feature set...")
+# You can experiment with n_estimators, e.g., 200, for potentially better results
 model = RandomForestClassifier(n_estimators=100, random_state=42)
 model.fit(X_train, y_train)
 print("Model training complete.")
 
 
 # --- 4. Evaluate the Model ---
-print("\nEvaluating the model...")
+print("\nEvaluating the new model...")
 y_pred = model.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
 print(f"✅ Model Accuracy on Engineered Data: {accuracy * 100:.2f}%")
 
 
 # --- 5. Save the Trained Model ---
-# We save it with a new name to distinguish it from the old model
 model_filename = 'exercise_model_engineered.pkl'
 with open(model_filename, 'wb') as f:
     pickle.dump(model, f)
@@ -51,15 +59,15 @@ with open(model_filename, 'wb') as f:
 print(f"\n✅ New, smarter model saved successfully as '{model_filename}'")
 
 
-# --- 6. (Optional) Visualize a Confusion Matrix ---
+# --- 6. Visualize a Confusion Matrix ---
 print("\nGenerating confusion matrix visualization...")
 try:
     cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
     plt.figure(figsize=(15, 12))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=model.classes_, yticklabels=model.classes_)
     plt.title('Confusion Matrix for Engineered Model')
-    plt.ylabel('Actual')
-    plt.xlabel('Predicted')
+    plt.ylabel('Actual Class')
+    plt.xlabel('Predicted Class')
     plt.xticks(rotation=45, ha='right')
     plt.yticks(rotation=0)
     plt.tight_layout()
@@ -67,4 +75,3 @@ try:
     print("✅ Confusion matrix saved as 'confusion_matrix_engineered.png'")
 except Exception as e:
     print(f"Could not generate confusion matrix plot. Error: {e}")
-
