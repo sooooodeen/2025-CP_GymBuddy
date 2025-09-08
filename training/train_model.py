@@ -20,7 +20,6 @@ print(f"Engineered dataset loaded successfully with {len(df)} samples.")
 
 # --- 2. Prepare the data ---
 # We explicitly define our feature set to be ONLY the engineered columns.
-# This prevents data leakage and forces the model to learn meaningful patterns.
 feature_cols = [
     'angle_left_elbow', 'angle_left_shoulder', 'angle_left_hip', 'angle_left_knee',
     'angle_right_elbow', 'angle_right_shoulder', 'angle_right_hip', 'angle_right_knee',
@@ -32,14 +31,19 @@ X = df[feature_cols]
 y = df['class']
 
 # Split data into training and testing sets
-# stratify=y ensures the class distribution is the same in train and test sets
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
 
 # --- 3. Build and Train the Model ---
-print("\nTraining the model on the engineered feature set...")
-# You can experiment with n_estimators, e.g., 200, for potentially better results
-model = RandomForestClassifier(n_estimators=100, random_state=42)
+print("\nTraining a SIMPLER, more robust model...")
+# By setting max_depth and min_samples_leaf, we prevent the model from overfitting.
+# It can't build overly complex "rules" and is forced to generalize.
+model = RandomForestClassifier(
+    n_estimators=100,       # Keep the number of trees
+    max_depth=10,           # IMPORTANT: Limit the depth of each tree to 10 levels
+    min_samples_leaf=5,     # IMPORTANT: Each final "leaf" must have at least 5 samples
+    random_state=42
+)
 model.fit(X_train, y_train)
 print("Model training complete.")
 

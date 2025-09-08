@@ -5,24 +5,68 @@ import numpy as np
 
 # --- Constants ---
 MODEL_FILENAME = 'exercise_model_engineered.pkl'
-CONF_THRESHOLD = 0.80  # Only consider predictions with >= 80% confidence
+CONF_THRESHOLD = 0.30  # Start with 60%, lower if needed
 STABILITY_FRAMES = 15  # Lock in prediction after this many consecutive frames
 UI_COLOR = (245, 117, 16) # BGR color for the UI boxes
 
-# --- Helper Function to Calculate Angles ---
+# --- Helper Function to Calculate Angles (Corrected 3D Version) ---
 def calculate_angle(a, b, c):
     """Calculates the angle between three 3D points."""
     a = np.array(a)  # First point
     b = np.array(b)  # Mid point
     c = np.array(c)  # End point
-    
-    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
-    angle = np.abs(radians*180.0/np.pi)
-    
-    if angle > 180.0:
-        angle = 360 - angle
+
+    # Calculate vectors
+    ba = a - b
+    bc = c - b
+
+    # Calculate dot product
+    dot_product = np.dot(ba, bc)
+
+    # Calculate magnitudes
+    magnitude_ba = np.linalg.norm(ba)
+    magnitude_bc = np.linalg.norm(bc)
+
+    # Calculate cosine of the angle, handling potential division by zero
+    if magnitude_ba == 0 or magnitude_bc == 0:
+        return 0.0 # Or handle as an error
         
-    return angle
+    cosine_angle = dot_product / (magnitude_ba * magnitude_bc)
+    
+    # Clamp the value to avoid floating point errors with arccos
+    # Then calculate angle in radians and convert to degrees
+    angle = np.arccos(np.clip(cosine_angle, -1.0, 1.0))
+
+    return np.degrees(angle)
+
+# --- NEW: Pose Normalization Function ---
+def normalize_pose(landmarks):
+    """Normalizes landmarks to be invariant to position and scale."""
+    # We need the PoseLandmark enum for indices
+    mp_pose = mp.solutions.pose
+
+    # 1. Find the center of the hips
+    left_hip = np.array([landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].z])
+    right_hip = np.array([landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].y, landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].z])
+    hip_center = (left_hip + right_hip) / 2.0
+
+    # 2. Calculate a scaling factor (torso size)
+    left_shoulder = np.array([landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].z])
+    right_shoulder = np.array([landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].z])
+    torso_size = np.linalg.norm(left_shoulder - right_shoulder) + 1e-6 # Epsilon for safety
+
+    # 3. Normalize each landmark
+    normalized_landmarks = []
+    for lm in landmarks:
+        normalized_lm_coords = (np.array([lm.x, lm.y, lm.z]) - hip_center) / torso_size
+        # Rebuild the landmark as a dictionary to match the structure used below
+        normalized_landmarks.append({
+            'x': normalized_lm_coords[0], 
+            'y': normalized_lm_coords[1], 
+            'z': normalized_lm_coords[2]
+        })
+        
+    return normalized_landmarks
 
 # --- Load the Trained Model ---
 try:
@@ -49,10 +93,10 @@ if not cap.isOpened():
     print("Error: Could not open webcam.")
     exit()
 
-# --- Create a named window ---
+# --- Create and size the window ---
 window_name = 'AI Fitness Trainer'
-cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-cv2.resizeWindow(window_name, 1600, 900)
+cv2.namedWindow(window_name, cv2.WINDOW_NORMAL) # Creates a resizable window
+cv2.resizeWindow(window_name, 1600, 900)       # Sets the size to 1600x900
 
 # --- State and Counter Variables ---
 rep_counter = 0
@@ -80,22 +124,24 @@ while cap.isOpened():
     # --- Prediction and Feature Logic ---
     if results.pose_landmarks:
         try:
-            landmarks = results.pose_landmarks.landmark
+            landmarks_original = results.pose_landmarks.landmark
             
-            # --- 1. PREDICT EXERCISE (with stability) ---
-            # Calculate engineered features in real-time (must match training script)
-            left_shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].z]
-            left_elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].z]
-            left_wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].z]
-            left_hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].z]
-            left_knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].z]
-            left_ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].z]
-            right_shoulder = [landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].z]
-            right_elbow = [landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].y, landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].z]
-            right_wrist = [landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y, landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].z]
-            right_hip = [landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].y, landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].z]
-            right_knee = [landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value].y, landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value].z]
-            right_ankle = [landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE.value].y, landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE.value].z]
+            # --- MODIFIED: Normalize the landmarks first ---
+            landmarks_normalized = normalize_pose(landmarks_original)
+            
+            # --- MODIFIED: Use the NORMALIZED landmarks for calculations ---
+            left_shoulder = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_SHOULDER.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_SHOULDER.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_SHOULDER.value]['z']]
+            left_elbow = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_ELBOW.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_ELBOW.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_ELBOW.value]['z']]
+            left_wrist = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_WRIST.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_WRIST.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_WRIST.value]['z']]
+            left_hip = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_HIP.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_HIP.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_HIP.value]['z']]
+            left_knee = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_KNEE.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_KNEE.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_KNEE.value]['z']]
+            left_ankle = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_ANKLE.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_ANKLE.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_ANKLE.value]['z']]
+            right_shoulder = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]['z']]
+            right_elbow = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ELBOW.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ELBOW.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ELBOW.value]['z']]
+            right_wrist = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_WRIST.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_WRIST.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_WRIST.value]['z']]
+            right_hip = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_HIP.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_HIP.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_HIP.value]['z']]
+            right_knee = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_KNEE.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_KNEE.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_KNEE.value]['z']]
+            right_ankle = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ANKLE.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ANKLE.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ANKLE.value]['z']]
 
             # Feature calculation
             angle_left_elbow = calculate_angle(left_shoulder, left_elbow, left_wrist)
@@ -124,40 +170,45 @@ while cap.isOpened():
             predicted_class = model.predict(X)[0]
             confidence = np.max(model.predict_proba(X))
 
+            print(f"Predicted: {predicted_class:<30} | Confidence: {confidence:.2f}")
+
+
+            # --- DEBUG: Uncomment the line below to see live confidence scores ---
+            # print(f"Predicted: {predicted_class:<30} | Confidence: {confidence:.2f}")
+
             # --- STABILITY BUFFER LOGIC ---
             if confidence >= CONF_THRESHOLD:
                 prediction_buffer.append(predicted_class)
                 if len(prediction_buffer) > STABILITY_FRAMES:
-                    prediction_buffer.pop(0) # Keep buffer size constant
+                    prediction_buffer.pop(0)
                 
-                # Check if the buffer is full and all predictions are the same
                 if len(prediction_buffer) == STABILITY_FRAMES and len(set(prediction_buffer)) == 1:
                     new_stable_exercise = prediction_buffer[0]
                     if new_stable_exercise != stable_exercise:
                         stable_exercise = new_stable_exercise
-                        rep_counter = 0 # Reset counter for new exercise
+                        rep_counter = 0
                         exercise_stage = None
             else:
-                # If confidence is low, reset buffer and go to UNKNOWN state
-                prediction_buffer = []
-                stable_exercise = "UNKNOWN"
+                # This condition is now met if confidence is too low OR if buffer is not stable
+                # A small change here to make it reset unless it's locked in
+                if len(prediction_buffer) != STABILITY_FRAMES or len(set(prediction_buffer)) != 1:
+                    stable_exercise = "UNKNOWN"
 
-            # --- 2. REP COUNTING & FORM CHECKING (operates on STABLE prediction) ---
+            # --- 2. REP COUNTING & FORM CHECKING ---
             form_status = "CORRECT FORM"
-            status_color = (0, 255, 0) # Green
+            status_color = (0, 255, 0)
             
-            # This logic only runs if an exercise has been stably identified
             if 'squat' in stable_exercise or 'lunge' in stable_exercise:
                 if angle_left_knee > 160: exercise_stage = "up"
                 if angle_left_knee < 90 and exercise_stage == 'up':
                     exercise_stage = "down"; rep_counter += 1
-                if 'squat' in stable_exercise and angle_left_hip < 70: # More specific squat form check
-                    form_status = "GO DEEPER"; status_color = (0, 165, 255) # Orange
+                if 'squat' in stable_exercise and angle_left_hip < 70:
+                    form_status = "GO DEEPER"; status_color = (0, 165, 255)
 
             elif 'deadlift' in stable_exercise or 'bent_over' in stable_exercise or 'one_arm_dumbbell_row' in stable_exercise:
                 back_angle = calculate_angle(left_shoulder, left_hip, left_knee)
                 if back_angle < 160:
-                    form_status = "KEEP BACK STRAIGHT"; status_color = (0, 0, 255) # Red
+                    form_status = "KEEP BACK STRAIGHT"; status_color = (0, 0, 255)
                 if 'deadlift' in stable_exercise:
                     if angle_left_hip > 160: exercise_stage = "up"
                     if angle_left_hip < 90 and exercise_stage == 'up':
@@ -168,9 +219,9 @@ while cap.isOpened():
                         exercise_stage = "up"; rep_counter += 1
             
             elif 'pull-over' in stable_exercise:
-                if angle_left_shoulder < 100: exercise_stage = "up"
-                if angle_left_shoulder > 120 and exercise_stage == 'up':
-                    exercise_stage = "down"; rep_counter += 1
+                 if angle_left_shoulder < 100: exercise_stage = "up"
+                 if angle_left_shoulder > 120 and exercise_stage == 'up':
+                     exercise_stage = "down"; rep_counter += 1
 
             elif 'bench_press' in stable_exercise or 'push_up' in stable_exercise:
                 if angle_left_elbow > 160: exercise_stage = "up"
@@ -178,10 +229,10 @@ while cap.isOpened():
                     exercise_stage = "down"; rep_counter += 1
 
             elif 'chest_fly' in stable_exercise:
-                fly_angle = calculate_angle(right_shoulder, left_shoulder, left_elbow)
-                if fly_angle > 160: exercise_stage = "open"
-                if fly_angle < 40 and exercise_stage == 'open':
-                    exercise_stage = "closed"; rep_counter += 1
+                 fly_angle = calculate_angle(right_shoulder, left_shoulder, left_elbow)
+                 if fly_angle > 160: exercise_stage = "open"
+                 if fly_angle < 40 and exercise_stage == 'open':
+                     exercise_stage = "closed"; rep_counter += 1
 
             elif 'shoulder_press' in stable_exercise or 'overhead_press' in stable_exercise:
                 if angle_left_elbow < 90: exercise_stage = "down"
@@ -192,8 +243,8 @@ while cap.isOpened():
                 if angle_left_shoulder < 20: exercise_stage = "down"
                 if angle_left_shoulder > 80 and exercise_stage == 'down':
                     exercise_stage = "up"; rep_counter += 1
-                if angle_left_elbow < 150: # Check for bent elbows
-                    form_status = "KEEP ARMS STRAIGHTER"; status_color = (0, 165, 255) # Orange
+                if angle_left_elbow < 150:
+                    form_status = "KEEP ARMS STRAIGHTER"; status_color = (0, 165, 255)
 
             elif 'upright_row' in stable_exercise:
                 if left_wrist[1] > left_shoulder[1]: exercise_stage = "down"
@@ -210,17 +261,15 @@ while cap.isOpened():
                 if angle_left_elbow > 160 and exercise_stage == 'up':
                     exercise_stage = "down"; rep_counter += 1
             
-        # IMPROVED ERROR HANDLING: Print the error but don't crash
         except (IndexError, TypeError) as e:
-            print(f"Error processing landmarks: {e}. A body part might be out of frame.")
-            # We can let the loop continue, it will just miss this frame.
+            # print(f"Error processing landmarks: {e}. A body part might be out of frame.")
             pass
         except Exception as e:
-            print(f"An unexpected error occurred: {e}")
+            # print(f"An unexpected error occurred: {e}")
             pass
 
     # --- 3. RENDER RESULTS ---
-    # Draw landmarks
+    # We draw the ORIGINAL landmarks so the skeleton appears correctly on the person
     if results.pose_landmarks:
         mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
         
