@@ -10,47 +10,128 @@
             <h1 class="text-4xl font-semibold">Trainers</h1>
             <p class="text-lg text-gray-400 font-normal">View and manage all user accounts.</p>
         </div>
-        <button class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700">
+        <button id="add-user-btn" class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700">
             Add New User
         </button>
     </div>
-
-    <!-- User Table -->
-    <div class="bg-white p-6 rounded-lg shadow-md">
-        <div class="overflow-x-auto">
-            <table class="min-w-full bg-white">
-                <thead class="bg-gray-800 text-white">
-                    <tr>
-                        <th class="py-3 px-4 uppercase font-semibold text-sm text-left">ID</th>
-                        <th class="py-3 px-4 uppercase font-semibold text-sm text-left">Name</th>
-                        <th class="py-3 px-4 uppercase font-semibold text-sm text-left">Email</th>
-                        <th class="py-3 px-4 uppercase font-semibold text-sm text-left">Role</th>
-                        <th class="py-3 px-4 uppercase font-semibold text-sm text-left">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="text-gray-700">
-                    <!-- 
-                        This is a Jinja2 for loop.
-                        It iterates through the 'users' list passed from the app.py backend 
-                        and creates a new table row for each user.
-                    -->
-                    {% for user in users %}
-                    <tr class="border-b hover:bg-gray-50">
-                        <td class="py-3 px-4">{{ user.id }}</td>
-                        <td class="py-3 px-4">{{ user.firstname }} {{ user.lastname }}</td>
-                        <td class="py-3 px-4">{{ user.email }}</td>
-                        <td class="py-3 px-4">{{ user.role }}</td>
-                        <td class="py-3 px-4">
-                            <!-- These are placeholder links for future functionality -->
-                            <a href="#" class="text-blue-500 hover:underline">Edit</a>
-                            <a href="#" class="text-red-500 hover:underline ml-4">Delete</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <div class="table-wrapper flex w-full justify-center">
+        <div class="bg-white rounded-lg shadow-md font-Helvetica w-[80%]">
+            <div class="overflow-x-auto pb-2">
+                <table class="min-w-full bg-white ">
+                    <thead class="bg-[#2D2C2C] text-white border-b border-gray-300">
+                        <tr class="">
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-left">#</th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-left"></th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Name</th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Contact</th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Role</th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Assign Status</th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-700">
+                        {% for user in users %}
+                        <tr class="border-b border-gray-100 hover:bg-gray-100">
+                            <td class="w-12 px-4">
+                                {{ user.id }}
+                            </td>
+                            <td class="w-12">
+                                <div class="flex justify-center">
+                                    <img class="h-[45px] w-[45px] object-cover rounded-4xl justify-self-start" src="/static/src/images/latraiseimg.jpg" alt="">
+                                </div>
+                            </td>
+                            <td class="py-5 px-4">
+                                <div class="flex flex-col ">
+                                    <h1 class="text-xl font-bold leading-4">{{ user.firstname }} {{ user.lastname }}</h1>
+                                    <h2 class="text-sm text-gray-400">{{ user.email }}</h2>
+                                </div>
+                            </td>
+                              <td class="py-5 px-4">
+                                <div class="flex flex-col ">
+                                    <h2 class="">09XXXXXXXXX</h2>
+                                </div>
+                            </td>
+                            <td class="py-3 px-4">{{ user.role }}</td>
+                            <td class="py-3 px-4 flex h-20 justify-center items-center">
+                                <h1 class="bg-green-200 rounded-xl font-semibold text-green-800 text-sm w-20 flex justify-center">
+                                    Active
+                                </h1>
+                            </td>
+                            <td class="py-3 px-4">
+                                <div class="flex gap-2 justify-center">
+                                    <a title="Assign Trainer" href="#" class="!bg-transparent "><svg class="hover:!stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg"  width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-round-check-icon lucide-user-round-check"><path d="M2 21a8 8 0 0 1 13.292-6"/><circle cx="10" cy="8" r="5"/><path stroke="Green" d="m16 19 2 2 4-4"/></svg></a>
+                                    <a title="Edit" href="#" class="!bg-transparent"><svg class="hover:!stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg"  width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-round-pen-icon lucide-user-round-pen"><path d="M2 21a8 8 0 0 1 10.821-7.487"/><path stroke="blue" d="M21.378 16.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/><circle cx="10" cy="8" r="5"/></svg></a>
+                                    <a title="Delete" href="#" class="!bg-transparent"><svg class="hover:!stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-round-x-icon lucide-user-round-x"><path d="M2 21a8 8 0 0 1 11.873-7"/><circle cx="10" cy="8" r="5"/><path stroke="red" d="m17 17 5 5"/><path stroke="red" d="m22 17-5 5"/></svg></a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
+<script>
+    document.getElementById('add-user-btn').addEventListener('click', () => {
+        Swal.fire({
+            title: 'Add New User',
+            html:
+                '<input id="swal-input-first" class="swal2-input" placeholder="First Name">' +
+                '<input id="swal-input-middle" class="swal2-input" placeholder="Middle Name (Optional)">' +
+                '<input id="swal-input-last" class="swal2-input" placeholder="Last Name">' +
+                '<input id="swal-input-email" class="swal2-input" placeholder="Email">' +
+                '<input id="swal-input-contact" class="swal2-input" placeholder="Contact Number">',
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: 'Add User',
+            preConfirm: () => {
+                const firstName = document.getElementById('swal-input-first').value;
+                const middleName = document.getElementById('swal-input-middle').value;
+                const lastName = document.getElementById('swal-input-last').value;
+                const email = document.getElementById('swal-input-email').value;
+                const contact = document.getElementById('swal-input-contact').value;
+
+                // Simple validation for required fields
+                if (!firstName || !lastName || !email || !contact) {
+                    Swal.showValidationMessage('Please fill in all required fields (First Name, Last Name, Email, Contact)');
+                    return false;
+                }
+
+                // Return an object with the form data
+                return { 
+                    firstName: firstName, 
+                    middleName: middleName, 
+                    lastName: lastName,
+                    email: email, 
+                    contact: contact 
+                };
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Send data to the Flask backend
+                fetch('URL pone lang aki', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(result.value)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        Swal.fire('Success!', 'User added successfully.', 'success');
+                        window.location.reload();
+                    } else {
+                        Swal.fire('Error!', data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    Swal.fire('Error!', 'An error occurred.', 'error');
+                });
+            }
+        });
+    });
+</script>
 {% endblock %}
 
