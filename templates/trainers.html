@@ -10,7 +10,7 @@
             <h1 class="text-4xl font-semibold">Trainers</h1>
             <p class="text-lg text-gray-400 font-normal">Add, view, and manage trainer accounts.</p>
         </div>
-        <button id="add-user-btn" class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 font-bold transition-colors duration-200">
+        <button id="add-user-btn" class="bg-[#30475E] text-white px-5 py-2 rounded-lg cursor-pointer hover:bg-[#465f77] transition ease-in duration-200">
             + Add New Trainer
         </button>
     </div>
@@ -25,7 +25,7 @@
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-left"></th>
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Name</th>
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Contact</th>
-                            <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Status</th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Assign Status</th>
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Actions</th>
                         </tr>
                     </thead>
@@ -58,12 +58,12 @@
                             </td>
                             <td class="py-3 px-4">
                                 <div class="flex gap-2 justify-center">
-                                    <button class="assign-btn" title="Assign Trainer" 
+                                    <button class="assign-btn cursor-pointer" title="Assign Trainer" 
                                         data-id="{{ trainer.id }}" 
                                         data-name="{{ trainer.firstname }} {{ trainer.lastname }}">
                                         <svg class="hover:stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21a8 8 0 0 1 13.292-6"/><circle cx="10" cy="8" r="5"/><path stroke="Green" d="m16 19 2 2 4-4"/></svg>
                                     </button>
-                                    <button class="edit-btn" title="Edit"
+                                    <button class="edit-btn cursor-pointer" title="Edit"
                                         data-id="{{ trainer.id }}"
                                         data-firstname="{{ trainer.firstname }}"
                                         data-lastname="{{ trainer.lastname }}"
@@ -72,7 +72,7 @@
                                         data-status="{{ trainer.status }}">
                                         <svg class="hover:stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21a8 8 0 0 1 10.821-7.487"/><path stroke="blue" d="M21.378 16.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/><circle cx="10" cy="8" r="5"/></svg>
                                     </button>
-                                    <button class="delete-btn" title="Delete" 
+                                    <button class="delete-btn cursor-pointer" title="Delete" 
                                         data-id="{{ trainer.id }}" 
                                         data-name="{{ trainer.firstname }} {{ trainer.lastname }}">
                                         <svg class="hover:stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21a8 8 0 0 1 11.873-7"/><circle cx="10" cy="8" r="5"/><path stroke="red" d="m17 17 5 5"/><path stroke="red" d="m22 17-5 5"/></svg>
@@ -97,15 +97,28 @@ document.addEventListener('DOMContentLoaded', function () {
     // --- 1. ADD NEW TRAINER ---
     document.getElementById('add-user-btn').addEventListener('click', () => {
         Swal.fire({
-            title: 'Add New Trainer',
+            title: '<h1 class="text-black">Add New Trainer</h1>',
             html: `
-                <input id="swal-firstname" class="swal2-input" placeholder="First Name" required>
-                <input id="swal-lastname" class="swal2-input" placeholder="Last Name" required>
-                <input id="swal-email" class="swal2-input" placeholder="Email" type="email" required>
-                <input id="swal-phone" class="swal2-input" placeholder="Contact Number" required>
-                <input id="swal-password" type="password" class="swal2-input" placeholder="Password" required>
+              <div class="flex gap-6 items-center">
+                <div class="flex justify-center items-center flex-col gap-3">
+                <img class="h-[200px] w-[200px] object-cover rounded-full" src="{{ url_for('static', filename='src/images/latraiseimg.jpg') }}" alt="">
+                    <input type="file" id="upload-img-input" class="hidden" accept="image/*">
+                    <label for="upload-img-input" class="flex text-sm items-center transition duration-100 ease-in cursor-pointer hover:bg-[#243749] bg-[#30475E] text-white px-4 py-1 gap-2 border rounded-full">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-cloud-upload-icon lucide-cloud-upload"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/></svg> Upload photo
+                    </label>
+                </div>
+                <div class="grid grid-cols-2 grid-rows-4 h-[50%] gap-3">
+                    <input id="swal-firstname" class="swal2-input border !border-gray-300 !m-0" placeholder="First Name" required>
+                    <input id="swal-lastname" class="swal2-input border !border-gray-300 !m-0" placeholder="Last Name" required>
+                    <input id="swal-email" class="swal2-input border col-span-2 !border-gray-300 !m-0" placeholder="Email" type="email" required>
+                    <input id="swal-phone" class="swal2-input col-span-2 border !border-gray-300 !m-0" placeholder="Contact Number" required>
+                    <input id="swal-password" type="password" class="swal2-input border col-span-2 !border-gray-300 !m-0" placeholder="Password" required>
+                </div>
+            </div>
             `,
             confirmButtonText: 'Add Trainer',
+            confirmButtonColor: '#30475E',
+            width: 800,
             focusConfirm: false,
             showCancelButton: true,
             preConfirm: () => {
@@ -145,18 +158,31 @@ document.addEventListener('DOMContentLoaded', function () {
             const status = this.dataset.status;
 
             Swal.fire({
-                title: 'Edit Trainer',
+                title: '<h1 class="text-black">Edit Trainer</h1>',
                 html: `
-                    <input id="swal-firstname" class="swal2-input" value="${firstname}">
-                    <input id="swal-lastname" class="swal2-input" value="${lastname}">
-                    <input id="swal-email" class="swal2-input" value="${email}">
-                    <input id="swal-phone" class="swal2-input" value="${phone}">
-                    <select id="swal-status" class="swal2-select">
-                        <option value="active" ${status === 'active' ? 'selected' : ''}>Active</option>
-                        <option value="inactive" ${status === 'inactive' ? 'selected' : ''}>Inactive</option>
-                    </select>
+                    <div class="flex gap-6">
+                        <div class="flex justify-center items-center flex-col gap-3">
+                        <img class="h-[200px] w-[200px] object-cover rounded-full" src="{{ url_for('static', filename='src/images/latraiseimg.jpg') }}" alt="">
+                            <input type="file" id="upload-img-input" class="hidden" accept="image/*">
+                            <label for="upload-img-input" class="flex text-sm items-center transition duration-100 ease-in cursor-pointer hover:bg-[#243749] bg-[#30475E] text-white px-4 py-1 gap-2 border rounded-full">
+                               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-cloud-upload-icon lucide-cloud-upload"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/></svg> Upload photo
+                            </label>
+                        </div>
+                        <div class="grid grid-cols-2 grid-rows-4 gap-3">
+                            <input id="swal-firstname" class="swal2-input border !border-gray-300 !m-0" value="${firstname}">
+                            <input id="swal-lastname" class="swal2-input !m-0 !border-gray-300 " value="${lastname}">
+                            <input id="swal-email" class="swal2-input col-span-2 !w-full !m-0 !border-gray-300 " value="${email}">
+                            <input id="swal-phone" class="swal2-input col-span-2 !m-0 !border-gray-300 " value="${phone}">
+                            <select id="swal-status" class="swal2-select !m-0 col-span-2 border !border-gray-300 ">
+                                <option value="active" ${status === 'active' ? 'selected' : ''}>Active</option>
+                                <option value="inactive" ${status === 'inactive' ? 'selected' : ''}>Inactive</option>
+                            </select>
+                        </div>
+                    </div>
                 `,
+                width: 800,
                 confirmButtonText: 'Save Changes',
+                confirmButtonColor: '#30475E',
                 focusConfirm: false,
                 showCancelButton: true,
                 preConfirm: () => {
