@@ -8,49 +8,232 @@
     <div class="flex justify-between items-center mb-6">
         <div>
             <h1 class="text-4xl font-semibold">Trainers</h1>
-            <p class="text-lg text-gray-400 font-normal">View and manage all user accounts.</p>
+            <p class="text-lg text-gray-400 font-normal">Add, view, and manage trainer accounts.</p>
         </div>
-        <button class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700">
-            Add New User
+        <button id="add-user-btn" class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 font-bold transition-colors duration-200">
+            + Add New Trainer
         </button>
     </div>
 
-    <!-- User Table -->
-    <div class="bg-white p-6 rounded-lg shadow-md">
-        <div class="overflow-x-auto">
-            <table class="min-w-full bg-white">
-                <thead class="bg-gray-800 text-white">
-                    <tr>
-                        <th class="py-3 px-4 uppercase font-semibold text-sm text-left">ID</th>
-                        <th class="py-3 px-4 uppercase font-semibold text-sm text-left">Name</th>
-                        <th class="py-3 px-4 uppercase font-semibold text-sm text-left">Email</th>
-                        <th class="py-3 px-4 uppercase font-semibold text-sm text-left">Role</th>
-                        <th class="py-3 px-4 uppercase font-semibold text-sm text-left">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="text-gray-700">
-                    <!-- 
-                        This is a Jinja2 for loop.
-                        It iterates through the 'users' list passed from the app.py backend 
-                        and creates a new table row for each user.
-                    -->
-                    {% for user in users %}
-                    <tr class="border-b hover:bg-gray-50">
-                        <td class="py-3 px-4">{{ user.id }}</td>
-                        <td class="py-3 px-4">{{ user.firstname }} {{ user.lastname }}</td>
-                        <td class="py-3 px-4">{{ user.email }}</td>
-                        <td class="py-3 px-4">{{ user.role }}</td>
-                        <td class="py-3 px-4">
-                            <!-- These are placeholder links for future functionality -->
-                            <a href="#" class="text-blue-500 hover:underline">Edit</a>
-                            <a href="#" class="text-red-500 hover:underline ml-4">Delete</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <div class="table-wrapper flex w-full justify-center">
+        <div class="bg-white rounded-lg shadow-md font-Helvetica w-full">
+            <div class="overflow-x-auto pb-2">
+                <table class="min-w-full bg-white">
+                    <thead class="bg-[#2D2C2C] text-white border-b border-gray-300">
+                        <tr>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-left">#</th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-left"></th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Name</th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Contact</th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Status</th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-700">
+                        {% for trainer in trainers %}
+                        <tr class="border-b border-gray-100 hover:bg-gray-100">
+                            <td class="w-12 px-4">
+                                {{ loop.index }}
+                            </td>
+                            <td class="w-12">
+                                <div class="flex justify-center">
+                                    <img class="h-[45px] w-[45px] object-cover rounded-full" src="{{ url_for('static', filename='src/images/latraiseimg.jpg') }}" alt="">
+                                </div>
+                            </td>
+                            <td class="py-5 px-4">
+                                <div class="flex flex-col">
+                                    <h1 class="text-lg font-bold leading-5">{{ trainer.firstname }} {{ trainer.lastname }}</h1>
+                                    <h2 class="text-sm text-gray-400">{{ trainer.email }}</h2>
+                                </div>
+                            </td>
+                            <td class="py-5 px-4">
+                                {{ trainer.phone_num }}
+                            </td>
+                            <td class="py-3 px-4 text-center">
+                                {% if trainer.status == 'active' %}
+                                    <span class="bg-green-200 text-green-800 font-semibold py-1 px-4 rounded-full text-sm">Active</span>
+                                {% else %}
+                                    <span class="bg-gray-200 text-gray-800 font-semibold py-1 px-4 rounded-full text-sm">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-4">
+                                <div class="flex gap-2 justify-center">
+                                    <button class="assign-btn" title="Assign Trainer" 
+                                        data-id="{{ trainer.id }}" 
+                                        data-name="{{ trainer.firstname }} {{ trainer.lastname }}">
+                                        <svg class="hover:stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21a8 8 0 0 1 13.292-6"/><circle cx="10" cy="8" r="5"/><path stroke="Green" d="m16 19 2 2 4-4"/></svg>
+                                    </button>
+                                    <button class="edit-btn" title="Edit"
+                                        data-id="{{ trainer.id }}"
+                                        data-firstname="{{ trainer.firstname }}"
+                                        data-lastname="{{ trainer.lastname }}"
+                                        data-email="{{ trainer.email }}"
+                                        data-phone="{{ trainer.phone_num }}"
+                                        data-status="{{ trainer.status }}">
+                                        <svg class="hover:stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21a8 8 0 0 1 10.821-7.487"/><path stroke="blue" d="M21.378 16.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/><circle cx="10" cy="8" r="5"/></svg>
+                                    </button>
+                                    <button class="delete-btn" title="Delete" 
+                                        data-id="{{ trainer.id }}" 
+                                        data-name="{{ trainer.firstname }} {{ trainer.lastname }}">
+                                        <svg class="hover:stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21a8 8 0 0 1 11.873-7"/><circle cx="10" cy="8" r="5"/><path stroke="red" d="m17 17 5 5"/><path stroke="red" d="m22 17-5 5"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="py-4 px-4 text-center text-gray-500">No trainers found. Add one to get started!</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
-{% endblock %}
 
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // --- 1. ADD NEW TRAINER ---
+    document.getElementById('add-user-btn').addEventListener('click', () => {
+        Swal.fire({
+            title: 'Add New Trainer',
+            html: `
+                <input id="swal-firstname" class="swal2-input" placeholder="First Name" required>
+                <input id="swal-lastname" class="swal2-input" placeholder="Last Name" required>
+                <input id="swal-email" class="swal2-input" placeholder="Email" type="email" required>
+                <input id="swal-phone" class="swal2-input" placeholder="Contact Number" required>
+                <input id="swal-password" type="password" class="swal2-input" placeholder="Password" required>
+            `,
+            confirmButtonText: 'Add Trainer',
+            focusConfirm: false,
+            showCancelButton: true,
+            preConfirm: () => {
+                const firstname = document.getElementById('swal-firstname').value;
+                const lastname = document.getElementById('swal-lastname').value;
+                const email = document.getElementById('swal-email').value;
+                const phone = document.getElementById('swal-phone').value;
+                const password = document.getElementById('swal-password').value;
+                if (!firstname || !lastname || !email || !password || !phone) {
+                    Swal.showValidationMessage(`Please fill out all fields`);
+                }
+                return { firstname, lastname, email, phone, password };
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                fetch('/admin/trainers/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(result.value)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    Swal.fire({ title: data.message, icon: data.status }).then(() => location.reload());
+                });
+            }
+        });
+    });
+
+    // --- 2. EDIT TRAINER ---
+    document.querySelectorAll('.edit-btn').forEach(button => {
+        button.addEventListener('click', function () {
+            const id = this.dataset.id;
+            const firstname = this.dataset.firstname;
+            const lastname = this.dataset.lastname;
+            const email = this.dataset.email;
+            const phone = this.dataset.phone;
+            const status = this.dataset.status;
+
+            Swal.fire({
+                title: 'Edit Trainer',
+                html: `
+                    <input id="swal-firstname" class="swal2-input" value="${firstname}">
+                    <input id="swal-lastname" class="swal2-input" value="${lastname}">
+                    <input id="swal-email" class="swal2-input" value="${email}">
+                    <input id="swal-phone" class="swal2-input" value="${phone}">
+                    <select id="swal-status" class="swal2-select">
+                        <option value="active" ${status === 'active' ? 'selected' : ''}>Active</option>
+                        <option value="inactive" ${status === 'inactive' ? 'selected' : ''}>Inactive</option>
+                    </select>
+                `,
+                confirmButtonText: 'Save Changes',
+                focusConfirm: false,
+                showCancelButton: true,
+                preConfirm: () => {
+                     return {
+                        firstname: document.getElementById('swal-firstname').value,
+                        lastname: document.getElementById('swal-lastname').value,
+                        email: document.getElementById('swal-email').value,
+                        phone: document.getElementById('swal-phone').value,
+                        status: document.getElementById('swal-status').value
+                    }
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch(`/admin/trainers/edit/${id}`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(result.value)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        Swal.fire({ title: data.message, icon: data.status }).then(() => location.reload());
+                    });
+                }
+            });
+        });
+    });
+
+    // --- 3. DELETE TRAINER ---
+    document.querySelectorAll('.delete-btn').forEach(button => {
+        button.addEventListener('click', function () {
+            const id = this.dataset.id;
+            const name = this.dataset.name;
+
+            Swal.fire({
+                title: 'Are you sure?',
+                text: `You are about to delete ${name}. This action cannot be undone.`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, delete it!'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch(`/admin/trainers/delete/${id}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        Swal.fire({ title: data.message, icon: data.status }).then(() => location.reload());
+                    });
+                }
+            });
+        });
+    });
+    
+    // --- 4. ASSIGN TRAINER ---
+    document.querySelectorAll('.assign-btn').forEach(button => {
+        button.addEventListener('click', function () {
+            const id = this.dataset.id;
+            const name = this.dataset.name;
+
+            Swal.fire({
+                title: 'Assign Trainer',
+                text: `Assign ${name} to the dashboard for monitoring?`,
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonColor: '#28a745',
+                confirmButtonText: 'Yes, assign!'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch(`/admin/assign/${id}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        Swal.fire({ title: data.message, icon: data.status });
+                    });
+                }
+            });
+        });
+    });
+});
+</script>
+{% endblock %}
