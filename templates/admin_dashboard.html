@@ -22,7 +22,7 @@
                     
                     {% for assignment in assignments %}
                     <div class="border border-[#e2dbdb] h-auto w-full rounded-3xl items-center p-2 grid grid-cols-[15%_1fr_20%_15%] place-items-center justify-center">
-                        <img class="h-[45px] w-[45px] object-cover rounded-4xl justify-self-start" src="{{ url_for('static', filename='src/images/latraiseimg.jpg') }}" alt="">
+                        <img class="h-[45px] w-[45px] object-cover rounded-4xl justify-self-start" src="{{ url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="">
                         <h1 class="text-[#5a5757] text-lg justify-self-start">{{ assignment.trainer.firstname }} {{ assignment.trainer.lastname }}</h1>
                         <h1>5:30</h1>
                         <form class="flex justify-center items-center" action="{{ url_for('unassign_trainer', assignment_id=assignment.id) }}" method="POST">
