@@ -99,6 +99,8 @@ def login():
             session['user_lastname'] = user.lastname
             session['user_gym_name'] = user.gym_name
             session['user_email'] = user.email
+            session['user_gender'] = user.gender
+            session['user_phone_num'] = user.phone_num
             
             if user.role == 'Gym Owner':
                 return redirect(url_for('admin_dashboard'))

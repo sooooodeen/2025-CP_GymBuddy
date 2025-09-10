@@ -64,8 +64,8 @@
 
              <div class="flex h-[10%] items-center gap-2">
                 <a href="{{ url_for('profile') }}" class="flex gap-2 items-center justify-center py-2 px-3 rounded-2xl !bg-transparent hover:!bg-[#343a44] transition delay-50 duration-150 ease-in-out">
-                    <img class="h-[40px] w-[40px] object-cover rounded-4xl" src="/static/src/images/latraiseimg.jpg" alt="">
-                    <h1 class="text-white font-Helvetica !bg-none">{{ session.get('user_firstname', '')|capitalize }} {{ session.get('user_lastname', '')|capitalize }}</h1>
+                    <img class="h-[40px] w-[40px] object-cover rounded-4xl" src="{{ url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="">
+                    <h1 class="text-white font-Helvetica !bg-none">{{ session.get('user_firstname', '')|title }} {{ session.get('user_lastname', '')|title }}</h1>
                 </a>
                 <div class="">
                     <a href="{{ url_for('logout') }}" class="Logout " id="logout-link" title="Logout">
