@@ -131,11 +131,26 @@ def monitor():
 @login_required
 def settings():
     return render_template("settings.html")
+
+@app.route("/security_settings")
+@login_required
+def security_settings():
+    return render_template("security_settings.html")
     
 @app.route("/profile")
 @login_required
 def profile():
     return render_template("profile.html")
+    
+@app.route("/change_password")
+@login_required
+def change_password():
+    return render_template("change_password.html")
+    
+@app.route("/delete_account")
+@login_required
+def delete_account():
+    return render_template("delete_account.html")
 
 # --- ADMIN Routes ---
 @app.route("/admin/dashboard")
@@ -155,10 +170,10 @@ def trainers():
 def admin_monitor():
     return render_template("admin_monitor.html")
 
-@app.route("/admin/settings")
+@app.route("/admin/edit_gym_name")
 @admin_required
-def admin_settings():
-    return render_template("admin_settings.html")
+def admin_edit_gym_name():
+    return render_template("admin_edit_gym_name.html")
 
 # --- BACKEND API ROUTES FOR TRAINER ACTIONS ---
 @app.route("/admin/trainers/add", methods=['POST'])
