@@ -1,0 +1,94 @@
+{% extends "house.html" %}
+{% block title %}Delete Account{% endblock %}
+{% block content %}
+<head>
+    <title>Delete Account | {{ session.get('user_gym_name', 'Admin') }}</title>
+</head>
+<div class="p-10 bg-[#f1f1f1] h-full items-center font-Helvetica flex flex-col gap-6">
+    <div id="header" class="w-full grid grid-cols-2 h-[7%]">
+        <div>
+            <h1 class="text-4xl font-semibold">Delete Account</h1>
+            <p class="text-lg text-gray-400 font-normal leading-[15px]">Delete your account permanently</p>
+        </div>
+        <div class="flex justify-end items-center gap-2">
+            <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
+        </div>
+    </div>
+    <div class="p-6 border gap-6 justify-center w-[50%] flex flex-col font-Helvetica border-gray-300 bg-white rounded-3xl">
+        <div class="flex flex-col gap-4 p-4 border rounded-xl border-red-500">
+            <svg class="self-center" xmlns="http://www.w3.org/2000/svg" width="104" height="104" viewBox="0 0 24 24" fill="red" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert-icon lucide-triangle-alert"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            <h1 class="text-2xl font-bold text-red-800">Permanently Delete Account</h1>
+            <p class="mb-5">
+                Deleting your account is a permanent action. All your data, including your 
+                profile information, saved settings, and any content you have created, will be permanently removed 
+                and cannot be recovered.
+            </p>
+            <button id="delAccount" class="flex cursor-pointer justify-center gap-1 bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-3 py-2 rounded-lg items-center text-white font-Helvetica">
+                Delete My Account
+            </button>
+        </div>
+    </div>
+</div>
+<script>
+    document.getElementById('delAccount').addEventListener('click', () => {
+        Swal.fire({
+            title: 'Are you sure?',
+            html: `
+                <div class="leading-relaxed text-justify">
+                    <p class="mb-1">Once your account is deleted, the following will occur:</p>
+                    <ul class="list-disc flex gap-4 flex-col list-inside mb-4 text-gray-700">
+                        <li><strong>Data Deletion:</strong> Your personal data, including your profile, preferences, and activity history, will be permanently removed from our system.</li>
+                        <li><strong>Content Removal:</strong> Any content you have uploaded or created will also be deleted. This content will not be recoverable.</li>
+                        <li><strong>No Re-activation:</strong> You will not be able to reactivate your account or access any of your previous data.</li>
+                    </ul>
+                    <div class="mt-6 flex items-center justify-center">
+                        <input type="checkbox" id="confirmCheckbox" class="swal2-checkbox mr-2">
+                        <label for="confirmCheckbox" class="text-sm font-semibold text-gray-600">I understand and want to permanently delete my account.</label>
+                    </div>
+                </div>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Confirm',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#d33',
+            showLoaderOnConfirm: true,
+            preConfirm: () => {
+                const isConfirmed = document.getElementById('confirmCheckbox').checked;
+                if (!isConfirmed) {
+                    Swal.showValidationMessage('Please confirm that you understand this action.');
+                    return false;
+                }
+                return true;
+            },
+            allowOutsideClick: () => !Swal.isLoading()
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Here, you would perform the action to delete the account
+                // For example, by sending a fetch request to your server
+                
+                // Placeholder for your backend call
+                console.log('User confirmed deletion.');
+
+                // Example fetch call (replace with your actual endpoint)
+                // fetch('/delete-account', {
+                //     method: 'POST'
+                // })
+                // .then(response => response.json())
+                // .then(data => {
+                //     if (data.success) {
+                //         Swal.fire('Deleted!', 'Your account has been deleted.', 'success');
+                //         // Redirect the user, e.g., to the homepage
+                //         window.location.href = '/'; 
+                //     } else {
+                //         Swal.fire('Error!', data.message, 'error');
+                //     }
+                // })
+                // .catch(error => {
+                //     Swal.fire('Error!', 'An error occurred during deletion.', 'error');
+                // });
+            }
+        });
+    });
+</script>
+{% endblock %}

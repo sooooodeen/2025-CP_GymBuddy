@@ -2,9 +2,8 @@
 {% block content %}
 <head>
     <title>Profile | {{ session.get('user_gym_name', 'Admin') }}</title>
-
 </head>
-<div class="bg-[#f1f1f1] p-10 h-auto font-Helvetica flex items-center flex-col gap-6">
+<div class="bg-[#f1f1f1] p-10 min-h-full font-Helvetica flex items-center flex-col gap-6">
     <div id="header" class="w-full grid grid-cols-2 h-[7%]">
         <div>
             <h1 class="text-4xl font-semibold">Profile</h1>
@@ -29,7 +28,7 @@
             Edit Profile
         </button>
     </div>
-    <div class="p-8 w-[70%] flex flex-col gap-x-4 gap-y-1 border border-gray-300 bg-white rounded-3xl">
+    <div id="profileSection" class="p-8 w-[70%] flex flex-col gap-x-4 gap-y-1 border border-gray-300 bg-white rounded-3xl hidden">
         <h1 class="text-2xl font-semibold col-span-2 mb-3">Profile Picture</h1>
         <div class="flex justify-center mb-2">
             <img class="h-[180px] w-[180px] self-center object-cover rounded-full" src="{{ url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="">
@@ -45,19 +44,19 @@
         <h1 class="text-2xl font-semibold col-span-2 mb-3">Personal Details</h1>
         
         <div>
-            <label for="nameInput">First Name</label>
-            <div id="nameDisplay" class="px-4 py-2 border border-gray-300 rounded-lg w-full">
+            <label for="firstNameInput">First Name</label>
+            <div id="firstNameDisplay" class="px-4 py-2 border border-gray-300 rounded-lg w-full">
                 <h1 class="text-xl">{{ session.get('user_firstname')|title }}</h1>
             </div>
-            <input type="text" id="nameInput" value="{{ session.get('user_firstname')|title }}" class="px-4 text-xl py-2 border border-gray-300 rounded-lg w-full hidden">
+            <input type="text" id="firstNameInput" value="{{ session.get('user_firstname')|title }}" class="px-4 text-xl py-2 border border-gray-300 rounded-lg w-full hidden">
         </div>
 
         <div>
-            <label for="nameInput">Last Name</label>
-            <div id="nameDisplay" class="px-4 py-2 border border-gray-300 rounded-lg w-full">
+            <label for="lastNameInput">Last Name</label>
+            <div id="lastNameDisplay" class="px-4 py-2 border border-gray-300 rounded-lg w-full">
                 <h1 class="text-xl">{{ session.get('user_lastname')|title }}</h1>
             </div>
-            <input type="text" id="nameInput" value=" {{ session.get('user_lastname')|title }}" class="px-4 text-xl py-2 border border-gray-300 rounded-lg w-full hidden">
+            <input type="text" id="lastNameInput" value="{{ session.get('user_lastname')|title }}" class="px-4 text-xl py-2 border border-gray-300 rounded-lg w-full hidden">
         </div>
 
         <div>
@@ -105,35 +104,40 @@
         const cancelBtn = document.getElementById('cancelBtn');
         const buttons = document.getElementById('buttons');
         const personalDetailsSection = document.getElementById('personalDetailsSection');
-        const nameDisplay = document.getElementById('nameDisplay');
+        const profileSection = document.getElementById('profileSection');
+        const firstNameDisplay = document.getElementById('firstNameDisplay');
+        const lastNameDisplay = document.getElementById('lastNameDisplay');
         const emailDisplay = document.getElementById('emailDisplay');
         const phoneDisplay = document.getElementById('phoneDisplay');
         const genderDisplay = document.getElementById('genderDisplay');
-        const nameInput = document.getElementById('nameInput');
+        const firstNameInput = document.getElementById('firstNameInput');
+        const lastNameInput = document.getElementById('lastNameInput');
         const emailInput = document.getElementById('emailInput');
         const phoneInput = document.getElementById('phoneInput');
         const genderInput = document.getElementById('genderInput');
 
         const initialValues = {
-            name: nameInput.value,
+            firstName: firstNameInput.value,
+            lastName: lastNameInput.value,
             email: emailInput.value,
             phone: phoneInput.value,
             gender: genderInput.value,
         };
 
         function toggleEditMode(isEditing) {
-            const displayElements = [nameDisplay, emailDisplay, phoneDisplay, genderDisplay];
-            const inputElements = [nameInput, emailInput, phoneInput, genderInput];
+            const displayElements = [firstNameDisplay, lastNameDisplay, emailDisplay, phoneDisplay, genderDisplay];
+            const inputElements = [firstNameInput, lastNameInput, emailInput, phoneInput, genderInput];
 
             if (isEditing) {
                 displayElements.forEach(el => el.classList.add('hidden'));
                 inputElements.forEach(el => el.classList.remove('hidden'));
                 buttons.classList.remove('hidden');
+                profileSection.classList.remove('hidden');
             } else {
                 displayElements.forEach(el => el.classList.remove('hidden'));
                 inputElements.forEach(el => el.classList.add('hidden'));
-                editBtn.classList.remove('hidden');
                 buttons.classList.add('hidden');
+                profileSection.classList.add('hidden');
             }
         }
 
@@ -143,7 +147,8 @@
         });
 
         saveBtn.addEventListener('click', () => {
-            nameDisplay.querySelector('h1').textContent = nameInput.value;
+            firstNameDisplay.querySelector('h1').textContent = firstNameInput.value;
+            lastNameDisplay.querySelector('h1').textContent = lastNameInput.value;
             emailDisplay.querySelector('h1').textContent = emailInput.value;
             phoneDisplay.querySelector('h1').textContent = phoneInput.value;
             genderDisplay.querySelector('h1').textContent = genderInput.value.charAt(0).toUpperCase() + genderInput.value.slice(1);
@@ -151,7 +156,8 @@
             toggleEditMode(false);
 
             console.log("Saving changes:", {
-                name: nameInput.value,
+                firstName: firstNameInput.value,
+                lastName: lastNameInput.value,
                 email: emailInput.value,
                 phone: phoneInput.value,
                 gender: genderInput.value
@@ -159,7 +165,8 @@
         });
 
         cancelBtn.addEventListener('click', () => {
-            nameInput.value = initialValues.name;
+            firstNameInput.value = initialValues.firstName;
+            lastNameInput.value = initialValues.lastName;
             emailInput.value = initialValues.email;
             phoneInput.value = initialValues.phone;
             genderInput.value = initialValues.gender;

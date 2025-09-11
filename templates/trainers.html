@@ -94,7 +94,6 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // --- 1. ADD NEW TRAINER ---
     document.getElementById('add-user-btn').addEventListener('click', () => {
         Swal.fire({
             title: '<h1 class="text-black">Add New Trainer</h1>',
@@ -147,7 +146,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // --- 2. EDIT TRAINER ---
     document.querySelectorAll('.edit-btn').forEach(button => {
         button.addEventListener('click', function () {
             const id = this.dataset.id;
@@ -210,7 +208,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // --- 3. DELETE TRAINER ---
     document.querySelectorAll('.delete-btn').forEach(button => {
         button.addEventListener('click', function () {
             const id = this.dataset.id;
@@ -236,7 +233,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
     
-    // --- 4. ASSIGN TRAINER ---
     document.querySelectorAll('.assign-btn').forEach(button => {
         button.addEventListener('click', function () {
             const id = this.dataset.id;
