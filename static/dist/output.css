@@ -578,7 +578,7 @@
     grid-template-columns: 15% 1fr 20% 15%;
   }
   .grid-cols-\[15\%_1fr_20_15\%\%\] {
-    grid-template-columns: 15% 1fr 20 15%%;
+    grid-template-columns: 15% 1fr 20 15%;
   }
   .grid-rows-1 {
     grid-template-rows: repeat(1, minmax(0, 1fr));
