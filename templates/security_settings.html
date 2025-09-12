@@ -1,0 +1,40 @@
+{% extends "house.html" %}
+{% block title %}Security Settings{% endblock %}
+{% block content %}
+<head>
+    <title>Security Settings | {{ session.get('user_gym_name', 'Admin') }}</title>
+</head>
+<div class="p-10 bg-[#f1f1f1] h-full font-Helvetica items-center flex flex-col gap-6">
+    <div id="header" class="w-full grid grid-cols-2 h-[7%]">
+        <div>
+            <h1 class="text-4xl font-semibold">Seccurity Settings</h1>
+            <p class="text-lg text-gray-400 font-normal leading-[15px]">Manage and secure your account</p>
+        </div>
+        <div class="flex justify-end items-center gap-2">
+            <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
+        </div>
+    </div>
+    <div class="p-6 border gap-6 justify-center w-[70%] flex flex-col font-Helvetica border-gray-300 bg-white rounded-3xl">
+        <div class="flex flex-col gap-2">
+            <a href="{{ url_for('change_password') }}" class="group text-xl p-4 !bg-transparent flex items-center gap-3 hover:!bg-gray-100 rounded-xl justify-between transition delay-50 ease-in-out">
+                <div class="flex items-center gap-3">
+                    <div class="rounded-full bg-[#F05454] flex justify-center items-center p-3 group-hover:bg-[#f16060] transition delay-50 ease-in-out">
+                        <svg class="!stroke-white" xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-key-round-icon lucide-key-round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+                    </div>
+                    Change Password
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right-icon lucide-chevron-right"><path d="m9 18 6-6-6-6"/></svg>
+            </a>
+             <a href="{{ url_for('delete_account') }}" class="group text-xl p-4 !bg-transparent flex items-center gap-3 hover:!bg-gray-100 rounded-xl justify-between transition delay-50 ease-in-out">
+                <div class="flex items-center gap-3">
+                    <div class="rounded-full bg-[#F05454] flex justify-center items-center p-3 group-hover:bg-[#f16060] transition delay-50 ease-in-out">
+                        <svg class="!stroke-white" xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-round-x-icon lucide-user-round-x"><path d="M2 21a8 8 0 0 1 11.873-7"/><circle cx="10" cy="8" r="5"/><path d="m17 17 5 5"/><path d="m22 17-5 5"/></svg>
+                    </div>
+                    Delete Account
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right-icon lucide-chevron-right"><path d="m9 18 6-6-6-6"/></svg>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

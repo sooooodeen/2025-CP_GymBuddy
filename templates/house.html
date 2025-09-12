@@ -18,54 +18,45 @@
     </style>
 <body>
     <div class="flex h-[100dvh]">
-        <nav class="bg-[#2D2C2C] w-[240px] flex-shrink-0 p-4 flex flex-col justify-between">
+        <nav class="bg-[#222831] w-[240px] flex-shrink-0 p-4 flex flex-col justify-between">
             <div class="flex flex-col gap-3 font-Helvetica">
 
                 {% if session.user_role == 'Gym Owner' %}
                     <!-- ADMIN -->
                     <h2 class="self-center text-[34px] text-white font-bold font-Helvetica italic -tracking-[4px]">GYM BUDDY</h2>
-                    <a href="{{ url_for('admin_dashboard') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#474646] transition delay-50 duration-150 ease-in-out" title="Admin Dashboard">
+                    <a href="{{ url_for('admin_dashboard') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out" title="Admin Dashboard">
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-house-icon lucide-house">
                             <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/>
                             <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
                         <h1>Dashboard</h1>
                     </a>
-                    <a href="{{ url_for('trainers') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#474646] transition delay-50 duration-150 ease-in-out" title="Manage Users">
+                    <a href="{{ url_for('trainers') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out" title="Manage Users">
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users-icon lucide-users"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
                         <h1>Trainers</h1>
-                    </a>
-                    <a href="{{ url_for('admin_monitor') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#474646] transition delay-50 duration-150 ease-in-out" title="Monitor">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-monitor-icon lucide-monitor"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
-                        <h1>Monitor Workout</h1>
-                    </a>
-                    <hr class="border-[#4E4D4D]">
-                    <a href="{{ url_for('admin_settings') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#474646] transition delay-50 duration-150 ease-in-out" title="Settings">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sliders-horizontal-icon lucide-sliders-horizontal"><path d="M10 5H3"/><path d="M12 19H3"/><path d="M14 3v4"/><path d="M16 17v4"/><path d="M21 12h-9"/><path d="M21 19h-5"/><path d="M21 5h-7"/><path d="M8 10v4"/><path d="M8 12H3"/></svg>
-                        <h1>Settings</h1>
                     </a>
                 {% else %}
                     <!-- TRAINER-->
                     <h2 class="self-center text-[34px] text-white font-bold font-Helvetica italic -tracking-[4px]">GYM BUDDY</h2>
-                    <a href="{{ url_for('dashboard') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#474646] transition delay-50 duration-150 ease-in-out">
+                    <a href="{{ url_for('dashboard') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out">
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-house-icon lucide-house"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
                         <h1>Dashboard</h1>
                     </a>
-                    <a href="{{ url_for('monitor') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#474646] transition delay-50 duration-150 ease-in-out">
+                {% endif %}
+                  <a href="{{ url_for('monitor') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out">
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-monitor-icon lucide-monitor"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
                         <h1>Monitor Workout</h1>
                     </a>
                     <hr class="border-[#4E4D4D]">
-                    <a href="{{ url_for('settings') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#474646] transition delay-50 duration-150 ease-in-out">
+                    <a href="{{ url_for('settings') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out">
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sliders-horizontal-icon lucide-sliders-horizontal"><path d="M10 5H3"/><path d="M12 19H3"/><path d="M14 3v4"/><path d="M16 17v4"/><path d="M21 12h-9"/><path d="M21 19h-5"/><path d="M21 5h-7"/><path d="M8 10v4"/><path d="M8 12H3"/></svg>
                         <h1>Settings</h1>
                     </a>
-                {% endif %}
             </div>
 
              <div class="flex h-[10%] items-center gap-2">
-                <a href="{{ url_for('profile') }}" class="flex gap-2 items-center justify-center py-2 px-3 rounded-2xl !bg-[#2D2C2C] hover:!bg-[#474646] transition delay-50 duration-150 ease-in-out">
-                    <img class="h-[40px] w-[40px] object-cover rounded-4xl" src="/static/src/images/latraiseimg.jpg" alt="">
-                    <h1 class="text-white font-Helvetica !bg-none">{{ session.get('user_firstname', '')|capitalize }} {{ session.get('user_lastname', '')|capitalize }}</h1>
+                <a href="{{ url_for('profile') }}" class="flex gap-2 items-center justify-center py-2 px-3 rounded-2xl !bg-transparent hover:!bg-[#343a44] transition delay-50 duration-150 ease-in-out">
+                    <img class="h-[40px] w-[40px] object-cover rounded-4xl" src="{{ url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="">
+                    <h1 class="text-white font-Helvetica !bg-none">{{ session.get('user_firstname', '')|title }} {{ session.get('user_lastname', '')|title }}</h1>
                 </a>
                 <div class="">
                     <a href="{{ url_for('logout') }}" class="Logout " id="logout-link" title="Logout">
@@ -80,7 +71,6 @@
     </div>
 </body>
 <script>
-    // script for active page
     const activePage = window.location.pathname;
     const navLinks = document.querySelectorAll('a').
     forEach(link => {

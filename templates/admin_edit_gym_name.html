@@ -1,0 +1,76 @@
+{% extends "house.html" %}
+{% block title %}Admin Edit Gym Name{% endblock %}
+{% block content %}
+<head>
+    <title>Edit Gym Name | {{ session.get('user_gym_name', 'Admin') }}</title>
+</head>
+<div class="p-10 bg-[#f1f1f1] items-center h-full font-Helvetica flex flex-col gap-6">
+    <div id="header" class="w-full grid grid-cols-2 h-[7%]">
+        <div>
+            <h1 class="text-4xl font-semibold">Edit Gym Name</h1>
+            <p class="text-lg text-gray-400 font-normal leading-[15px]">Change the name of your gym</p>
+        </div>
+        <div class="flex justify-end items-center gap-2">
+            <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
+        </div>
+    </div>
+    <div class="p-6 border gap-6 justify-center w-[70%] flex flex-col font-Helvetica border-gray-300 bg-white rounded-3xl">
+        <div class="flex justify-between items-center">
+            <h1 class="text-2xl font-semibold">Gym Name</h1>
+            <button id="editBtn" class="flex cursor-pointer justify-center gap-1 w-[8%] bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-3 py-2 rounded-lg items-center text-white font-Helvetica">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white" stroke="" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil-icon lucide-pencil"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path stroke="#F05454" d="m15 5 4 4"/></svg>
+                Edit
+            </button>
+        </div>
+        <div id="gymNameSection">
+            <div id="firstNameDisplay" class="px-4 py-2 border border-gray-300 rounded-lg w-full flex justify-between items-center">
+                <h1 class="text-xl">{{ session.get('user_gym_name', 'Admin')|title }}</h1>
+            </div>
+            <input type="text" id="gymName" value="{{ session.get('user_gym_name', 'Admin')|title }}" class="px-4 text-xl py-2 border border-gray-300 rounded-lg w-full hidden">
+        </div>
+    </div>
+    <div id="buttons" class="col-span-2 flex w-[70%] justify-end gap-2 hidden">
+        <button id="cancelBtn" class="flex cursor-pointer justify-center gap-1 bg-gray-400 hover:bg-gray-500 transition delay-75 ease-in px-3 py-2 rounded-lg items-center text-white font-Helvetica">
+            Cancel
+        </button>
+        <button id="saveChangesBtn" class="flex cursor-pointer justify-center gap-1 bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-3 py-2 rounded-lg items-center text-white font-Helvetica">
+            Save Changes
+        </button>
+    </div>
+</div>
+ <script>
+        document.addEventListener('DOMContentLoaded', function() {
+    const editBtn = document.getElementById('editBtn');
+    const saveChangesBtn = document.getElementById('saveChangesBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const firstNameDisplay = document.getElementById('firstNameDisplay');
+    const gymNameInput = document.getElementById('gymName');
+    const buttons = document.getElementById('buttons');
+    const gymNameHeader = firstNameDisplay.querySelector('h1');
+
+    editBtn.addEventListener('click', function() {
+        firstNameDisplay.classList.add('hidden');
+        gymNameInput.classList.remove('hidden');
+        buttons.classList.remove('hidden');
+        gymNameInput.focus();
+    });
+
+    cancelBtn.addEventListener('click', function() {
+        firstNameDisplay.classList.remove('hidden');
+        gymNameInput.classList.add('hidden');
+        buttons.classList.add('hidden');
+        gymNameInput.value = gymNameHeader.textContent; 
+    });
+
+    saveChangesBtn.addEventListener('click', function() {
+        const newName = gymNameInput.value.trim();
+        if (newName !== '') {
+            gymNameHeader.textContent = newName;
+        }
+        firstNameDisplay.classList.remove('hidden');
+        gymNameInput.classList.add('hidden');
+        buttons.classList.add('hidden');
+    });
+});
+    </script>
+{% endblock %}
