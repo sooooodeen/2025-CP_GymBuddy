@@ -25,19 +25,18 @@
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-left"></th>
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Name</th>
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Contact</th>
-                            <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Assign Status</th>
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Status</th>
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700">
                         {% for trainer in trainers %}
                         <tr class="border-b border-gray-100 hover:bg-gray-100">
-                            <td class="w-12 px-4">
-                                {{ loop.index }}
-                            </td>
+                            <td class="w-12 px-4">{{ loop.index }}</td>
                             <td class="w-12">
                                 <div class="flex justify-center">
-                                    <img class="h-[45px] w-[45px] object-cover rounded-full" src="{{ url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="">
+                                    <img class="h-[45px] w-[45px] object-cover rounded-full" 
+                                         src="{{ url_for('static', filename=trainer.photo_url) if trainer.photo_url else url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="Trainer photo">
                                 </div>
                             </td>
                             <td class="py-5 px-4">
@@ -46,9 +45,7 @@
                                     <h2 class="text-sm text-gray-400">{{ trainer.email }}</h2>
                                 </div>
                             </td>
-                            <td class="py-5 px-4">
-                                {{ trainer.phone_num }}
-                            </td>
+                            <td class="py-5 px-4">{{ trainer.phone_num }}</td>
                             <td class="py-3 px-4 text-center">
                                 {% if trainer.status == 'active' %}
                                     <span class="bg-green-200 text-green-800 font-semibold py-1 px-4 rounded-full text-sm">Active</span>
@@ -58,18 +55,27 @@
                             </td>
                             <td class="py-3 px-4">
                                 <div class="flex gap-2 justify-center">
-                                    <button class="assign-btn cursor-pointer" title="Assign Trainer" 
-                                        data-id="{{ trainer.id }}" 
-                                        data-name="{{ trainer.firstname }} {{ trainer.lastname }}">
-                                        <svg class="hover:stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21a8 8 0 0 1 13.292-6"/><circle cx="10" cy="8" r="5"/><path stroke="Green" d="m16 19 2 2 4-4"/></svg>
-                                    </button>
+                                    {% if trainer.id in assigned_trainer_ids %}
+                                        <button class="unassign-btn cursor-pointer" title="Unassign Trainer"
+                                                data-id="{{ trainer.id }}"
+                                                data-name="{{ trainer.firstname }} {{ trainer.lastname }}">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hover:stroke-gray-500 transition duration-100 ease-in"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line stroke="red" x1="17" y1="11" x2="23" y2="17"/><line stroke="red" x1="23" y1="11" x2="17" y2="17"/></svg>
+                                        </button>
+                                    {% else %}
+                                        <button class="assign-btn cursor-pointer" title="Assign Trainer" 
+                                                data-id="{{ trainer.id }}" 
+                                                data-name="{{ trainer.firstname }} {{ trainer.lastname }}">
+                                            <svg class="hover:stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line stroke="Green" x1="19" y1="8" x2="19" y2="14"/><line stroke="Green" x1="22" y1="11" x2="16" y2="11"/></svg>
+                                        </button>
+                                    {% endif %}
+                                    
                                     <button class="edit-btn cursor-pointer" title="Edit"
                                         data-id="{{ trainer.id }}"
                                         data-firstname="{{ trainer.firstname }}"
                                         data-lastname="{{ trainer.lastname }}"
                                         data-email="{{ trainer.email }}"
                                         data-phone="{{ trainer.phone_num }}"
-                                        data-status="{{ trainer.status }}">
+                                        data-photo="{{ url_for('static', filename=trainer.photo_url) if trainer.photo_url else url_for('static', filename='src/images/Default_pfp.jpg') }}">
                                         <svg class="hover:stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21a8 8 0 0 1 10.821-7.487"/><path stroke="blue" d="M21.378 16.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/><circle cx="10" cy="8" r="5"/></svg>
                                     </button>
                                     <button class="delete-btn cursor-pointer" title="Delete" 
@@ -94,32 +100,51 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+
+    // Helper function to show an image preview inside a SweetAlert modal
+    function showPreview(inputId, imageId) {
+        const input = document.getElementById(inputId);
+        const image = document.getElementById(imageId);
+        if (input && image) {
+            input.addEventListener('change', function() {
+                const file = this.files[0];
+                if (file) {
+                    image.src = URL.createObjectURL(file);
+                }
+            });
+        }
+    }
+
+    // --- Add Trainer Modal ---
     document.getElementById('add-user-btn').addEventListener('click', () => {
         Swal.fire({
             title: '<h1 class="text-black">Add New Trainer</h1>',
             html: `
               <div class="flex gap-6 items-center">
-                <div class="flex justify-center items-center flex-col gap-3">
-                <img class="h-[200px] w-[200px] object-cover rounded-full" src="{{ url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="">
-                    <input type="file" id="upload-img-input" class="hidden" accept="image/*">
-                    <label for="upload-img-input" class="flex text-sm items-center transition duration-100 ease-in cursor-pointer hover:bg-[#243749] bg-[#30475E] text-white px-4 py-1 gap-2 border rounded-full">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-cloud-upload-icon lucide-cloud-upload"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/></svg> Upload photo
-                    </label>
-                </div>
-                <div class="grid grid-cols-2 grid-rows-4 h-[50%] gap-3">
-                    <input id="swal-firstname" class="swal2-input border !border-gray-300 !m-0" placeholder="First Name" required>
-                    <input id="swal-lastname" class="swal2-input border !border-gray-300 !m-0" placeholder="Last Name" required>
-                    <input id="swal-email" class="swal2-input border col-span-2 !border-gray-300 !m-0" placeholder="Email" type="email" required>
-                    <input id="swal-phone" class="swal2-input col-span-2 border !border-gray-300 !m-0" placeholder="Contact Number" required>
-                    <input id="swal-password" type="password" class="swal2-input border col-span-2 !border-gray-300 !m-0" placeholder="Password" required>
-                </div>
-            </div>
-            `,
+                  <div class="flex justify-center items-center flex-col gap-3">
+                      <img id="add-trainer-preview" class="h-[200px] w-[200px] object-cover rounded-full" src="{{ url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="Preview">
+                      <input type="file" name="photo" id="add-trainer-photo" class="hidden" accept="image/*">
+                      <label for="add-trainer-photo" class="flex text-sm items-center transition duration-100 ease-in cursor-pointer hover:bg-[#243749] bg-[#30475E] text-white px-4 py-1 gap-2 border rounded-full">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/></svg> Upload photo
+                      </label>
+                  </div>
+                  <div class="grid grid-cols-2 grid-rows-4 h-[50%] gap-3">
+                      <input id="swal-firstname" class="swal2-input border !border-gray-300 !m-0" placeholder="First Name" required>
+                      <input id="swal-lastname" class="swal2-input border !border-gray-300 !m-0" placeholder="Last Name" required>
+                      <input id="swal-email" class="swal2-input border col-span-2 !border-gray-300 !m-0" placeholder="Email" type="email" required>
+                      <input id="swal-phone" class="swal2-input col-span-2 border !border-gray-300 !m-0" placeholder="Contact Number" required>
+                      <input id="swal-password" type="password" class="swal2-input border col-span-2 !border-gray-300 !m-0" placeholder="Password" required>
+                  </div>
+              </div>`,
             confirmButtonText: 'Add Trainer',
             confirmButtonColor: '#30475E',
             width: 800,
             focusConfirm: false,
             showCancelButton: true,
+            didOpen: () => {
+                // Activate the preview functionality once the modal is open
+                showPreview('add-trainer-photo', 'add-trainer-preview');
+            },
             preConfirm: () => {
                 const firstname = document.getElementById('swal-firstname').value;
                 const lastname = document.getElementById('swal-lastname').value;
@@ -129,14 +154,26 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!firstname || !lastname || !email || !password || !phone) {
                     Swal.showValidationMessage(`Please fill out all fields`);
                 }
-                return { firstname, lastname, email, phone, password };
+                return true;
             }
         }).then((result) => {
             if (result.isConfirmed) {
+                // CORRECTED: Use FormData to properly handle file uploads
+                const formData = new FormData();
+                formData.append('firstname', document.getElementById('swal-firstname').value);
+                formData.append('lastname', document.getElementById('swal-lastname').value);
+                formData.append('email', document.getElementById('swal-email').value);
+                formData.append('phone', document.getElementById('swal-phone').value);
+                formData.append('password', document.getElementById('swal-password').value);
+                
+                const photoFile = document.getElementById('add-trainer-photo').files[0];
+                if (photoFile) {
+                    formData.append('photo', photoFile);
+                }
+
                 fetch('/admin/trainers/add', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(result.value)
+                    body: formData // Body is now FormData, browser handles headers
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -146,6 +183,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // --- Edit Trainer Modal ---
     document.querySelectorAll('.edit-btn').forEach(button => {
         button.addEventListener('click', function () {
             const id = this.dataset.id;
@@ -153,51 +191,49 @@ document.addEventListener('DOMContentLoaded', function () {
             const lastname = this.dataset.lastname;
             const email = this.dataset.email;
             const phone = this.dataset.phone;
-            const status = this.dataset.status;
-
+            const photo = this.dataset.photo;
             Swal.fire({
                 title: '<h1 class="text-black">Edit Trainer</h1>',
                 html: `
                     <div class="flex gap-6">
                         <div class="flex justify-center items-center flex-col gap-3">
-                        <img class="h-[200px] w-[200px] object-cover rounded-full" src="{{ url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="">
-                            <input type="file" id="upload-img-input" class="hidden" accept="image/*">
-                            <label for="upload-img-input" class="flex text-sm items-center transition duration-100 ease-in cursor-pointer hover:bg-[#243749] bg-[#30475E] text-white px-4 py-1 gap-2 border rounded-full">
-                               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-cloud-upload-icon lucide-cloud-upload"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/></svg> Upload photo
+                            <img id="edit-trainer-preview" class="h-[200px] w-[200px] object-cover rounded-full" src="${photo}" alt="Preview">
+                            <input type="file" id="edit-trainer-photo" class="hidden" accept="image/*">
+                            <label for="edit-trainer-photo" class="flex text-sm items-center transition duration-100 ease-in cursor-pointer hover:bg-[#243749] bg-[#30475E] text-white px-4 py-1 gap-2 border rounded-full">
+                               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/></svg> Change photo
                             </label>
                         </div>
-                        <div class="grid grid-cols-2 grid-rows-4 gap-3">
+                        <div class="grid grid-cols-2 grid-rows-3 gap-3">
                             <input id="swal-firstname" class="swal2-input border !border-gray-300 !m-0" value="${firstname}">
-                            <input id="swal-lastname" class="swal2-input !m-0 !border-gray-300 " value="${lastname}">
-                            <input id="swal-email" class="swal2-input col-span-2 !w-full !m-0 !border-gray-300 " value="${email}">
-                            <input id="swal-phone" class="swal2-input col-span-2 !m-0 !border-gray-300 " value="${phone}">
-                            <select id="swal-status" class="swal2-select !m-0 col-span-2 border !border-gray-300 ">
-                                <option value="active" ${status === 'active' ? 'selected' : ''}>Active</option>
-                                <option value="inactive" ${status === 'inactive' ? 'selected' : ''}>Inactive</option>
-                            </select>
+                            <input id="swal-lastname" class="swal2-input !m-0 !border-gray-300" value="${lastname}">
+                            <input id="swal-email" class="swal2-input col-span-2 !w-full !m-0 !border-gray-300" value="${email}">
+                            <input id="swal-phone" class="swal2-input col-span-2 !m-0 !border-gray-300" value="${phone}">
                         </div>
-                    </div>
-                `,
+                    </div>`,
                 width: 800,
                 confirmButtonText: 'Save Changes',
                 confirmButtonColor: '#30475E',
                 focusConfirm: false,
                 showCancelButton: true,
-                preConfirm: () => {
-                     return {
-                        firstname: document.getElementById('swal-firstname').value,
-                        lastname: document.getElementById('swal-lastname').value,
-                        email: document.getElementById('swal-email').value,
-                        phone: document.getElementById('swal-phone').value,
-                        status: document.getElementById('swal-status').value
-                    }
-                }
+                didOpen: () => {
+                    showPreview('edit-trainer-photo', 'edit-trainer-preview');
+                },
             }).then((result) => {
                 if (result.isConfirmed) {
+                    const formData = new FormData();
+                    formData.append('firstname', document.getElementById('swal-firstname').value);
+                    formData.append('lastname', document.getElementById('swal-lastname').value);
+                    formData.append('email', document.getElementById('swal-email').value);
+                    formData.append('phone', document.getElementById('swal-phone').value);
+
+                    const photoFile = document.getElementById('edit-trainer-photo').files[0];
+                    if (photoFile) {
+                        formData.append('photo', photoFile);
+                    }
+
                     fetch(`/admin/trainers/edit/${id}`, {
                         method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(result.value)
+                        body: formData // Body is now FormData
                     })
                     .then(response => response.json())
                     .then(data => {
@@ -208,11 +244,57 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // --- Assign/Unassign/Delete Listeners ---
+    document.querySelectorAll('.assign-btn').forEach(button => {
+        button.addEventListener('click', function () {
+            const id = this.dataset.id;
+            const name = this.dataset.name;
+            Swal.fire({
+                title: 'Assign Trainer',
+                text: `Assign ${name} to the dashboard for monitoring?`,
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonColor: '#28a745',
+                confirmButtonText: 'Yes, assign!'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch(`/admin/assign/${id}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        Swal.fire({ title: data.message, icon: data.status }).then(() => location.reload());
+                    });
+                }
+            });
+        });
+    });
+
+    document.querySelectorAll('.unassign-btn').forEach(button => {
+        button.addEventListener('click', function () {
+            const id = this.dataset.id;
+            const name = this.dataset.name;
+            Swal.fire({
+                title: 'Unassign Trainer',
+                text: `Remove ${name} from active dashboard monitoring?`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                confirmButtonText: 'Yes, unassign!'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch(`/admin/unassign_by_trainer/${id}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        Swal.fire({ title: data.message, icon: data.status }).then(() => location.reload());
+                    });
+                }
+            });
+        });
+    });
+    
     document.querySelectorAll('.delete-btn').forEach(button => {
         button.addEventListener('click', function () {
             const id = this.dataset.id;
             const name = this.dataset.name;
-
             Swal.fire({
                 title: 'Are you sure?',
                 text: `You are about to delete ${name}. This action cannot be undone.`,
@@ -232,30 +314,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
     });
-    
-    document.querySelectorAll('.assign-btn').forEach(button => {
-        button.addEventListener('click', function () {
-            const id = this.dataset.id;
-            const name = this.dataset.name;
-
-            Swal.fire({
-                title: 'Assign Trainer',
-                text: `Assign ${name} to the dashboard for monitoring?`,
-                icon: 'info',
-                showCancelButton: true,
-                confirmButtonColor: '#28a745',
-                confirmButtonText: 'Yes, assign!'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    fetch(`/admin/assign/${id}`, { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        Swal.fire({ title: data.message, icon: data.status });
-                    });
-                }
-            });
-        });
-    });
 });
 </script>
 {% endblock %}
+
