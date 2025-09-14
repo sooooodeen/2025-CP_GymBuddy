@@ -71,22 +71,34 @@
                 console.log('User confirmed deletion.');
 
                 // Example fetch call (replace with your actual endpoint)
-                // fetch('/delete-account', {
-                //     method: 'POST'
-                // })
-                // .then(response => response.json())
-                // .then(data => {
-                //     if (data.success) {
-                //         Swal.fire('Deleted!', 'Your account has been deleted.', 'success');
-                //         // Redirect the user, e.g., to the homepage
-                //         window.location.href = '/'; 
-                //     } else {
-                //         Swal.fire('Error!', data.message, 'error');
-                //     }
-                // })
-                // .catch(error => {
-                //     Swal.fire('Error!', 'An error occurred during deletion.', 'error');
-                // });
+                fetch('/delete-account', {
+                    method: 'DELETE'
+                })
+                .then(response => {
+                    // Check if the response is successful (status 200-299)
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        Swal.fire({
+                            title: 'Deleted!', 
+                            text: 'Your account has been deleted.', 
+                            icon: 'success'
+                        }).then(() => {
+                            // Redirect the user, e.g., to the homepage
+                            window.location.href = '/'; 
+                        });
+                    } else {
+                        Swal.fire('Error!', data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Fetch error:', error);
+                    Swal.fire('Error!', 'An error occurred during deletion.', 'error');
+                });
             }
         });
     });

@@ -142,15 +142,56 @@ def security_settings():
 def profile():
     return render_template("profile.html")
     
-@app.route("/change_password")
+@app.route("/change_password", methods=['GET', 'POST'])
 @login_required
 def change_password():
+    if request.method == 'POST':
+        data = request.get_json()
+        user_id = session.get('user_id')
+        user = User.query.get(user_id)
+        current_password = data.get('currentPassword')
+        new_password = data.get('newPassword')
+        
+        # Check if the user exists
+        if not user:
+            return jsonify({'status': 'error', 'message': 'User not found.'}), 404
+            
+        # Check if the current password is correct
+        if not bcrypt.check_password_hash(user.password_hash, current_password):
+            return jsonify({'status': 'error', 'message': 'Incorrect current password.'}), 400
+
+        # Hash the new password and update the database
+        hashed_new_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        user.password_hash = hashed_new_password
+        db.session.commit()
+        
+        return jsonify({'status': 'success', 'message': 'Password updated successfully!'}), 200
+        
     return render_template("change_password.html")
     
 @app.route("/delete_account")
 @login_required
 def delete_account():
     return render_template("delete_account.html")
+
+@app.route("/delete-account", methods=['DELETE'])
+@login_required
+def delete_user_account():
+    try:
+        user_id = session.get('user_id')
+        user_to_delete = User.query.get(user_id)
+        if not user_to_delete:
+            return jsonify({'success': False, 'message': 'User not found.'}), 404
+
+        db.session.delete(user_to_delete)
+        db.session.commit()
+        session.clear()
+        
+        return jsonify({'success': True, 'message': 'Your account has been successfully deleted.'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'An error occurred during deletion.'}), 500
 
 # --- ADMIN Routes ---
 @app.route("/admin/dashboard")
@@ -170,9 +211,29 @@ def trainers():
 def admin_monitor():
     return render_template("admin_monitor.html")
 
-@app.route("/admin/edit_gym_name")
+@app.route("/admin/edit_gym_name", methods=['GET', 'POST'])
 @admin_required
 def admin_edit_gym_name():
+    if request.method == 'POST':
+        data = request.get_json()
+        new_gym_name = data.get('new_gym_name')
+        if not new_gym_name:
+            return jsonify({'status': 'error', 'message': 'New gym name is required.'}), 400
+
+        user_id = session.get('user_id')
+        user = User.query.get(user_id)
+        if user:
+            # Update the gym name in the database
+            user.gym_name = new_gym_name
+            db.session.commit()
+            
+            # Update the gym name in the session
+            session['user_gym_name'] = new_gym_name
+            
+            return jsonify({'status': 'success', 'message': 'Gym name updated successfully!'})
+        else:
+            return jsonify({'status': 'error', 'message': 'User not found.'}), 404
+
     return render_template("admin_edit_gym_name.html")
 
 # --- BACKEND API ROUTES FOR TRAINER ACTIONS ---
