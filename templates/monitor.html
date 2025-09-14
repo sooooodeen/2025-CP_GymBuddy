@@ -10,17 +10,18 @@
           <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
         </div>
     </div>
-    <div>
+    <div class="grid grid-cols-2 font-Helvetica text-xl">
         <label>
           Camera 1:
-          <select id="select-camera-1"></select>
+          <select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-1"></select>
         </label>
         <label>
           Camera 2:
-          <select id="select-camera-2"></select>
+          <select class="px-3 rounded-lg border border-gray-400  py-2" id="select-camera-2"></select>
         </label>
     </div>
-    <div class="flex w-full gap-2">
+
+    <div class="flex w-full items-center gap-2 ">
       <div class="w-1/2">
         <video class="w-full h-full" id="camera1" controls autoplay playsinline></video>
       </div>
@@ -28,8 +29,10 @@
         <video class="w-full h-full" id="camera2" controls autoplay playsinline></video>
       </div>
     </div>
+      <div class="flex justify-center  w-full">
+        <button id="btn-open-camera" class="flex  gap-3 cursor-pointer text-2xl justify-center w-[15%] bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-3 py-2 rounded-lg items-center text-white font-Helvetica"><svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-camera-icon lucide-camera"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg> Open Cameras</button>
+      </div>
 
-      <button id="btn-open-camera">Open Cameras</button>
       <script>
         var devices;
         var camSelect1 = document.getElementById("select-camera-1");
