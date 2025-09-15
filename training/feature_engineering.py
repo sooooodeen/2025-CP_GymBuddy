@@ -8,120 +8,180 @@ def calculate_angle(a, b, c):
     a = np.array(a)
     b = np.array(b)
     c = np.array(c)
-    
+
     ba = a - b
     bc = c - b
     dot_product = np.dot(ba, bc)
     magnitude_ba = np.linalg.norm(ba)
     magnitude_bc = np.linalg.norm(bc)
-    
+
     if magnitude_ba == 0 or magnitude_bc == 0:
         return 0.0
-        
+
     cosine_angle = dot_product / (magnitude_ba * magnitude_bc)
     angle = np.arccos(np.clip(cosine_angle, -1.0, 1.0))
     return np.degrees(angle)
 
-# --- NEW: Pose Normalization Function ---
+# --- Pose Normalization Function ---
 def normalize_pose(landmarks):
     """Normalizes landmarks to be invariant to position and scale."""
-    # Convert landmark dictionaries to a NumPy array for easier calculations
-    # We only need x, y, z for normalization
     coords = np.array([[lm['x'], lm['y'], lm['z']] for lm in landmarks])
 
-    # 1. Find the center of the hips
+    # Check for NaN in coordinates that would break normalization
+    if np.isnan(coords).any():
+        return [{'x': np.nan, 'y': np.nan, 'z': np.nan, 'visibility': 0.0} for _ in landmarks]
+
+    # Get hip and shoulder coordinates
     left_hip = coords[mp.solutions.pose.PoseLandmark.LEFT_HIP.value]
     right_hip = coords[mp.solutions.pose.PoseLandmark.RIGHT_HIP.value]
-    hip_center = (left_hip + right_hip) / 2.0
-
-    # 2. Calculate a scaling factor (torso size)
     left_shoulder = coords[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER.value]
     right_shoulder = coords[mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER.value]
-    # Add a small epsilon to avoid division by zero
+
+    # Calculate normalization parameters
+    hip_center = (left_hip + right_hip) / 2.0
     torso_size = np.linalg.norm(left_shoulder - right_shoulder) + 1e-6
+    
+    # If torso_size is still very small (e.g., if shoulders are very close or (0,0,0)),
+    # normalization will produce NaNs or inf. Handle this gracefully.
+    if torso_size < 1e-5: 
+        return [{'x': np.nan, 'y': np.nan, 'z': np.nan, 'visibility': 0.0} for _ in landmarks]
 
-    # 3. Center and scale the landmarks
+
+    # Apply normalization
     normalized_coords = (coords - hip_center) / torso_size
-
-    # 4. Rebuild the landmark dictionary list with the normalized coordinates
+    
+    # Rebuild the landmark list with normalized coordinates
     normalized_landmarks = []
     for i in range(len(landmarks)):
         normalized_landmarks.append({
             'x': normalized_coords[i, 0],
             'y': normalized_coords[i, 1],
             'z': normalized_coords[i, 2],
-            'visibility': landmarks[i]['visibility']
+            'visibility': landmarks[i]['visibility'],
         })
-        
+
     return normalized_landmarks
 
-# --- Load the Dataset ---
-input_filename = 'exercise_coords_multi_angle.csv'
+# --- Main Script ---
+
+# Define input filenames (NOW LOADING THE *CLEANED* FILES)
+cleaned_multi_angle_file = 'exercise_coords_multi_angle_cleaned.csv'
+cleaned_anchor_file = 'exercise_coords_anchor_cleaned.csv'
+
+# Define output filename for engineered features
 output_filename = 'exercise_coords_engineered.csv'
 
+print("--- Starting Feature Engineering Process ---")
+
+# Load the primary cleaned dataset
 try:
-    df = pd.read_csv(input_filename)
+    multi_angle_df = pd.read_csv(cleaned_multi_angle_file)
+    multi_angle_df['original_source_file'] = 'multi_angle_data' 
+    print(f"Loaded '{cleaned_multi_angle_file}' with {len(multi_angle_df)} samples.")
 except FileNotFoundError:
-    print(f"Error: '{input_filename}' not found. Please ensure your dataset is in the correct folder.")
+    print(f"Error: Cleaned Multi-Angle data '{cleaned_multi_angle_file}' not found. Please run data_cleaning.py first. Exiting.")
     exit()
 
-print("Dataset loaded. Starting feature engineering with pose normalization...")
+# Load the optional cleaned anchor dataset
+try:
+    anchor_df = pd.read_csv(cleaned_anchor_file)
+    anchor_df['original_source_file'] = 'anchor_data' 
+    print(f"Loaded '{cleaned_anchor_file}' with {len(anchor_df)} samples.")
+except FileNotFoundError:
+    print(f"Warning: Cleaned Anchor data '{cleaned_anchor_file}' not found. Proceeding without anchor data.")
+    anchor_df = pd.DataFrame() # Create an empty DataFrame if not found
 
-# --- Feature Engineering Logic ---
+# Combine the two dataframes if anchor data exists
+if not anchor_df.empty:
+    df = pd.concat([multi_angle_df, anchor_df], ignore_index=True)
+    print(f"Combined cleaned dataset now has {len(df)} samples for feature engineering.")
+else:
+    df = multi_angle_df
+
+# --- Standardize Class Names ---
+# This will remove " - 1", " - 2", etc. from the class names
+df['class'] = df['class'].str.replace(r' - \d+', '', regex=True)
+print("Standardized class names by removing numerical suffixes.")
+
+# --- REMOVED THE INLINE CLEANING LOGIC ---
+# The cleaning is now handled by data_cleaning.py, which produces the files we just loaded.
+print(f"Proceeding with {len(df)} cleaned samples.")
+
+print("\nStarting feature engineering with pose normalization...")
+
 engineered_data = []
 mp_pose = mp.solutions.pose
 
 for index, row in df.iterrows():
-    new_row = row.to_dict()
-    
-    # 1. Extract landmarks from the row into a list of dictionaries
+    new_row = {'class': row['class']}
+
     landmarks_original = []
-    for i in range(1, 34):
+    for i in range(1, 34): 
+        # Since NaNs were filled with 0.0 by data_cleaning.py, 
+        # we can safely use row.get(f'x{i}', 0.0) etc.
+        # But it's good practice to ensure consistency with data_cleaning.py output.
         landmarks_original.append({
-            'x': row[f'x{i}'],
-            'y': row[f'y{i}'],
-            'z': row[f'z{i}'],
-            'visibility': row[f'v{i}']
+            'x': row.get(f'x{i}', 0.0),
+            'y': row.get(f'y{i}', 0.0),
+            'z': row.get(f'z{i}', 0.0),
+            'visibility': row.get(f'v{i}', 0.0),
         })
 
-    # 2. NORMALIZE THE POSE
-    landmarks_normalized = normalize_pose(landmarks_original)
+    landmarks_normalized = normalize_pose(landmarks_original.copy())
 
-    # 3. Get key landmark coordinates for calculations FROM THE NORMALIZED DATA
-    left_shoulder = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_SHOULDER.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_SHOULDER.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_SHOULDER.value]['z']]
-    left_elbow = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_ELBOW.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_ELBOW.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_ELBOW.value]['z']]
-    left_wrist = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_WRIST.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_WRIST.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_WRIST.value]['z']]
-    left_hip = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_HIP.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_HIP.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_HIP.value]['z']]
-    left_knee = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_KNEE.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_KNEE.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_KNEE.value]['z']]
-    left_ankle = [landmarks_normalized[mp_pose.PoseLandmark.LEFT_ANKLE.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_ANKLE.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.LEFT_ANKLE.value]['z']]
+    # This check is still necessary because normalize_pose can still produce NaNs
+    # if critical landmarks become invalid during its calculations (e.g., torso_size=0).
+    if np.isnan(landmarks_normalized[0]['x']): 
+        continue 
 
-    right_shoulder = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]['z']]
-    right_elbow = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ELBOW.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ELBOW.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ELBOW.value]['z']]
-    right_wrist = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_WRIST.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_WRIST.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_WRIST.value]['z']]
-    right_hip = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_HIP.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_HIP.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_HIP.value]['z']]
-    right_knee = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_KNEE.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_KNEE.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_KNEE.value]['z']]
-    right_ankle = [landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ANKLE.value]['x'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ANKLE.value]['y'], landmarks_normalized[mp_pose.PoseLandmark.RIGHT_ANKLE.value]['z']]
+    def get_norm_lm(lm_index):
+        lm = landmarks_normalized[lm_index]
+        return [lm['x'], lm['y'], lm['z']]
 
-    # 4. Calculate features using the normalized coordinates
-    new_row['angle_left_elbow'] = calculate_angle(left_shoulder, left_elbow, left_wrist)
-    new_row['angle_left_shoulder'] = calculate_angle(left_hip, left_shoulder, left_elbow)
-    new_row['angle_left_hip'] = calculate_angle(left_shoulder, left_hip, left_knee)
-    new_row['angle_left_knee'] = calculate_angle(left_hip, left_knee, left_ankle)
+    try:
+        left_shoulder = get_norm_lm(mp_pose.PoseLandmark.LEFT_SHOULDER.value)
+        left_elbow = get_norm_lm(mp_pose.PoseLandmark.LEFT_ELBOW.value)
+        left_wrist = get_norm_lm(mp_pose.PoseLandmark.LEFT_WRIST.value)
+        left_hip = get_norm_lm(mp_pose.PoseLandmark.LEFT_HIP.value)
+        left_knee = get_norm_lm(mp_pose.PoseLandmark.LEFT_KNEE.value)
+        left_ankle = get_norm_lm(mp_pose.PoseLandmark.LEFT_ANKLE.value)
 
-    new_row['angle_right_elbow'] = calculate_angle(right_shoulder, right_elbow, right_wrist)
-    new_row['angle_right_shoulder'] = calculate_angle(right_hip, right_shoulder, right_elbow)
-    new_row['angle_right_hip'] = calculate_angle(right_shoulder, right_hip, right_knee)
-    new_row['angle_right_knee'] = calculate_angle(right_hip, right_knee, right_ankle)
+        right_shoulder = get_norm_lm(mp_pose.PoseLandmark.RIGHT_SHOULDER.value)
+        right_elbow = get_norm_lm(mp_pose.PoseLandmark.RIGHT_ELBOW.value)
+        right_wrist = get_norm_lm(mp_pose.PoseLandmark.RIGHT_WRIST.value)
+        right_hip = get_norm_lm(mp_pose.PoseLandmark.RIGHT_HIP.value)
+        right_knee = get_norm_lm(mp_pose.PoseLandmark.RIGHT_KNEE.value)
+        right_ankle = get_norm_lm(mp_pose.PoseLandmark.RIGHT_ANKLE.value)
 
-    new_row['dist_y_l_wrist_shoulder'] = abs(left_wrist[1] - left_shoulder[1])
-    new_row['dist_y_r_wrist_shoulder'] = abs(right_wrist[1] - right_shoulder[1])
+        # --- Calculate Angles ---
+        new_row['angle_left_elbow'] = calculate_angle(left_shoulder, left_elbow, left_wrist)
+        new_row['angle_left_shoulder'] = calculate_angle(left_hip, left_shoulder, left_elbow)
+        new_row['angle_left_hip'] = calculate_angle(left_shoulder, left_hip, left_knee)
+        new_row['angle_left_knee'] = calculate_angle(left_hip, left_knee, left_ankle)
 
-    new_row['dist_z_l_wrist_hip'] = abs(left_wrist[2] - left_hip[2])
-    new_row['dist_z_r_wrist_hip'] = abs(right_wrist[2] - right_hip[2])
-    
-    engineered_data.append(new_row)
+        new_row['angle_right_elbow'] = calculate_angle(right_shoulder, right_elbow, right_wrist)
+        new_row['angle_right_shoulder'] = calculate_angle(right_hip, right_shoulder, right_elbow)
+        new_row['angle_right_hip'] = calculate_angle(right_shoulder, right_hip, right_knee)
+        new_row['angle_right_knee'] = calculate_angle(right_hip, right_knee, right_ankle)
+
+        # --- Calculate Distances ---
+        new_row['dist_y_l_wrist_shoulder'] = abs(left_wrist[1] - left_shoulder[1])
+        new_row['dist_y_r_wrist_shoulder'] = abs(right_wrist[1] - right_shoulder[1])
+        new_row['dist_z_l_wrist_hip'] = abs(left_wrist[2] - left_hip[2])
+        new_row['dist_z_r_wrist_hip'] = abs(right_wrist[2] - right_hip[2])
+
+        if not any(np.isnan(list(new_row.values())[1:])): 
+            engineered_data.append(new_row)
+    except IndexError as e:
+        # This will be rare if data_cleaning.py did its job, but good to keep.
+        print(f"Skipping row {index} due to IndexError during landmark retrieval or angle calculation: {e}")
+    except ValueError as e:
+        # This can still happen if calculate_angle receives invalid inputs,
+        # but normalize_pose should have caught most NaN issues.
+        print(f"Skipping row {index} due to ValueError during angle calculation (e.g., NaN input): {e}")
+
 
 df_engineered = pd.DataFrame(engineered_data)
 df_engineered.to_csv(output_filename, index=False)
 
-print(f"✅ Feature engineering complete. New dataset with {len(df_engineered)} samples saved as '{output_filename}'")
+print(f"\n✅ Feature engineering complete. New dataset with {len(df_engineered)} samples saved as '{output_filename}'")
