@@ -154,33 +154,34 @@ def settings():
 @app.route("/profile")
 @login_required
 def profile():
-    user = User.query.get(session['user_id'])
-    return render_template("profile.html", user=user)
-
-@app.route('/profile/update', methods=['POST'])
+    return render_template("profile.html")
+    
+@app.route("/change_password", methods=['GET', 'POST'])
 @login_required
-def update_profile():
-    user = User.query.get(session['user_id'])
+def change_password():
+    if request.method == 'POST':
+        data = request.get_json()
+        user_id = session.get('user_id')
+        user = User.query.get(user_id)
+        current_password = data.get('currentPassword')
+        new_password = data.get('newPassword')
+        
+        # Check if the user exists
+        if not user:
+            return jsonify({'status': 'error', 'message': 'User not found.'}), 404
+            
+        # Check if the current password is correct
+        if not bcrypt.check_password_hash(user.password_hash, current_password):
+            return jsonify({'status': 'error', 'message': 'Incorrect current password.'}), 400
 
-    # Update form data
-    user.firstname = request.form.get('firstname')
-    user.lastname = request.form.get('lastname')
-    user.email = request.form.get('email')
-    user.phone_num = request.form.get('phone_num')
-
-    # Update gym name only if user is an admin
-    if user.role == 'Gym Owner':
-        user.gym_name = request.form.get('gym_name')
-        session['user_gym_name'] = user.gym_name
-
-    # Handle file upload
-    if 'photo' in request.files:
-        file = request.files['photo']
-        if file and file.filename != '' and allowed_file(file.filename):
-            filename = secure_filename(f"{user.id}_{file.filename}") # Make filename unique
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            user.photo_url = os.path.join('uploads/profiles', filename).replace('\\', '/')
+        # Hash the new password and update the database
+        hashed_new_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        user.password_hash = hashed_new_password
+        db.session.commit()
+        
+        return jsonify({'status': 'success', 'message': 'Password updated successfully!'}), 200
+        
+    return render_template("change_password.html")
     
     db.session.commit()
 
@@ -210,6 +211,25 @@ def change_password_submit():
     return redirect(url_for('profile'))
 
 
+@app.route("/delete-account", methods=['DELETE'])
+@login_required
+def delete_user_account():
+    try:
+        user_id = session.get('user_id')
+        user_to_delete = User.query.get(user_id)
+        if not user_to_delete:
+            return jsonify({'success': False, 'message': 'User not found.'}), 404
+
+        db.session.delete(user_to_delete)
+        db.session.commit()
+        session.clear()
+        
+        return jsonify({'success': True, 'message': 'Your account has been successfully deleted.'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'An error occurred during deletion.'}), 500
+
 # --- ADMIN Routes ---
 @app.route("/admin/dashboard")
 @admin_required
@@ -229,7 +249,32 @@ def trainers():
 def admin_monitor():
     return render_template("admin_monitor.html")
 
-# --- Trainer Management API Routes (UPDATED FOR FILE UPLOADS) ---
+@app.route("/admin/edit_gym_name", methods=['GET', 'POST'])
+@admin_required
+def admin_edit_gym_name():
+    if request.method == 'POST':
+        data = request.get_json()
+        new_gym_name = data.get('new_gym_name')
+        if not new_gym_name:
+            return jsonify({'status': 'error', 'message': 'New gym name is required.'}), 400
+
+        user_id = session.get('user_id')
+        user = User.query.get(user_id)
+        if user:
+            # Update the gym name in the database
+            user.gym_name = new_gym_name
+            db.session.commit()
+            
+            # Update the gym name in the session
+            session['user_gym_name'] = new_gym_name
+            
+            return jsonify({'status': 'success', 'message': 'Gym name updated successfully!'})
+        else:
+            return jsonify({'status': 'error', 'message': 'User not found.'}), 404
+
+    return render_template("admin_edit_gym_name.html")
+
+# --- BACKEND API ROUTES FOR TRAINER ACTIONS ---
 @app.route("/admin/trainers/add", methods=['POST'])
 @admin_required
 def add_trainer():
@@ -349,5 +394,6 @@ def unassign_by_trainer_id(trainer_id):
 
 # --- Main Execution ---
 if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
-

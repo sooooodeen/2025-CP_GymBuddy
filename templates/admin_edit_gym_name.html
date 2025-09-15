@@ -7,7 +7,7 @@
 <div class="p-10 bg-[#f1f1f1] items-center h-full font-Helvetica flex flex-col gap-6">
     <div id="header" class="w-full grid grid-cols-2 h-[7%]">
         <div>
-            <h1 class="text-4xl font-semibold">Edit Gym Name</h1>
+            <h2 class="text-4xl font-semibold">Edit Gym Name</h2>
             <p class="text-lg text-gray-400 font-normal leading-[15px]">Change the name of your gym</p>
         </div>
         <div class="flex justify-end items-center gap-2">
@@ -38,39 +38,86 @@
         </button>
     </div>
 </div>
- <script>
-        document.addEventListener('DOMContentLoaded', function() {
-    const editBtn = document.getElementById('editBtn');
-    const saveChangesBtn = document.getElementById('saveChangesBtn');
-    const cancelBtn = document.getElementById('cancelBtn');
-    const firstNameDisplay = document.getElementById('firstNameDisplay');
-    const gymNameInput = document.getElementById('gymName');
-    const buttons = document.getElementById('buttons');
-    const gymNameHeader = firstNameDisplay.querySelector('h1');
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const editBtn = document.getElementById('editBtn');
+        const saveChangesBtn = document.getElementById('saveChangesBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const firstNameDisplay = document.getElementById('firstNameDisplay');
+        const gymNameInput = document.getElementById('gymName');
+        const buttons = document.getElementById('buttons');
+        const gymNameHeader = firstNameDisplay.querySelector('h1');
 
-    editBtn.addEventListener('click', function() {
-        firstNameDisplay.classList.add('hidden');
-        gymNameInput.classList.remove('hidden');
-        buttons.classList.remove('hidden');
-        gymNameInput.focus();
-    });
+        editBtn.addEventListener('click', function() {
+            firstNameDisplay.classList.add('hidden');
+            gymNameInput.classList.remove('hidden');
+            buttons.classList.remove('hidden');
+            gymNameInput.focus();
+        });
 
-    cancelBtn.addEventListener('click', function() {
-        firstNameDisplay.classList.remove('hidden');
-        gymNameInput.classList.add('hidden');
-        buttons.classList.add('hidden');
-        gymNameInput.value = gymNameHeader.textContent; 
-    });
+        cancelBtn.addEventListener('click', function() {
+            firstNameDisplay.classList.remove('hidden');
+            gymNameInput.classList.add('hidden');
+            buttons.classList.add('hidden');
+            gymNameInput.value = gymNameHeader.textContent; 
+        });
 
-    saveChangesBtn.addEventListener('click', function() {
-        const newName = gymNameInput.value.trim();
-        if (newName !== '') {
-            gymNameHeader.textContent = newName;
-        }
-        firstNameDisplay.classList.remove('hidden');
-        gymNameInput.classList.add('hidden');
-        buttons.classList.add('hidden');
+        saveChangesBtn.addEventListener('click', async function() {
+            const newName = gymNameInput.value.trim();
+            if (newName === '') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Gym name cannot be empty!'
+                });
+                return;
+            }
+
+            try {
+                const response = await fetch('{{ url_for("admin_edit_gym_name") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ new_gym_name: newName })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    const allGymNameDisplays = document.querySelectorAll('#header h1:last-of-type, #firstNameDisplay h1');
+                    allGymNameDisplays.forEach(el => el.textContent = newName);
+
+                    const pageTitle = document.querySelector('title');
+                    if (pageTitle) {
+                        pageTitle.textContent = `Edit Gym Name | ${newName}`;
+                    }
+                    
+                    firstNameDisplay.classList.remove('hidden');
+                    gymNameInput.classList.add('hidden');
+                    buttons.classList.add('hidden');
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Success!',
+                        text: result.message
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error!',
+                        text: result.message
+                    });
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error!',
+                    text: 'An error occurred while saving changes.'
+                });
+            }
+        });
     });
-});
-    </script>
+</script>
 {% endblock %}
