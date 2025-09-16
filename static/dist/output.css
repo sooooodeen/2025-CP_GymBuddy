@@ -16,19 +16,11 @@
     --color-red-500: oklch(63.7% 0.237 25.331);
     --color-red-700: oklch(50.5% 0.213 27.518);
     --color-red-800: oklch(44.4% 0.177 26.899);
-    --color-red-900: oklch(39.6% 0.141 25.723);
-    --color-amber-300: oklch(87.9% 0.169 91.605);
     --color-amber-400: oklch(82.8% 0.189 84.429);
     --color-green-100: oklch(96.2% 0.044 156.743);
     --color-green-200: oklch(92.5% 0.084 155.995);
-    --color-green-500: oklch(72.3% 0.219 149.579);
-    --color-green-600: oklch(62.7% 0.194 149.214);
     --color-green-700: oklch(52.7% 0.154 150.069);
     --color-green-800: oklch(44.8% 0.119 151.328);
-    --color-blue-500: oklch(62.3% 0.214 259.815);
-    --color-blue-600: oklch(54.6% 0.245 262.881);
-    --color-blue-700: oklch(48.8% 0.243 264.376);
-    --color-gray-50: oklch(98.5% 0.002 247.839);
     --color-gray-100: oklch(96.7% 0.003 264.542);
     --color-gray-200: oklch(92.8% 0.006 264.531);
     --color-gray-300: oklch(87.2% 0.01 258.338);
@@ -287,11 +279,17 @@
   .col-span-2 {
     grid-column: span 2 / span 2;
   }
+  .col-span-3 {
+    grid-column: span 3 / span 3;
+  }
   .col-start-4 {
     grid-column-start: 4;
   }
   .row-span-2 {
     grid-row: span 2 / span 2;
+  }
+  .row-span-3 {
+    grid-row: span 3 / span 3;
   }
   .row-start-1 {
     grid-row-start: 1;
@@ -395,8 +393,23 @@
   .inline {
     display: inline;
   }
+  .inline-block {
+    display: inline-block;
+  }
+  .inline-flex {
+    display: inline-flex;
+  }
   .table {
     display: table;
+  }
+  .\!h-\[70\%\] {
+    height: 70% !important;
+  }
+  .\!h-auto {
+    height: auto !important;
+  }
+  .\!h-full {
+    height: 100% !important;
   }
   .h-2 {
     height: calc(var(--spacing) * 2);
@@ -422,6 +435,9 @@
   .h-\[25\%\] {
     height: 25%;
   }
+  .h-\[30\%\] {
+    height: 30%;
+  }
   .h-\[40\%\] {
     height: 40%;
   }
@@ -433,6 +449,18 @@
   }
   .h-\[48\%\] {
     height: 48%;
+  }
+  .h-\[48\.5\%\] {
+    height: 48.5%;
+  }
+  .h-\[48l5\%\] {
+    height: 48l5%;
+  }
+  .h-\[49\%\] {
+    height: 49%;
+  }
+  .h-\[49\.5\%\] {
+    height: 49.5%;
   }
   .h-\[50\%\] {
     height: 50%;
@@ -467,11 +495,29 @@
   .h-auto {
     height: auto;
   }
+  .h-fit {
+    height: fit-content;
+  }
   .h-full {
     height: 100%;
   }
   .min-h-full {
     min-height: 100%;
+  }
+  .\!w-20 {
+    width: calc(var(--spacing) * 20) !important;
+  }
+  .\!w-\[50\%\] {
+    width: 50% !important;
+  }
+  .\!w-\[60\%\] {
+    width: 60% !important;
+  }
+  .\!w-\[70\%\] {
+    width: 70% !important;
+  }
+  .\!w-\[100\%\] {
+    width: 100% !important;
   }
   .\!w-full {
     width: 100% !important;
@@ -481,9 +527,6 @@
   }
   .w-1\/2 {
     width: calc(1/2 * 100%);
-  }
-  .w-5 {
-    width: calc(var(--spacing) * 5);
   }
   .w-12 {
     width: calc(var(--spacing) * 12);
@@ -544,6 +587,12 @@
   }
   .w-\[96\%\] {
     width: 96%;
+  }
+  .w-\[98\%\] {
+    width: 98%;
+  }
+  .w-\[100\%\] {
+    width: 100%;
   }
   .w-\[100dvw\] {
     width: 100dvw;
@@ -632,8 +681,23 @@
   .grid-rows-4 {
     grid-template-rows: repeat(4, minmax(0, 1fr));
   }
+  .grid-rows-\[10\%_1fr\] {
+    grid-template-rows: 10% 1fr;
+  }
   .grid-rows-\[10\%_15\%_75\%\] {
     grid-template-rows: 10% 15% 75%;
+  }
+  .grid-rows-\[15\%_1fr\] {
+    grid-template-rows: 15% 1fr;
+  }
+  .grid-rows-\[20\%_1fr\] {
+    grid-template-rows: 20% 1fr;
+  }
+  .grid-rows-\[25\%_1fr\] {
+    grid-template-rows: 25% 1fr;
+  }
+  .grid-rows-\[30\%_1fr\] {
+    grid-template-rows: 30% 1fr;
   }
   .flex-col {
     flex-direction: column;
@@ -759,10 +823,6 @@
     border-style: var(--tw-border-style);
     border-width: 1px;
   }
-  .border-2 {
-    border-style: var(--tw-border-style);
-    border-width: 2px;
-  }
   .border-t-1 {
     border-top-style: var(--tw-border-style);
     border-top-width: 1px;
@@ -783,6 +843,9 @@
   .border-gray-100 {
     border-color: var(--color-gray-100);
   }
+  .border-gray-200 {
+    border-color: var(--color-gray-200);
+  }
   .border-gray-300 {
     border-color: var(--color-gray-300);
   }
@@ -795,14 +858,17 @@
   .border-red-500 {
     border-color: var(--color-red-500);
   }
+  .border-b-gray-100 {
+    border-bottom-color: var(--color-gray-100);
+  }
+  .border-b-gray-300 {
+    border-bottom-color: var(--color-gray-300);
+  }
   .\!bg-transparent {
     background-color: transparent !important;
   }
   .bg-\[\#2D2C2C\] {
     background-color: #2D2C2C;
-  }
-  .bg-\[\#77BEF0\] {
-    background-color: #77BEF0;
   }
   .bg-\[\#30475E\] {
     background-color: #30475E;
@@ -810,17 +876,8 @@
   .bg-\[\#222831\] {
     background-color: #222831;
   }
-  .bg-\[\#500073\] {
-    background-color: #500073;
-  }
   .bg-\[\#A459D1\] {
     background-color: #A459D1;
-  }
-  .bg-\[\#C62300\] {
-    background-color: #C62300;
-  }
-  .bg-\[\#F14A00\] {
-    background-color: #F14A00;
   }
   .bg-\[\#F05454\] {
     background-color: #F05454;
@@ -828,14 +885,8 @@
   .bg-\[\#F16767\] {
     background-color: #F16767;
   }
-  .bg-\[\#FF894F\] {
-    background-color: #FF894F;
-  }
   .bg-\[\#FFB84C\] {
     background-color: #FFB84C;
-  }
-  .bg-\[\#FFCB61\] {
-    background-color: #FFCB61;
   }
   .bg-\[\#f1f1f1\] {
     background-color: #f1f1f1;
@@ -942,6 +993,9 @@
   }
   .px-5 {
     padding-inline: calc(var(--spacing) * 5);
+  }
+  .px-8 {
+    padding-inline: calc(var(--spacing) * 8);
   }
   .px-10 {
     padding-inline: calc(var(--spacing) * 10);
@@ -1091,13 +1145,6 @@
     --tw-tracking: var(--tracking-wider);
     letter-spacing: var(--tracking-wider);
   }
-  .tracking-widest {
-    --tw-tracking: var(--tracking-widest);
-    letter-spacing: var(--tracking-widest);
-  }
-  .\!text-red-500 {
-    color: var(--color-red-500) !important;
-  }
   .text-\[\#2D2C2C\] {
     color: #2D2C2C;
   }
@@ -1136,9 +1183,6 @@
   }
   .text-red-400 {
     color: var(--color-red-400);
-  }
-  .text-red-500 {
-    color: var(--color-red-500);
   }
   .text-red-700 {
     color: var(--color-red-700);
@@ -1284,6 +1328,13 @@
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
         background-color: #f16060;
+      }
+    }
+  }
+  .hover\:border-gray-600 {
+    &:hover {
+      @media (hover: hover) {
+        border-color: var(--color-gray-600);
       }
     }
   }

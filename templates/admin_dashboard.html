@@ -4,6 +4,7 @@
 <head>
     <title>Dashboard | {{ session.get('user_gym_name', 'Admin') }}</title>
 </head>
+
 <div class="bg-[#f1f1f1] p-10 h-full font-Helvetica flex overflow-hidden flex-col gap-6">
     <div id="header" class="w-full grid grid-cols-2 h-[7%]">
         <div>
@@ -14,9 +15,9 @@
             <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
         </div>
     </div>
-    <div class="flex w-full h-full gap-10">
-        <div class="flex flex-col gap-3 h-[95%]">
-            <div class="border border-gray-300 bg-white h-[48%] w-110 rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
+    <div class="flex w-full h-full gap-4">
+        <div class="flex flex-col justify-between h-full">
+            <div class="border border-gray-300 bg-white h-[49.5%] w-110 rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
                 <h1 class="text-xl font-bold font-Helvetica mb-2">Assigned Trainers</h1>
                 <div class="flex flex-col overflow-y-auto gap-2 h-[100%]">
                     
@@ -36,7 +37,7 @@
                     {% endfor %}
                     </div>
             </div>
-            <div class="border border-gray-300 bg-white h-[48%] w-110 rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
+            <div class="border border-gray-300 bg-white h-[49.5%] w-110 rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
                 <h1 class="text-xl font-bold font-Helvetica mb-2">Recent Error Log</h1>
                 <div class="flex flex-col overflow-y-auto gap-2 h-[100%]">
                     <div class="border border-[#e2dbdb] h-[22%] w-full rounded-3xl items-center p-4 grid grid-cols-[1fr_20%] place-items-center justify-center">
@@ -46,8 +47,8 @@
                 </div>
             </div>
         </div>
-        <div id="box" class="w-full h-[25%] grid grid-cols-3 gap-2">
-             <div class="bg-white h-full rounded-2xl p-6 flex items-center flex-col">
+        <div class="grid grid-cols-3 grid-rows-[25%_1fr] flex-col w-full gap-5">
+            <div class="bg-white h-full rounded-2xl p-6 flex items-center flex-col">
                 <div class="box-head flex gap-2 w-full items-center ">
                     <div class="rounded-full bg-[#F16767] flex justify-center items-center p-3">
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skull-icon lucide-skull"><path d="m12.5 17-.5-1-.5 1h1z"/><path d="M15 22a1 1 0 0 0 1-1v-1a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20v1a1 1 0 0 0 1 1z"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="12" r="1"/></svg>
@@ -57,7 +58,7 @@
                         <h1 class="rounded-full flex justify-center items-center py-1 px-3 bg-gray-200 text-xs w-15 text-gray-500 font-Helvetica font-semibold tracking-wider">Today</h1>
                     </div>
                 </div>
-                <h1 class="text-5xl h-full w-full flex justify-center items-center font-bold">10</h1>
+                <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">10</h1>
             </div>
             <div class="bg-white h-full rounded-2xl p-6 flex items-center flex-col">
                 <div class="box-head flex gap-2 w-full items-center">
@@ -69,7 +70,7 @@
                         <h1 class="rounded-full flex justify-center items-center py-1 px-3 bg-gray-200 text-xs w-22 text-gray-500 font-Helvetica font-semibold tracking-wider">This week</h1>
                     </div>
                 </div>
-                <h1 class="text-5xl h-full w-full flex justify-center items-center font-bold">Bicep Curls</h1>
+                <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">Bicep Curls</h1>
             </div>
             <div class="bg-white  h-full rounded-2xl p-6 flex items-center flex-col">
                 <div class="box-head flex gap-2 w-full items-center">
@@ -81,9 +82,130 @@
                         <h1 class="rounded-full flex justify-center items-center py-1 px-3 bg-gray-200 text-xs w-24 text-gray-500 font-Helvetica font-semibold tracking-wider">This month</h1>
                     </div>
                 </div>
-                <h1 class="text-5xl h-full w-full flex justify-center items-center font-bold">10</h1>
+                <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">10</h1>
+            </div>
+            <div class="h-full flex flex-col col-span-2 justify-around rounded-2xl bg-white p-6 px-8">
+                <div class="flex flex-col justify-between items-start gap-4 py-5">
+                    <h1 class="font-Helvetica text-3xl font-bold">Muscle Group Errors Chart</h1>
+                    <div class="flex gap-2 items-center">
+                        <p class="inline-flex">Filter by month:</p>
+                        <select class="py-2 px-3 hover:border-gray-600 rounded-2xl border border-gray-300" id="dataToggle">
+                            <option value="january" selected>January</option>
+                            <option value="february">February</option>
+                            <option value="march">March</option>
+                            <option value="april">April</option>
+                            <option value="may">May</option>
+                            <option value="june">June</option>
+                            <option value="july">July</option>
+                            <option value="august">August</option>
+                            <option value="september">September</option>
+                            <option value="october">October</option>
+                            <option value="november">November</option>
+                            <option value="december">December</option>
+                        </select>
+                    </div>
+                </div>
+                <canvas class="chart !w-[100%]" id="myBarChart"></canvas>
             </div>
         </div>
     </div>
 </div>
+ <script>
+        //sample data
+        const allData = {
+            january: { chest: 65, back: 59, legs: 80, arms: 81 },
+            february: { chest: 70, back: 65, legs: 85, arms: 75 },
+            march: { chest: 72, back: 68, legs: 82, arms: 78 },
+            april: { chest: 75, back: 70, legs: 88, arms: 80 },
+            may: { chest: 78, back: 72, legs: 90, arms: 83 },
+            june: { chest: 80, back: 75, legs: 92, arms: 85 },
+            july: { chest: 85, back: 78, legs: 95, arms: 88 },
+            august: { chest: 82, back: 76, legs: 90, arms: 82 },
+            september: { chest: 79, back: 73, legs: 88, arms: 79 },
+            october: { chest: 77, back: 71, legs: 85, arms: 77 },
+            november: { chest: 74, back: 69, legs: 82, arms: 74 },
+            december: { chest: 70, back: 64, legs: 80, arms: 70 },
+        };
+
+        const ctx = document.getElementById('myBarChart').getContext('2d');
+
+        const colors = {
+            chest: { backgroundColor: 'rgba(255, 99, 132, 0.5)', borderColor: 'rgba(255, 99, 132, 1)' },
+            back: { backgroundColor: 'rgba(54, 162, 235, 0.5)', borderColor: 'rgba(54, 162, 235, 1)' },
+            legs: { backgroundColor: 'rgba(255, 206, 86, 0.5)', borderColor: 'rgba(255, 206, 86, 1)' },
+            arms: { backgroundColor: 'rgba(75, 192, 192, 0.5)', borderColor: 'rgba(75, 192, 192, 1)' }
+        };
+
+        const myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Muscle Groups'], 
+                datasets: [
+                    {
+                        label: 'Chest',
+                        data: [allData.january.chest],
+                        backgroundColor: colors.chest.backgroundColor,
+                        borderColor: colors.chest.borderColor,
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Back',
+                        data: [allData.january.back],
+                        backgroundColor: colors.back.backgroundColor,
+                        borderColor: colors.back.borderColor,
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Legs',
+                        data: [allData.january.legs],
+                        backgroundColor: colors.legs.backgroundColor,
+                        borderColor: colors.legs.borderColor,
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Arms',
+                        data: [allData.january.arms],
+                        backgroundColor: colors.arms.backgroundColor,
+                        borderColor: colors.arms.borderColor,
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        
+                    },
+                    x:{
+                      ticks: {
+                            font: {
+                                size: 14,
+                                weight: 'bold'
+                            },
+                        }  
+                    }
+                }
+            }
+        });
+
+        function updateChart(dataKey) {
+            const monthData = allData[dataKey]; 
+
+            myChart.data.datasets[0].data = [monthData.chest];
+            myChart.data.datasets[1].data = [monthData.back];
+            myChart.data.datasets[2].data = [monthData.legs];
+            myChart.data.datasets[3].data = [monthData.arms];
+            
+            myChart.update();
+        }
+
+        const dataToggle = document.getElementById('dataToggle');
+
+        dataToggle.addEventListener('change', (event) => {
+            const dataKey = event.target.value;
+            updateChart(dataKey);
+        });
+</script>
 {% endblock %}
