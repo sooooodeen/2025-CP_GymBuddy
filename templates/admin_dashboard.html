@@ -23,9 +23,12 @@
                     
                     {% for assignment in assignments %}
                     <div class="border border-[#e2dbdb] h-auto w-full rounded-3xl items-center p-2 grid grid-cols-[15%_1fr_20%_15%] place-items-center justify-center">
-                        <img class="h-[45px] w-[45px] object-cover rounded-4xl justify-self-start" src="{{ url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="">
+                        <img class="h-[45px] w-[45px] object-cover rounded-4xl justify-self-start" src="{{ url_for('static', filename=assignment.trainer.photo_url) if assignment.trainer.photo_url else url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="">
                         <h1 class="text-[#5a5757] text-lg justify-self-start">{{ assignment.trainer.firstname }} {{ assignment.trainer.lastname }}</h1>
-                        <h1>5:30</h1>
+                        
+                        <!-- UPDATED: Time is now in a span with a data-timestamp attribute -->
+                        <span class="text-sm text-gray-500 time-ago" data-timestamp="{{ assignment.assigned_at.isoformat() }}"></span>
+
                         <form class="flex justify-center items-center" action="{{ url_for('unassign_trainer', assignment_id=assignment.id) }}" method="POST">
                             <button type="submit" >
                                 <svg class="cursor-pointer stroke-[#ee2e2e] hover:stroke-[#ff7272]" xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="Red" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
@@ -110,8 +113,48 @@
         </div>
     </div>
 </div>
- <script>
-        //sample data
+<!-- NEW: JavaScript for real-time timestamp updates -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // This function calculates the "time ago" string
+        function formatTimeAgo(utcIsoString) {
+            const now = new Date();
+            const past = new Date(utcIsoString);
+            const seconds = Math.floor((now - past) / 1000);
+
+            let interval = seconds / 31536000;
+            if (interval > 1) return Math.floor(interval) + " years ago";
+            interval = seconds / 2592000;
+            if (interval > 1) return Math.floor(interval) + " months ago";
+            interval = seconds / 86400;
+            if (interval > 1) return Math.floor(interval) + " days ago";
+            interval = seconds / 3600;
+            if (interval > 1) return Math.floor(interval) + " hours ago";
+            interval = seconds / 60;
+            if (interval > 1) return Math.floor(interval) + " minutes ago";
+            
+            return "just now";
+        }
+
+        // This function runs once to update all timestamps on the page
+        function updateAllTimestamps() {
+            const timeElements = document.querySelectorAll('.time-ago');
+            timeElements.forEach(el => {
+                const timestamp = el.getAttribute('data-timestamp');
+                if (timestamp) {
+                    el.textContent = formatTimeAgo(timestamp + 'Z'); // Add 'Z' to ensure it's parsed as UTC
+                }
+            });
+        }
+
+        // 1. Run the update function immediately when the page loads
+        updateAllTimestamps();
+
+        // 2. Set an interval to re-run the update function every 60 seconds
+        // This keeps the "time ago" strings fresh without a page reload
+        setInterval(updateAllTimestamps, 60000);
+    });
+   //sample data
         const allData = {
             january: { chest: 65, back: 59, legs: 80, arms: 81 },
             february: { chest: 70, back: 65, legs: 85, arms: 75 },

@@ -1,8 +1,11 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
+from flask_migrate import Migrate
 from functools import wraps
 import os
+from datetime import datetime
+from werkzeug.utils import secure_filename
 
 # --- App and Database Configuration ---
 app = Flask(__name__)
@@ -11,30 +14,42 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# --- Configuration for file uploads ---
+app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads', 'profiles')
+app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
+
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
+migrate = Migrate(app, db) # Initialize Flask-Migrate
 
-# --- Database Model Definition ---
+# --- Database Model Definitions ---
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    firstname = db.Column(db.String(100), nullable=False)
+    firstname = db.Column(db.String(100), nullable=True)
     middlename = db.Column(db.String(100), nullable=True)
-    lastname = db.Column(db.String(100), nullable=False)
-    phone_num = db.Column(db.String(20), nullable=False)
-    gender = db.Column(db.String(20), nullable=False)
+    lastname = db.Column(db.String(100), nullable=True)
+    phone_num = db.Column(db.String(20), nullable=True)
+    gender = db.Column(db.String(20), nullable=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     role = db.Column(db.String(50), nullable=False)
     gym_name = db.Column(db.String(100), nullable=False)
-    status = db.Column(db.String(20), nullable=False, default='active')
+    photo_url = db.Column(db.String(200), nullable=True) 
+    status = db.Column(db.String(20), nullable=False, default='inactive')
 
     assignments = db.relationship('Assignment', foreign_keys='Assignment.trainer_id', backref='trainer', lazy=True, cascade="all, delete-orphan")
 
 class Assignment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     trainer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    assigned_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-# --- Login Required Decorators ---
+# --- Helper function for uploads ---
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+# --- Decorators ---
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -53,7 +68,7 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- USER Routes ---
+# --- User Routes (Authentication) ---
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -61,27 +76,31 @@ def home():
 @app.route("/register", methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        firstname = request.form.get('firstname')
-        middlename = request.form.get('middlename')
-        lastname = request.form.get('lastname')
-        phone_num = request.form.get('phoneNum')
-        gender = request.form.get('gender')
         email = request.form.get('email')
-        password = request.form.get('password')
-        role = request.form.get('role')
         gym_name = request.form.get('gymName')
+        password = request.form.get('password')
+
         existing_user = User.query.filter_by(email=email).first()
         if existing_user:
             flash('Email address already registered.', 'error')
             return redirect(url_for('register'))
+
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+        
         new_user = User(
-            firstname=firstname, middlename=middlename, lastname=lastname,
-            phone_num=phone_num, gender=gender, email=email,
-            password_hash=hashed_password, role=role, gym_name=gym_name
+            email=email,
+            password_hash=hashed_password,
+            gym_name=gym_name,
+            role='Gym Owner',
+            firstname=None, 
+            lastname=None,
+            phone_num=None,
+            gender=None,
+            status='active'
         )
         db.session.add(new_user)
         db.session.commit()
+        
         flash('Registration successful! Please log in.', 'success')
         return redirect(url_for('login'))
     return render_template("register.html")
@@ -92,15 +111,13 @@ def login():
         email = request.form.get('email')
         password = request.form.get('password')
         user = User.query.filter_by(email=email).first()
+
         if user and bcrypt.check_password_hash(user.password_hash, password):
             session['user_id'] = user.id
             session['user_role'] = user.role
+            session['user_gym_name'] = user.gym_name
             session['user_firstname'] = user.firstname
             session['user_lastname'] = user.lastname
-            session['user_gym_name'] = user.gym_name
-            session['user_email'] = user.email
-            session['user_gender'] = user.gender
-            session['user_phone_num'] = user.phone_num
             
             if user.role == 'Gym Owner':
                 return redirect(url_for('admin_dashboard'))
@@ -132,11 +149,8 @@ def monitor():
 def settings():
     return render_template("settings.html")
 
-@app.route("/security_settings")
-@login_required
-def security_settings():
-    return render_template("security_settings.html")
-    
+
+# --- Profile Routes ---
 @app.route("/profile")
 @login_required
 def profile():
@@ -169,10 +183,33 @@ def change_password():
         
     return render_template("change_password.html")
     
-@app.route("/delete_account")
+    db.session.commit()
+
+    # Update session data so the UI reflects changes immediately
+    session['user_firstname'] = user.firstname
+    session['user_lastname'] = user.lastname
+    
+    flash('Profile updated successfully!', 'success')
+    return redirect(url_for('profile'))
+
+
+@app.route('/profile/change_password', methods=['POST'])
 @login_required
-def delete_account():
-    return render_template("delete_account.html")
+def change_password_submit():
+    user = User.query.get(session['user_id'])
+    current_password = request.form.get('current_password')
+    new_password = request.form.get('new_password')
+
+    if not bcrypt.check_password_hash(user.password_hash, current_password):
+        flash('Your current password was incorrect. Please try again.', 'error')
+        return redirect(url_for('profile'))
+
+    user.password_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
+    db.session.commit()
+
+    flash('Your password has been changed successfully!', 'success')
+    return redirect(url_for('profile'))
+
 
 @app.route("/delete-account", methods=['DELETE'])
 @login_required
@@ -197,14 +234,15 @@ def delete_user_account():
 @app.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
-    current_assignments = Assignment.query.all()
+    current_assignments = db.session.query(Assignment).join(User).all()
     return render_template("admin_dashboard.html", assignments=current_assignments)
 
 @app.route("/admin/trainers")
 @admin_required
 def trainers():
     all_trainers = User.query.filter_by(role='Trainer').all()
-    return render_template("trainers.html", trainers=all_trainers)
+    assigned_trainer_ids = [a.trainer_id for a in Assignment.query.all()]
+    return render_template("trainers.html", trainers=all_trainers, assigned_trainer_ids=assigned_trainer_ids)
 
 @app.route("/admin/monitor")
 @admin_required
@@ -240,25 +278,38 @@ def admin_edit_gym_name():
 @app.route("/admin/trainers/add", methods=['POST'])
 @admin_required
 def add_trainer():
-    data = request.get_json()
-    email = data.get('email')
+    # Switched from get_json() to request.form for multipart data
+    email = request.form.get('email')
     
     if User.query.filter_by(email=email).first():
         return jsonify({'status': 'error', 'message': 'Email already exists.'})
 
-    hashed_password = bcrypt.generate_password_hash(data.get('password')).decode('utf-8')
+    hashed_password = bcrypt.generate_password_hash(request.form.get('password')).decode('utf-8')
     
     new_trainer = User(
-        firstname=data.get('firstname'),
-        lastname=data.get('lastname'),
+        firstname=request.form.get('firstname'),
+        lastname=request.form.get('lastname'),
         email=email,
+        phone_num=request.form.get('phone'),
         password_hash=hashed_password,
         role='Trainer',
-        phone_num='N/A',
-        gender='N/A',
+        gender='N/A', 
         gym_name=session.get('user_gym_name', 'Default Gym'),
-        status='active'
+        status='inactive'
     )
+    
+    # Handle file upload for new trainer
+    if 'photo' in request.files:
+        file = request.files['photo']
+        if file and file.filename != '' and allowed_file(file.filename):
+            # We need to commit the user first to get an ID
+            db.session.add(new_trainer)
+            db.session.flush() # flush() assigns an ID without a full commit
+            filename = secure_filename(f"{new_trainer.id}_{file.filename}")
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            new_trainer.photo_url = os.path.join('uploads/profiles', filename).replace('\\', '/')
+
     db.session.add(new_trainer)
     db.session.commit()
     return jsonify({'status': 'success', 'message': 'Trainer added successfully!'})
@@ -267,12 +318,20 @@ def add_trainer():
 @admin_required
 def edit_trainer(user_id):
     trainer = User.query.get_or_404(user_id)
-    data = request.get_json()
+    # Switched from get_json() to request.form
+    trainer.firstname = request.form.get('firstname')
+    trainer.lastname = request.form.get('lastname')
+    trainer.email = request.form.get('email')
+    trainer.phone_num = request.form.get('phone')
 
-    trainer.firstname = data.get('firstname')
-    trainer.lastname = data.get('lastname')
-    trainer.email = data.get('email')
-    trainer.status = data.get('status')
+    # Handle file upload for editing trainer
+    if 'photo' in request.files:
+        file = request.files['photo']
+        if file and file.filename != '' and allowed_file(file.filename):
+            filename = secure_filename(f"{trainer.id}_{file.filename}")
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            trainer.photo_url = os.path.join('uploads/profiles', filename).replace('\\', '/')
     
     db.session.commit()
     return jsonify({'status': 'success', 'message': 'Trainer updated successfully!'})
@@ -281,30 +340,57 @@ def edit_trainer(user_id):
 @admin_required
 def delete_trainer(user_id):
     trainer = User.query.get_or_404(user_id)
+    # Optional: Delete the user's photo file from the server
+    if trainer.photo_url:
+        try:
+            os.remove(os.path.join('static', trainer.photo_url))
+        except OSError as e:
+            print(f"Error deleting file: {e.strerror}") # Log the error
     db.session.delete(trainer)
     db.session.commit()
     return jsonify({'status': 'success', 'message': 'Trainer deleted successfully.'})
 
+# --- Assignment Management API Routes ---
 @app.route("/admin/assign/<int:trainer_id>", methods=['POST'])
 @admin_required
 def assign_trainer(trainer_id):
-    existing_assignment = Assignment.query.filter_by(trainer_id=trainer_id).first()
-    if existing_assignment:
+    if Assignment.query.filter_by(trainer_id=trainer_id).first():
         return jsonify({'status': 'info', 'message': 'This trainer is already assigned.'})
 
-    assignment = Assignment(trainer_id=trainer_id)
-    db.session.add(assignment)
-    db.session.commit()
-    return jsonify({'status': 'success', 'message': 'Trainer assigned to dashboard!'})
+    trainer = User.query.get(trainer_id)
+    if trainer:
+        assignment = Assignment(trainer_id=trainer_id)
+        db.session.add(assignment)
+        trainer.status = 'active'
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Trainer assigned to dashboard!'})
+    return jsonify({'status': 'error', 'message': 'Trainer not found.'})
 
 @app.route("/admin/unassign/<int:assignment_id>", methods=['POST'])
 @admin_required
 def unassign_trainer(assignment_id):
     assignment = Assignment.query.get_or_404(assignment_id)
+    trainer = User.query.get(assignment.trainer_id)
+    if trainer:
+        trainer.status = 'inactive'
+    
     db.session.delete(assignment)
     db.session.commit()
     flash('Trainer has been un-assigned from the dashboard.', 'success')
     return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/unassign_by_trainer/<int:trainer_id>', methods=['POST'])
+@admin_required
+def unassign_by_trainer_id(trainer_id):
+    assignment = Assignment.query.filter_by(trainer_id=trainer_id).first()
+    if assignment:
+        trainer = User.query.get(trainer_id)
+        if trainer:
+            trainer.status = 'inactive'
+        db.session.delete(assignment)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Trainer unassigned successfully.'})
+    return jsonify({'status': 'error', 'message': 'Trainer was not assigned.'})
 
 # --- Main Execution ---
 if __name__ == "__main__":
