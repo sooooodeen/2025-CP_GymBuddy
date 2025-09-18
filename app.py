@@ -149,6 +149,16 @@ def monitor():
 def settings():
     return render_template("settings.html")
 
+@app.route("/security_settings")
+@login_required
+def security_settings():
+    return render_template("security_settings.html")
+
+@app.route("/delete_account")
+@login_required
+def delete_account():
+    return render_template("delete_account.html")
+
 
 # --- Profile Routes ---
 @app.route("/profile", methods=['GET', 'POST'])
@@ -275,11 +285,6 @@ def trainers():
     all_trainers = User.query.filter_by(role='Trainer').all()
     assigned_trainer_ids = [a.trainer_id for a in Assignment.query.all()]
     return render_template("trainers.html", trainers=all_trainers, assigned_trainer_ids=assigned_trainer_ids)
-
-@app.route("/admin/monitor")
-@admin_required
-def admin_monitor():
-    return render_template("admin_monitor.html")
 
 @app.route("/admin/edit_gym_name", methods=['GET', 'POST'])
 @admin_required
