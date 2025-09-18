@@ -77,25 +77,25 @@ def home():
 def register():
     if request.method == 'POST':
         email = request.form.get('email')
-        gym_name = request.form.get('gymName')
-        password = request.form.get('password')
-
+        
         existing_user = User.query.filter_by(email=email).first()
         if existing_user:
             flash('Email address already registered.', 'error')
             return redirect(url_for('register'))
 
+        password = request.form.get('password')
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
         
         new_user = User(
+            firstname=request.form.get('firstname'),
+            middlename=request.form.get('middlename'),
+            lastname=request.form.get('lastname'),
+            phone_num=request.form.get('phoneNum'),
+            gender=request.form.get('gender'),
             email=email,
             password_hash=hashed_password,
-            gym_name=gym_name,
-            role='Gym Owner',
-            firstname=None, 
-            lastname=None,
-            phone_num=None,
-            gender=None,
+            gym_name=request.form.get('gymName'),
+            role='Gym Owner', # Role is hardcoded for admin registration
             status='active'
         )
         db.session.add(new_user)
@@ -151,10 +151,46 @@ def settings():
 
 
 # --- Profile Routes ---
-@app.route("/profile")
+@app.route("/profile", methods=['GET', 'POST'])
 @login_required
 def profile():
-    return render_template("profile.html")
+    user = User.query.get(session['user_id'])
+    if not user:
+        flash('User not found.', 'error')
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        # Update user's text-based details
+        user.firstname = request.form.get('firstname')
+        user.lastname = request.form.get('lastname')
+        user.email = request.form.get('email')
+        user.phone_num = request.form.get('phone_num')
+        if 'gym_name' in request.form:
+             user.gym_name = request.form.get('gym_name')
+
+        # Handle the photo upload
+        if 'photo' in request.files:
+            file = request.files['photo']
+            if file and file.filename != '' and allowed_file(file.filename):
+                filename = secure_filename(f"{user.id}_{file.filename}")
+                os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                user.photo_url = os.path.join('uploads/profiles', filename).replace('\\', '/')
+
+        db.session.commit()
+        
+        # Update session data so the UI reflects changes immediately
+        session['user_firstname'] = user.firstname
+        session['user_lastname'] = user.lastname
+        if 'gym_name' in request.form:
+            session['user_gym_name'] = user.gym_name
+
+        flash('Profile updated successfully!', 'success')
+        return redirect(url_for('profile'))
+
+    # For a GET request, just render the page with the user's data
+    return render_template("profile.html", user=user)
+
     
 @app.route("/change_password", methods=['GET', 'POST'])
 @login_required
@@ -166,15 +202,12 @@ def change_password():
         current_password = data.get('currentPassword')
         new_password = data.get('newPassword')
         
-        # Check if the user exists
         if not user:
             return jsonify({'status': 'error', 'message': 'User not found.'}), 404
             
-        # Check if the current password is correct
         if not bcrypt.check_password_hash(user.password_hash, current_password):
             return jsonify({'status': 'error', 'message': 'Incorrect current password.'}), 400
 
-        # Hash the new password and update the database
         hashed_new_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
         user.password_hash = hashed_new_password
         db.session.commit()
@@ -185,7 +218,6 @@ def change_password():
     
     db.session.commit()
 
-    # Update session data so the UI reflects changes immediately
     session['user_firstname'] = user.firstname
     session['user_lastname'] = user.lastname
     
@@ -261,11 +293,9 @@ def admin_edit_gym_name():
         user_id = session.get('user_id')
         user = User.query.get(user_id)
         if user:
-            # Update the gym name in the database
             user.gym_name = new_gym_name
             db.session.commit()
             
-            # Update the gym name in the session
             session['user_gym_name'] = new_gym_name
             
             return jsonify({'status': 'success', 'message': 'Gym name updated successfully!'})
@@ -278,7 +308,6 @@ def admin_edit_gym_name():
 @app.route("/admin/trainers/add", methods=['POST'])
 @admin_required
 def add_trainer():
-    # Switched from get_json() to request.form for multipart data
     email = request.form.get('email')
     
     if User.query.filter_by(email=email).first():
@@ -298,13 +327,11 @@ def add_trainer():
         status='inactive'
     )
     
-    # Handle file upload for new trainer
     if 'photo' in request.files:
         file = request.files['photo']
         if file and file.filename != '' and allowed_file(file.filename):
-            # We need to commit the user first to get an ID
             db.session.add(new_trainer)
-            db.session.flush() # flush() assigns an ID without a full commit
+            db.session.flush() 
             filename = secure_filename(f"{new_trainer.id}_{file.filename}")
             os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
@@ -318,13 +345,11 @@ def add_trainer():
 @admin_required
 def edit_trainer(user_id):
     trainer = User.query.get_or_404(user_id)
-    # Switched from get_json() to request.form
     trainer.firstname = request.form.get('firstname')
     trainer.lastname = request.form.get('lastname')
     trainer.email = request.form.get('email')
     trainer.phone_num = request.form.get('phone')
 
-    # Handle file upload for editing trainer
     if 'photo' in request.files:
         file = request.files['photo']
         if file and file.filename != '' and allowed_file(file.filename):
@@ -340,12 +365,11 @@ def edit_trainer(user_id):
 @admin_required
 def delete_trainer(user_id):
     trainer = User.query.get_or_404(user_id)
-    # Optional: Delete the user's photo file from the server
     if trainer.photo_url:
         try:
             os.remove(os.path.join('static', trainer.photo_url))
         except OSError as e:
-            print(f"Error deleting file: {e.strerror}") # Log the error
+            print(f"Error deleting file: {e.strerror}")
     db.session.delete(trainer)
     db.session.commit()
     return jsonify({'status': 'success', 'message': 'Trainer deleted successfully.'})
