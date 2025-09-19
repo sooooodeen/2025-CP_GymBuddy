@@ -1,154 +1,144 @@
-# --- IMPORTS (same as original) ---
+# --- IMPORTS ---
 import cv2
 import mediapipe as mp
-import pickle
 import numpy as np
-import pandas as pd
-from sklearn.preprocessing import StandardScaler
+import json
+import tensorflow as tf
+from collections import deque
 
-# --- CONFIGURATION (same as original) ---
-MODEL_FILENAME = 'exercise_model_mlp.pkl'
-SCALER_FILENAME = 'scaler.pkl'
-FEATURE_NAMES_FILENAME = 'feature_names.pkl'
-CONF_THRESHOLD = 0.60 
-STABILITY_FRAMES = 10 
-UI_COLOR = (245, 117, 16)
+# --- CONFIGURATION ---
+MODEL_FILENAME = 'exercise_classifier_lstm.h5'
+LABEL_MAPPING_FILENAME = 'label_mapping.json'
+SEQUENCE_LENGTH = 90  # Number of frames for one sequence (must match training)
+CONF_THRESHOLD = 0.80 # Confidence threshold for displaying a prediction
+STABILITY_FRAMES = 10   # Number of consistent frames to consider a prediction stable
+UI_COLOR = (0, 150, 255) # A new color for the UI
 
-# --- HELPER FUNCTIONS (Corrected) ---
+# --- HELPER FUNCTIONS (Kept for ExerciseAnalyzer) ---
 def calculate_angle(a, b, c):
     """Calculates the angle between three 3D points."""
     a = np.array(a)
     b = np.array(b)
     c = np.array(c)
+    
+    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
+    angle = np.abs(radians*180.0/np.pi)
+    
+    if angle > 180.0:
+        angle = 360 - angle
+        
+    return angle
 
-    ba = a - b
-    bc = c - b
-
-    dot_product = np.dot(ba, bc)
-
-    magnitude_ba = np.linalg.norm(ba)
-    magnitude_bc = np.linalg.norm(bc)
-
-    if magnitude_ba == 0 or magnitude_bc == 0:
-        return 0.0
-
-    cosine_angle = dot_product / (magnitude_ba * magnitude_bc)
-    angle = np.arccos(np.clip(cosine_angle, -1.0, 1.0))
-
-    return np.degrees(angle)
-
-def normalize_pose_robust(landmarks, mp_pose_module):
+def normalize_pose_robust(landmarks):
     """Robust pose normalization using hip-to-shoulder torso length."""
     landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in landmarks])
 
-    # Handle cases where input landmarks might contain NaNs
     if np.isnan(landmarks_np).any():
-        return np.full((33, 3), np.nan), np.nan
+        return np.full((33, 3), np.nan)
 
-    left_hip = landmarks_np[mp_pose_module.PoseLandmark.LEFT_HIP.value]
-    right_hip = landmarks_np[mp_pose_module.PoseLandmark.RIGHT_HIP.value]
+    left_hip = landmarks_np[mp.solutions.pose.PoseLandmark.LEFT_HIP.value]
+    right_hip = landmarks_np[mp.solutions.pose.PoseLandmark.RIGHT_HIP.value]
     hip_center = (left_hip + right_hip) / 2.0
     
-    left_shoulder = landmarks_np[mp_pose_module.PoseLandmark.LEFT_SHOULDER.value]
-    right_shoulder = landmarks_np[mp_pose_module.PoseLandmark.RIGHT_SHOULDER.value]
+    left_shoulder = landmarks_np[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER.value]
+    right_shoulder = landmarks_np[mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER.value]
     shoulder_center = (left_shoulder + right_shoulder) / 2.0
 
-    torso_length = np.linalg.norm(hip_center - shoulder_center) + 1e-6
-
-    if torso_length < 1e-5:
-        return np.full((33, 3), np.nan), np.nan
+    torso_length = np.linalg.norm(hip_center - shoulder_center)
+    if torso_length < 1e-6:
+        return np.full((33, 3), np.nan)
 
     normalized_landmarks = (landmarks_np - hip_center) / torso_length
-    
-    return normalized_landmarks, hip_center
+    return normalized_landmarks
 
-# --- Exercise Analysis Class (same as original) ---
+# --- Exercise Analysis Class (Kept from original for rep counting/form) ---
 class ExerciseAnalyzer:
     def __init__(self):
         self.rep_counter = 0
         self.stage = None
-        self.form_status = "CORRECT FORM"
+        self.form_status = "START EXERCISE"
         self.status_color = (0, 255, 0)
-        self.previous_exercise = "UNKNOWN"
+        self.previous_exercise = "neutral"
 
-    def analyze_frame(self, exercise_name, angles, distances):
-        # Reset counters if the exercise changes
+    def analyze_frame(self, exercise_name, landmarks):
         if exercise_name != self.previous_exercise:
             self.rep_counter = 0
             self.stage = None
-            self.form_status = "CORRECT FORM"
-            self.status_color = (0, 255, 0)
             self.previous_exercise = exercise_name
-            return
+        
+        # Get coordinates for angle calculations
+        shoulder = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER.value].y]
+        elbow = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_ELBOW.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_ELBOW.value].y]
+        wrist = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].y]
+        hip = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_HIP.value].y]
+        knee = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_KNEE.value].y]
+        ankle = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_ANKLE.value].y]
 
+        # Default form status
         self.form_status = "CORRECT FORM"
         self.status_color = (0, 255, 0)
 
-        angle_left_elbow = angles.get('angle_left_elbow')
-        angle_left_knee = angles.get('angle_left_knee')
-        angle_left_hip = angles.get('angle_left_hip')
-        dist_y_l_wrist_shoulder = distances.get('dist_y_l_wrist_shoulder')
-
-        if 'squat' in exercise_name:
-            if angle_left_knee < 100:
+        if 'bicepCurl' in exercise_name:
+            angle = calculate_angle(shoulder, elbow, wrist)
+            if angle > 160:
                 self.stage = "down"
-            if angle_left_knee > 160 and self.stage == "down":
+            if angle < 30 and self.stage == 'down':
                 self.stage = "up"
                 self.rep_counter += 1
-            if angle_left_hip < 90:
-                self.form_status = "GO DEEPER"; self.status_color = (0, 165, 255)
-
-        elif 'bicep_curl' in exercise_name:
-            if angle_left_elbow < 40:
+        
+        elif 'squat' in exercise_name:
+            angle = calculate_angle(hip, knee, ankle)
+            if angle > 160:
                 self.stage = "up"
-            if angle_left_elbow > 160 and self.stage == "up":
+            if angle < 90 and self.stage == 'up':
                 self.stage = "down"
                 self.rep_counter += 1
-            if dist_y_l_wrist_shoulder > 0.1:
-                self.form_status = "KEEP ELBOWS IN"; self.status_color = (0, 0, 255)
 
-        # Add logic for other exercises here following the same pattern
-        # e.g., for bench press, use elbow angles
-        elif 'bench_press' in exercise_name:
-            if angle_left_elbow > 160: self.stage = "up"
-            if angle_left_elbow < 90 and self.stage == 'up':
-                self.stage = "down"; self.rep_counter += 1
-
-        # etc.
-    
     def get_status(self):
         return self.rep_counter, self.form_status, self.status_color
 
 # --- MAIN LOGIC ---
 try:
-    with open(MODEL_FILENAME, 'rb') as f:
-        model = pickle.load(f)
-    with open(SCALER_FILENAME, 'rb') as f:
-        scaler = pickle.load(f)
-    with open(FEATURE_NAMES_FILENAME, 'rb') as f:
-        feature_names = pickle.load(f)
-    print("✅ All assets loaded.")
-except FileNotFoundError as e:
-    print(f"Error: {e}. Ensure all files exist.")
+    # Load the trained LSTM model and label mapping
+    model = tf.keras.models.load_model(MODEL_FILENAME)
+    with open(LABEL_MAPPING_FILENAME, 'r') as f:
+        label_mapping = json.load(f)
+    print("✅ LSTM model and label mapping loaded.")
+except Exception as e:
+    print(f"Error loading assets: {e}")
     exit()
 
+# Initialize MediaPipe Pose
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 mp_drawing = mp.solutions.drawing_utils
 
+# Initialize Webcam
 cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 if not cap.isOpened():
     print("Error: Could not open webcam.")
     exit()
 
+# --- NEW CODE TO PRESERVE ASPECT RATIO ---
+# Get the native resolution from the camera
+frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+# Set the desired window width, and calculate the height to maintain aspect ratio
+window_width = 1600
+aspect_ratio = frame_height / frame_width
+window_height = int(window_width * aspect_ratio)
+
+# Create and resize the window
 window_name = 'AI Fitness Trainer'
 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-cv2.resizeWindow(window_name, 1600, 900)
+cv2.resizeWindow(window_name, window_width, window_height)
 
-prediction_buffer = []
-stable_exercise = "UNKNOWN"
+# --- Initialize variables for sequence prediction ---
+sequence_buffer = deque(maxlen=SEQUENCE_LENGTH)
+prediction_buffer = deque(maxlen=STABILITY_FRAMES)
+stable_exercise = "neutral"
+current_confidence = 0.0
 analyzer = ExerciseAnalyzer()
 
 print("--- Live feed started. Press 'q' to quit. ---")
@@ -158,145 +148,74 @@ while cap.isOpened():
     if not success:
         continue
 
+    # Process frame with MediaPipe
     image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = pose.process(image)
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
     if results.pose_landmarks:
-        try:
-            landmarks_original = results.pose_landmarks.landmark
-            
-            # Unpack the returned values correctly
-            normalized_coords_np, hip_center = normalize_pose_robust(landmarks_original, mp_pose)
-            
-            # Skip if normalization failed (produced NaNs)
-            if np.isnan(normalized_coords_np).any(): 
-                continue
+        # Draw landmarks on the frame
+        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        
+        # --- PREDICTION LOGIC ---
+        # Normalize landmarks for model input
+        normalized_landmarks = normalize_pose_robust(results.pose_landmarks.landmark)
+        
+        if not np.isnan(normalized_landmarks).any():
+            # Flatten and add to sequence buffer
+            sequence_buffer.append(normalized_landmarks.flatten())
 
-            # Helper to get normalized 3D coordinates for a specific landmark
-            def get_norm_lm_coords(lm_index):
-                return normalized_coords_np[lm_index]
-            
-            # Define Key Landmarks from the normalized coordinates
-            nose = get_norm_lm_coords(mp_pose.PoseLandmark.NOSE.value)
-            left_ear = get_norm_lm_coords(mp_pose.PoseLandmark.LEFT_EAR.value)
-            right_ear = get_norm_lm_coords(mp_pose.PoseLandmark.RIGHT_EAR.value)
-            
-            left_shoulder = get_norm_lm_coords(mp_pose.PoseLandmark.LEFT_SHOULDER.value)
-            right_shoulder = get_norm_lm_coords(mp_pose.PoseLandmark.RIGHT_SHOULDER.value)
-            left_hip = get_norm_lm_coords(mp_pose.PoseLandmark.LEFT_HIP.value)
-            right_hip = get_norm_lm_coords(mp_pose.PoseLandmark.RIGHT_HIP.value)
-            
-            left_elbow = get_norm_lm_coords(mp_pose.PoseLandmark.LEFT_ELBOW.value)
-            left_wrist = get_norm_lm_coords(mp_pose.PoseLandmark.LEFT_WRIST.value)
-            left_index = get_norm_lm_coords(mp_pose.PoseLandmark.LEFT_INDEX.value)
-            right_elbow = get_norm_lm_coords(mp_pose.PoseLandmark.RIGHT_ELBOW.value)
-            right_wrist = get_norm_lm_coords(mp_pose.PoseLandmark.RIGHT_WRIST.value)
-            right_index = get_norm_lm_coords(mp_pose.PoseLandmark.RIGHT_INDEX.value)
+            # Predict if the buffer is full
+            if len(sequence_buffer) == SEQUENCE_LENGTH:
+                input_data = np.expand_dims(np.array(sequence_buffer), axis=0)
+                
+                # Get model prediction
+                prediction_probs = model.predict(input_data)[0]
+                predicted_index = np.argmax(prediction_probs)
+                current_confidence = prediction_probs[predicted_index]
+                
+                # The keys in JSON are strings, so convert index to string
+                predicted_class = label_mapping[str(predicted_index)]
 
-            left_knee = get_norm_lm_coords(mp_pose.PoseLandmark.LEFT_KNEE.value)
-            left_ankle = get_norm_lm_coords(mp_pose.PoseLandmark.LEFT_ANKLE.value)
-            left_heel = get_norm_lm_coords(mp_pose.PoseLandmark.LEFT_HEEL.value)
-            right_knee = get_norm_lm_coords(mp_pose.PoseLandmark.RIGHT_KNEE.value)
-            right_ankle = get_norm_lm_coords(mp_pose.PoseLandmark.RIGHT_ANKLE.value)
-            right_heel = get_norm_lm_coords(mp_pose.PoseLandmark.RIGHT_HEEL.value)
+                # Stability logic
+                if current_confidence >= CONF_THRESHOLD:
+                    prediction_buffer.append(predicted_class)
+                    if len(prediction_buffer) == STABILITY_FRAMES and len(set(prediction_buffer)) == 1:
+                        stable_exercise = prediction_buffer[0]
+                else:
+                    prediction_buffer.clear()
 
-            # --- Calculate all new angles ---
-            angles = {
-                'angle_torso_side_left': calculate_angle(left_shoulder, left_hip, left_knee),
-                'angle_torso_side_right': calculate_angle(right_shoulder, right_hip, right_knee),
-                'angle_torso_front': calculate_angle(left_shoulder, right_hip, right_shoulder),
-                'angle_neck': calculate_angle(nose, left_ear, right_ear),
-                'angle_spine_hip_shoulder_left': calculate_angle(left_hip, left_shoulder, right_shoulder),
-                'angle_spine_hip_shoulder_right': calculate_angle(right_hip, right_shoulder, left_shoulder),
-                'angle_left_elbow': calculate_angle(left_shoulder, left_elbow, left_wrist),
-                'angle_right_elbow': calculate_angle(right_shoulder, right_elbow, right_wrist),
-                'angle_left_shoulder_abduction': calculate_angle(left_hip, left_shoulder, left_elbow),
-                'angle_right_shoulder_abduction': calculate_angle(right_hip, right_shoulder, right_elbow),
-                'angle_left_wrist': calculate_angle(left_elbow, left_wrist, left_index),
-                'angle_right_wrist': calculate_angle(right_elbow, right_wrist, right_index),
-                'angle_left_hip': calculate_angle(left_shoulder, left_hip, left_knee),
-                'angle_right_hip': calculate_angle(right_shoulder, right_hip, right_knee),
-                'angle_left_knee': calculate_angle(left_hip, left_knee, left_ankle),
-                'angle_right_knee': calculate_angle(right_hip, right_knee, right_ankle),
-                'angle_left_ankle': calculate_angle(left_knee, left_ankle, left_heel),
-                'angle_right_ankle': calculate_angle(right_knee, right_ankle, right_heel),
-                'angle_shoulder_hip_twist_left': calculate_angle(right_shoulder, left_hip, right_hip),
-                'angle_shoulder_hip_twist_right': calculate_angle(left_shoulder, right_hip, left_hip)
-            }
-            
-            # --- Calculate all new distances ---
-            distances = {
-                'dist_shoulders': np.linalg.norm(left_shoulder - right_shoulder),
-                'dist_hips': np.linalg.norm(left_hip - right_hip),
-                'dist_left_wrist_knee': np.linalg.norm(left_wrist - left_knee),
-                'dist_right_wrist_knee': np.linalg.norm(right_wrist - right_knee),
-                'dist_left_elbow_hip': np.linalg.norm(left_elbow - left_hip),
-                'dist_right_elbow_hip': np.linalg.norm(right_elbow - right_hip),
-                'dist_left_ankle_wrist': np.linalg.norm(left_ankle - left_wrist),
-                'dist_right_ankle_wrist': np.linalg.norm(right_ankle - right_wrist),
-                'dist_nose_hip': np.linalg.norm(nose - hip_center),
-                'dist_y_l_wrist_shoulder': abs(left_wrist[1] - left_shoulder[1]),
-                'dist_y_r_wrist_shoulder': abs(right_wrist[1] - right_shoulder[1]),
-                'dist_y_l_hip_knee': abs(left_hip[1] - left_knee[1]),
-                'dist_y_r_hip_knee': abs(right_hip[1] - right_knee[1]),
-                'dist_y_l_shoulder_hip': abs(left_shoulder[1] - left_hip[1]),
-                'dist_y_r_shoulder_hip': abs(right_shoulder[1] - right_hip[1]),
-                'dist_y_l_ankle_heel': abs(left_ankle[1] - left_heel[1]),
-                'dist_y_r_ankle_heel': abs(right_ankle[1] - right_heel[1]),
-                'dist_z_l_wrist_hip': abs(left_wrist[2] - left_hip[2]),
-                'dist_z_r_wrist_hip': abs(right_wrist[2] - right_hip[2]),
-                'dist_z_l_shoulder_hip': abs(left_shoulder[2] - left_hip[2]),
-                'dist_z_r_shoulder_hip': abs(right_shoulder[2] - right_hip[2]),
-                'dist_z_nose_hip': abs(nose[2] - hip_center[2])
-            }
+        # --- REP COUNTING & FORM ANALYSIS ---
+        analyzer.analyze_frame(stable_exercise, results.pose_landmarks.landmark)
 
-            # Create a dataframe for the model
-            final_row_values = list(angles.values()) + list(distances.values())
-            X_live = pd.DataFrame([final_row_values], columns=feature_names)
-            X_scaled = scaler.transform(X_live)
+    else:
+        # If no landmarks, clear buffers
+        sequence_buffer.clear()
+        prediction_buffer.clear()
+        stable_exercise = "neutral"
 
-            predicted_class = model.predict(X_scaled)[0]
-            confidence = np.max(model.predict_proba(X_scaled))
-
-            print(f"Predicted: {predicted_class:<30} | Confidence: {confidence:.2f}")
-
-            if confidence >= CONF_THRESHOLD:
-                prediction_buffer.append(predicted_class)
-                if len(prediction_buffer) > STABILITY_FRAMES:
-                    prediction_buffer.pop(0)
-
-                if len(prediction_buffer) == STABILITY_FRAMES and len(set(prediction_buffer)) == 1:
-                    stable_exercise = prediction_buffer[0]
-            else:
-                pass
-            
-            analyzer.analyze_frame(stable_exercise, angles, distances)
-            rep_counter, form_status, status_color = analyzer.get_status()
-
-        except (IndexError, TypeError) as e:
-            pass
-        except Exception as e:
-            pass
-            
-    if results.pose_landmarks:
-        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
-                                 mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
-                                 mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2))
-
-    cv2.rectangle(image, (0, 0), (450, 110), UI_COLOR, -1)
-    cv2.putText(image, 'EXERCISE', (15, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
-    cv2.putText(image, stable_exercise.replace('_', ' ').title(), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-    cv2.putText(image, 'REPS', (300, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
+    # --- DISPLAY UI ---
     rep_counter, form_status, status_color = analyzer.get_status()
-    cv2.putText(image, str(rep_counter), (295, 90), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2, cv2.LINE_AA)
+    
+    # Status bar for exercise
+    cv2.rectangle(image, (0, 0), (450, 70), UI_COLOR, -1)
+    cv2.putText(image, 'EXERCISE', (15, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
+    cv2.putText(image, stable_exercise.replace('_', ' ').title(), (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+    
+    # Status bar for reps
+    cv2.rectangle(image, (image.shape[1] - 200, 0), (image.shape[1], 70), UI_COLOR, -1)
+    cv2.putText(image, 'REPS', (image.shape[1] - 150, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
+    cv2.putText(image, str(rep_counter), (image.shape[1] - 160, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2, cv2.LINE_AA)
+
+    # Status bar for form feedback
     cv2.rectangle(image, (0, image.shape[0] - 60), (image.shape[1], image.shape[0]), status_color, -1)
     cv2.putText(image, form_status, (15, image.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3, cv2.LINE_AA)
 
-    cv2.imshow(window_name, image)
+    cv2.imshow('AI Fitness Trainer', image)
 
     if cv2.waitKey(5) & 0xFF == ord('q'):
         break
 
 cap.release()
 cv2.destroyAllWindows()
+pose.close()
