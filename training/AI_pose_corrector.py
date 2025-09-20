@@ -115,24 +115,26 @@ mp_drawing = mp.solutions.drawing_utils
 
 # Initialize Webcam
 cap = cv2.VideoCapture(0)
+
+# --- UPDATED CODE TO REQUEST HD RESOLUTION & SET WINDOW SIZE ---
+# 1. Request 1920x1080 resolution from the camera
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+
+# 2. Verify what resolution we actually got (for debugging)
+actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+print(f"Attempted to set 1920x1080, but camera provided: {actual_width}x{actual_height}")
+
+# 3. Create and resize the window to your desired size (1600x900)
+window_name = 'AI Fitness Trainer'
+cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+cv2.resizeWindow(window_name, 1600, 900)
+
 if not cap.isOpened():
     print("Error: Could not open webcam.")
     exit()
-
-# --- NEW CODE TO PRESERVE ASPECT RATIO ---
-# Get the native resolution from the camera
-frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-# Set the desired window width, and calculate the height to maintain aspect ratio
-window_width = 1600
-aspect_ratio = frame_height / frame_width
-window_height = int(window_width * aspect_ratio)
-
-# Create and resize the window
-window_name = 'AI Fitness Trainer'
-cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-cv2.resizeWindow(window_name, window_width, window_height)
+# -----------------------------------------------------------------
 
 # --- Initialize variables for sequence prediction ---
 sequence_buffer = deque(maxlen=SEQUENCE_LENGTH)
@@ -170,7 +172,7 @@ while cap.isOpened():
                 input_data = np.expand_dims(np.array(sequence_buffer), axis=0)
                 
                 # Get model prediction
-                prediction_probs = model.predict(input_data)[0]
+                prediction_probs = model.predict(input_data, verbose=0)[0] # Added verbose=0
                 predicted_index = np.argmax(prediction_probs)
                 current_confidence = prediction_probs[predicted_index]
                 
@@ -211,7 +213,7 @@ while cap.isOpened():
     cv2.rectangle(image, (0, image.shape[0] - 60), (image.shape[1], image.shape[0]), status_color, -1)
     cv2.putText(image, form_status, (15, image.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3, cv2.LINE_AA)
 
-    cv2.imshow('AI Fitness Trainer', image)
+    cv2.imshow(window_name, image)
 
     if cv2.waitKey(5) & 0xFF == ord('q'):
         break
