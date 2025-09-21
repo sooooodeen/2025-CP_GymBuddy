@@ -8,9 +8,12 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import confusion_matrix, accuracy_score
+from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+# --- CONFIGURATION (Recommended Improvement) ---
+SEQUENCE_LENGTH = 90 # Match the value in your AI_pose_corrector.py
 
 def plot_confusion_matrix(y_true, y_pred, classes):
     """
@@ -40,14 +43,13 @@ with open('label_mapping.json', 'w') as f:
     json.dump(label_mapping, f)
 print(f"Saved label mapping: {label_mapping}")
 
-# Isolate features (coordinates) and the target (class)
-features = [col for col in df.columns if col.startswith(('x_', 'y_', 'z_'))]
+# --- CHANGED: Isolate 2D features (x and y coordinates) and the target (class) ---
+features = [col for col in df.columns if col.startswith(('x_', 'y_'))]
 X = df[features]
 y = df['class_encoded']
 sequence_ids = df['sequence_id']
 
 # --- 2. GROUP DATA INTO SEQUENCES ---
-# Group by sequence_id to form sequences of frames
 print("Grouping data into sequences...")
 sequences = []
 labels = []
@@ -58,11 +60,8 @@ for seq_id in sequence_ids.unique():
     labels.append(sequence_label)
 
 # --- 3. PAD SEQUENCES ---
-# Pad sequences to ensure they all have the same length for the LSTM
-print("Paddling sequences...")
-# max_len = max(len(seq) for seq in sequences) # Optional: Can define a fixed max_len
-# NEW VERSION
-X_padded = pad_sequences(sequences, maxlen=90, padding='post', truncating='pre', dtype='float32')
+print("Padding sequences...")
+X_padded = pad_sequences(sequences, maxlen=SEQUENCE_LENGTH, padding='post', truncating='pre', dtype='float32')
 
 # Convert labels to a numpy array and one-hot encode them
 y_array = np.array(labels)
@@ -104,9 +103,9 @@ early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=1
 
 history = model.fit(
     X_train, y_train,
-    epochs=50, # Increase epochs as needed
+    epochs=50,
     batch_size=32,
-    validation_split=0.2, # Use part of the training data for validation during training
+    validation_split=0.2, # Use part of the training data for validation
     callbacks=[early_stopping]
 )
 

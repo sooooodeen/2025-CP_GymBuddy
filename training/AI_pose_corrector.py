@@ -9,14 +9,34 @@ from collections import deque
 # --- CONFIGURATION ---
 MODEL_FILENAME = 'exercise_classifier_lstm.h5'
 LABEL_MAPPING_FILENAME = 'label_mapping.json'
-SEQUENCE_LENGTH = 90  # Number of frames for one sequence (must match training)
-CONF_THRESHOLD = 0.80 # Confidence threshold for displaying a prediction
-STABILITY_FRAMES = 10   # Number of consistent frames to consider a prediction stable
-UI_COLOR = (0, 150, 255) # A new color for the UI
+SEQUENCE_LENGTH = 90      # Number of frames for one sequence (must match training)
+CONF_THRESHOLD = 0.80     # Confidence threshold for displaying a prediction
+STABILITY_FRAMES = 10     # Number of consistent frames to consider a prediction stable
+UI_COLOR = (0, 150, 255)  # A new color for the UI
 
-# --- HELPER FUNCTIONS (Kept for ExerciseAnalyzer) ---
-def calculate_angle(a, b, c):
-    """Calculates the angle between three 3D points."""
+# --- NEW HELPER FUNCTIONS ---
+def normalize_landmarks(landmarks):
+    """
+    Normalizes pose landmarks based on the bounding box of the pose,
+    making it independent of camera distance and body orientation.
+    Returns a (33, 2) numpy array with normalized x and y coordinates.
+    """
+    landmarks_np = np.array([[lm.x, lm.y] for lm in landmarks])
+
+    min_coords = np.min(landmarks_np, axis=0)
+    max_coords = np.max(landmarks_np, axis=0)
+    
+    center = (min_coords + max_coords) / 2.0
+    scale = np.max(max_coords - min_coords)
+    
+    if scale < 1e-6:
+        return np.full((33, 2), np.nan) # Avoid division by zero
+        
+    normalized_landmarks = (landmarks_np - center) / scale
+    return normalized_landmarks
+
+def calculate_angle_2d(a, b, c):
+    """Calculates the angle between three 2D points (as numpy arrays)."""
     a = np.array(a)
     b = np.array(b)
     c = np.array(c)
@@ -29,29 +49,7 @@ def calculate_angle(a, b, c):
         
     return angle
 
-def normalize_pose_robust(landmarks):
-    """Robust pose normalization using hip-to-shoulder torso length."""
-    landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in landmarks])
-
-    if np.isnan(landmarks_np).any():
-        return np.full((33, 3), np.nan)
-
-    left_hip = landmarks_np[mp.solutions.pose.PoseLandmark.LEFT_HIP.value]
-    right_hip = landmarks_np[mp.solutions.pose.PoseLandmark.RIGHT_HIP.value]
-    hip_center = (left_hip + right_hip) / 2.0
-    
-    left_shoulder = landmarks_np[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER.value]
-    right_shoulder = landmarks_np[mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER.value]
-    shoulder_center = (left_shoulder + right_shoulder) / 2.0
-
-    torso_length = np.linalg.norm(hip_center - shoulder_center)
-    if torso_length < 1e-6:
-        return np.full((33, 3), np.nan)
-
-    normalized_landmarks = (landmarks_np - hip_center) / torso_length
-    return normalized_landmarks
-
-# --- Exercise Analysis Class (Kept from original for rep counting/form) ---
+# --- UPDATED Exercise Analysis Class ---
 class ExerciseAnalyzer:
     def __init__(self):
         self.rep_counter = 0
@@ -60,26 +58,27 @@ class ExerciseAnalyzer:
         self.status_color = (0, 255, 0)
         self.previous_exercise = "neutral"
 
-    def analyze_frame(self, exercise_name, landmarks):
+    def analyze_frame(self, exercise_name, normalized_landmarks):
+        # Reset counter if exercise changes
         if exercise_name != self.previous_exercise:
             self.rep_counter = 0
             self.stage = None
             self.previous_exercise = exercise_name
         
-        # Get coordinates for angle calculations
-        shoulder = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER.value].y]
-        elbow = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_ELBOW.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_ELBOW.value].y]
-        wrist = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].y]
-        hip = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_HIP.value].y]
-        knee = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_KNEE.value].y]
-        ankle = [landmarks[mp.solutions.pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp.solutions.pose.PoseLandmark.LEFT_ANKLE.value].y]
-
         # Default form status
         self.form_status = "CORRECT FORM"
         self.status_color = (0, 255, 0)
 
+        # Landmarks mapping
+        mp_lm = mp.solutions.pose.PoseLandmark
+
         if 'bicepCurl' in exercise_name:
-            angle = calculate_angle(shoulder, elbow, wrist)
+            shoulder = normalized_landmarks[mp_lm.LEFT_SHOULDER.value]
+            elbow = normalized_landmarks[mp_lm.LEFT_ELBOW.value]
+            wrist = normalized_landmarks[mp_lm.LEFT_WRIST.value]
+            
+            angle = calculate_angle_2d(shoulder, elbow, wrist)
+            
             if angle > 160:
                 self.stage = "down"
             if angle < 30 and self.stage == 'down':
@@ -87,7 +86,12 @@ class ExerciseAnalyzer:
                 self.rep_counter += 1
         
         elif 'squat' in exercise_name:
-            angle = calculate_angle(hip, knee, ankle)
+            hip = normalized_landmarks[mp_lm.LEFT_HIP.value]
+            knee = normalized_landmarks[mp_lm.LEFT_KNEE.value]
+            ankle = normalized_landmarks[mp_lm.LEFT_ANKLE.value]
+
+            angle = calculate_angle_2d(hip, knee, ankle)
+            
             if angle > 160:
                 self.stage = "up"
             if angle < 90 and self.stage == 'up':
@@ -116,17 +120,13 @@ mp_drawing = mp.solutions.drawing_utils
 # Initialize Webcam
 cap = cv2.VideoCapture(0)
 
-# --- UPDATED CODE TO REQUEST HD RESOLUTION & SET WINDOW SIZE ---
-# 1. Request 1920x1080 resolution from the camera
+# Set HD resolution and create a resizable window
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-
-# 2. Verify what resolution we actually got (for debugging)
 actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-print(f"Attempted to set 1920x1080, but camera provided: {actual_width}x{actual_height}")
+print(f"Attempted 1920x1080, camera provided: {actual_width}x{actual_height}")
 
-# 3. Create and resize the window to your desired size (1600x900)
 window_name = 'AI Fitness Trainer'
 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 cv2.resizeWindow(window_name, 1600, 900)
@@ -134,9 +134,8 @@ cv2.resizeWindow(window_name, 1600, 900)
 if not cap.isOpened():
     print("Error: Could not open webcam.")
     exit()
-# -----------------------------------------------------------------
 
-# --- Initialize variables for sequence prediction ---
+# Initialize variables for sequence prediction
 sequence_buffer = deque(maxlen=SEQUENCE_LENGTH)
 prediction_buffer = deque(maxlen=STABILITY_FRAMES)
 stable_exercise = "neutral"
@@ -159,24 +158,21 @@ while cap.isOpened():
         # Draw landmarks on the frame
         mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
         
-        # --- PREDICTION LOGIC ---
-        # Normalize landmarks for model input
-        normalized_landmarks = normalize_pose_robust(results.pose_landmarks.landmark)
+        # --- NORMALIZATION AND PREDICTION LOGIC ---
+        normalized_landmarks = normalize_landmarks(results.pose_landmarks.landmark)
         
         if not np.isnan(normalized_landmarks).any():
-            # Flatten and add to sequence buffer
+            # Flatten for model input and add to sequence buffer
             sequence_buffer.append(normalized_landmarks.flatten())
 
             # Predict if the buffer is full
             if len(sequence_buffer) == SEQUENCE_LENGTH:
                 input_data = np.expand_dims(np.array(sequence_buffer), axis=0)
                 
-                # Get model prediction
-                prediction_probs = model.predict(input_data, verbose=0)[0] # Added verbose=0
+                prediction_probs = model.predict(input_data, verbose=0)[0]
                 predicted_index = np.argmax(prediction_probs)
                 current_confidence = prediction_probs[predicted_index]
                 
-                # The keys in JSON are strings, so convert index to string
                 predicted_class = label_mapping[str(predicted_index)]
 
                 # Stability logic
@@ -188,10 +184,11 @@ while cap.isOpened():
                     prediction_buffer.clear()
 
         # --- REP COUNTING & FORM ANALYSIS ---
-        analyzer.analyze_frame(stable_exercise, results.pose_landmarks.landmark)
+        # Pass the normalized landmarks to the analyzer
+        analyzer.analyze_frame(stable_exercise, normalized_landmarks)
 
     else:
-        # If no landmarks, clear buffers
+        # If no landmarks, clear buffers and reset state
         sequence_buffer.clear()
         prediction_buffer.clear()
         stable_exercise = "neutral"
