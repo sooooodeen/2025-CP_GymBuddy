@@ -14,8 +14,40 @@ CONF_THRESHOLD = 0.80
 STABILITY_FRAMES = 10
 UI_COLOR = (0, 150, 255)
 
-# --- HELPER FUNCTIONS ---
+# --- FINAL, STANDARDIZED HELPER FUNCTIONS ---
+
+def calculate_angle(a, b, c):
+    """Calculates the angle between three 3D landmark points."""
+    a = np.array([a.x, a.y, a.z])
+    b = np.array([b.x, b.y, b.z])
+    c = np.array([c.x, c.y, c.z])
+    
+    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
+    angle = np.abs(radians * 180.0 / np.pi)
+    
+    if angle > 180.0:
+        angle = 360 - angle
+    return angle
+
+def extract_angle_features_for_model(landmarks):
+    """Extracts the 8 key angles using the full 3D landmark data, matching the training script."""
+    lm = landmarks
+    mp_pose = mp.solutions.pose.PoseLandmark
+
+    # We use the 3D-aware calculate_angle function for model input
+    left_elbow = calculate_angle(lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_ELBOW], lm[mp_pose.LEFT_WRIST])
+    right_elbow = calculate_angle(lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_ELBOW], lm[mp_pose.RIGHT_WRIST])
+    left_shoulder = calculate_angle(lm[mp_pose.LEFT_ELBOW], lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_HIP])
+    right_shoulder = calculate_angle(lm[mp_pose.RIGHT_ELBOW], lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_HIP])
+    left_hip = calculate_angle(lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_HIP], lm[mp_pose.LEFT_KNEE])
+    right_hip = calculate_angle(lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_KNEE])
+    left_knee = calculate_angle(lm[mp_pose.LEFT_HIP], lm[mp_pose.LEFT_KNEE], lm[mp_pose.LEFT_ANKLE])
+    right_knee = calculate_angle(lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_KNEE], lm[mp_pose.RIGHT_ANKLE])
+    
+    return np.array([left_elbow, right_elbow, left_shoulder, right_shoulder, left_hip, right_hip, left_knee, right_knee])
+
 def calculate_angle_2d(a, b, c):
+    """This 2D version is kept for the form checker, which uses 2D coordinate arrays."""
     a = np.array(a)
     b = np.array(b)
     c = np.array(c)
@@ -24,21 +56,6 @@ def calculate_angle_2d(a, b, c):
     if angle > 180.0:
         angle = 360 - angle
     return angle
-
-def extract_angle_features_for_model(landmarks):
-    lm = landmarks
-    mp_pose = mp.solutions.pose.PoseLandmark
-
-    left_elbow = calculate_angle_2d([lm[mp_pose.LEFT_SHOULDER].x, lm[mp_pose.LEFT_SHOULDER].y], [lm[mp_pose.LEFT_ELBOW].x, lm[mp_pose.LEFT_ELBOW].y], [lm[mp_pose.LEFT_WRIST].x, lm[mp_pose.LEFT_WRIST].y])
-    right_elbow = calculate_angle_2d([lm[mp_pose.RIGHT_SHOULDER].x, lm[mp_pose.RIGHT_SHOULDER].y], [lm[mp_pose.RIGHT_ELBOW].x, lm[mp_pose.RIGHT_ELBOW].y], [lm[mp_pose.RIGHT_WRIST].x, lm[mp_pose.RIGHT_WRIST].y])
-    left_shoulder = calculate_angle_2d([lm[mp_pose.LEFT_ELBOW].x, lm[mp_pose.LEFT_ELBOW].y], [lm[mp_pose.LEFT_SHOULDER].x, lm[mp_pose.LEFT_SHOULDER].y], [lm[mp_pose.LEFT_HIP].x, lm[mp_pose.LEFT_HIP].y])
-    right_shoulder = calculate_angle_2d([lm[mp_pose.RIGHT_ELBOW].x, lm[mp_pose.RIGHT_ELBOW].y], [lm[mp_pose.RIGHT_SHOULDER].x, lm[mp_pose.RIGHT_SHOULDER].y], [lm[mp_pose.RIGHT_HIP].x, lm[mp_pose.RIGHT_HIP].y])
-    left_hip = calculate_angle_2d([lm[mp_pose.LEFT_SHOULDER].x, lm[mp_pose.LEFT_SHOULDER].y], [lm[mp_pose.LEFT_HIP].x, lm[mp_pose.LEFT_HIP].y], [lm[mp_pose.LEFT_KNEE].x, lm[mp_pose.LEFT_KNEE].y])
-    right_hip = calculate_angle_2d([lm[mp_pose.RIGHT_SHOULDER].x, lm[mp_pose.RIGHT_SHOULDER].y], [lm[mp_pose.RIGHT_HIP].x, lm[mp_pose.RIGHT_HIP].y], [lm[mp_pose.RIGHT_KNEE].x, lm[mp_pose.RIGHT_KNEE].y])
-    left_knee = calculate_angle_2d([lm[mp_pose.LEFT_HIP].x, lm[mp_pose.LEFT_HIP].y], [lm[mp_pose.LEFT_KNEE].x, lm[mp_pose.LEFT_KNEE].y], [lm[mp_pose.LEFT_ANKLE].x, lm[mp_pose.LEFT_ANKLE].y])
-    right_knee = calculate_angle_2d([lm[mp_pose.RIGHT_HIP].x, lm[mp_pose.RIGHT_HIP].y], [lm[mp_pose.RIGHT_KNEE].x, lm[mp_pose.RIGHT_KNEE].y], [lm[mp_pose.RIGHT_ANKLE].x, lm[mp_pose.RIGHT_ANKLE].y])
-    
-    return np.array([left_elbow, right_elbow, left_shoulder, right_shoulder, left_hip, right_hip, left_knee, right_knee])
 
 # --- FINAL UPGRADED Exercise Analysis Class with Full Form Correction ---
 class ExerciseAnalyzer:
@@ -64,13 +81,13 @@ class ExerciseAnalyzer:
             self.previous_exercise = exercise_name
             self.last_rep_time = time.time()
 
+        # CORRECTED STATUS LOGIC
+        self.form_status = "CORRECT FORM"
+        self.status_color = (0, 255, 0) 
+
         if time.time() - self.last_rep_time > self.RESET_TIMEOUT and self.stage is not None:
             self.stage = None
             self.form_status = "INACTIVE - RESET"
-        
-        if self.form_status != "INACTIVE - RESET":
-            self.form_status = "CORRECT FORM"
-        self.status_color = (0, 255, 0)
         
         mp_lm = mp.solutions.pose.PoseLandmark
 
@@ -117,23 +134,19 @@ class ExerciseAnalyzer:
             right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]
             right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]
 
-            left_elbow_visibility = left_elbow_lm.visibility
-            right_elbow_visibility = right_elbow_lm.visibility
-            
-            elbow_angle = 0
-            if left_elbow_visibility > right_elbow_visibility:
-                elbow_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_elbow_lm.x, left_elbow_lm.y], [left_wrist_lm.x, left_wrist_lm.y])
-            else:
-                elbow_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_elbow_lm.x, right_elbow_lm.y], [right_wrist_lm.x, right_wrist_lm.y])
+            left_elbow_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_elbow_lm.x, left_elbow_lm.y], [left_wrist_lm.x, left_wrist_lm.y])
+            right_elbow_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_elbow_lm.x, right_elbow_lm.y], [right_wrist_lm.x, right_wrist_lm.y])
+            avg_elbow_angle = (left_elbow_angle + right_elbow_angle) / 2
 
-            if elbow_angle < 95: self.stage = "down"
-            if elbow_angle > 160 and self.stage == 'down':
+            if avg_elbow_angle < 95: self.stage = "down"
+            if avg_elbow_angle > 160 and self.stage == 'down':
                 self.stage = "up"
                 self.rep_counter += 1
                 self.last_rep_time = time.time()
             
-            if self.stage == 'up' and elbow_angle > 95:
-                self.form_status = "LOWER THE WEIGHT MORE"
+            angle_diff = abs(left_elbow_angle - right_elbow_angle)
+            if angle_diff > 25 and self.stage == 'up':
+                self.form_status = "WARNING: PRESS EVENLY"
                 self.status_color = (0, 165, 255)
 
         elif 'lateralRaise' in exercise_name:
@@ -146,11 +159,8 @@ class ExerciseAnalyzer:
             right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]
             right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]
 
-            left_elbow_visibility = left_elbow_lm.visibility
-            right_elbow_visibility = right_elbow_lm.visibility
-
             shoulder_angle = 0
-            if left_elbow_visibility > right_elbow_visibility:
+            if left_elbow_lm.visibility > right_elbow_lm.visibility:
                 shoulder_angle = calculate_angle_2d([left_elbow_lm.x, left_elbow_lm.y], [left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y])
             else:
                 shoulder_angle = calculate_angle_2d([right_elbow_lm.x, right_elbow_lm.y], [right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y])
@@ -161,15 +171,16 @@ class ExerciseAnalyzer:
                 self.rep_counter += 1
                 self.last_rep_time = time.time()
 
-            elbow_angle = 0
-            if left_elbow_visibility > right_elbow_visibility:
-                elbow_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_elbow_lm.x, left_elbow_lm.y], [left_wrist_lm.x, left_wrist_lm.y])
-            else:
-                elbow_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_elbow_lm.x, right_elbow_lm.y], [right_wrist_lm.x, right_wrist_lm.y])
+            if self.stage == 'up':
+                elbow_angle = 0
+                if left_elbow_lm.visibility > right_elbow_lm.visibility:
+                    elbow_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_elbow_lm.x, left_elbow_lm.y], [left_wrist_lm.x, left_wrist_lm.y])
+                else:
+                    elbow_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_elbow_lm.x, right_elbow_lm.y], [right_wrist_lm.x, right_wrist_lm.y])
 
-            if elbow_angle < 140:
-                self.form_status = "ERROR: KEEP ARMS STRAIGHTER"
-                self.status_color = (0, 0, 255)
+                if elbow_angle < 140:
+                    self.form_status = "ERROR: KEEP ARMS STRAIGHTER"
+                    self.status_color = (0, 0, 255)
         
         elif 'tricepKickback' in exercise_name:
             left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]
@@ -182,7 +193,7 @@ class ExerciseAnalyzer:
             right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]
             right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]
             right_knee_lm = landmarks[mp_lm.RIGHT_KNEE.value]
-
+            
             left_wrist_visibility = left_wrist_lm.visibility
             right_wrist_visibility = right_wrist_lm.visibility
             
@@ -198,18 +209,19 @@ class ExerciseAnalyzer:
                 self.rep_counter += 1
                 self.last_rep_time = time.time()
 
-            torso_angle = 0
-            if landmarks[mp_lm.LEFT_HIP.value].visibility > landmarks[mp_lm.RIGHT_HIP.value].visibility:
-                 torso_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y], [left_knee_lm.x, left_knee_lm.y])
-            else: # Use right side landmarks if they are more visible
-                 torso_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y], [right_knee_lm.x, right_knee_lm.y])
+            if self.stage is not None:
+                torso_angle = 0
+                if left_hip_lm.visibility > right_hip_lm.visibility:
+                     torso_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y], [left_knee_lm.x, left_knee_lm.y])
+                else:
+                     torso_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y], [right_knee_lm.x, right_knee_lm.y])
 
-            if torso_angle > 140:
-                self.form_status = "ERROR: BEND YOUR TORSO MORE"
-                self.status_color = (0, 0, 255)
-            elif self.stage == 'out' and elbow_angle < 160:
-                self.form_status = "EXTEND ARM FULLY"
-                self.status_color = (0, 165, 255)
+                if torso_angle > 140:
+                    self.form_status = "ERROR: BEND YOUR TORSO MORE"
+                    self.status_color = (0, 0, 255)
+                elif self.stage == 'out' and elbow_angle < 160:
+                    self.form_status = "EXTEND ARM FULLY"
+                    self.status_color = (0, 165, 255)
 
         elif 'bentOverRow' in exercise_name:
             left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]
@@ -238,15 +250,16 @@ class ExerciseAnalyzer:
                 self.rep_counter += 1
                 self.last_rep_time = time.time()
             
-            torso_angle = 0
-            if landmarks[mp_lm.LEFT_HIP.value].visibility > landmarks[mp_lm.RIGHT_HIP.value].visibility:
-                torso_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y], [left_knee_lm.x, left_knee_lm.y])
-            else:
-                torso_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y], [right_knee_lm.x, right_knee_lm.y])
-            
-            if torso_angle > 100:
-                self.form_status = "ERROR: STAY BENT OVER"
-                self.status_color = (0, 0, 255)
+            if self.stage is not None:
+                torso_angle = 0
+                if left_hip_lm.visibility > right_hip_lm.visibility:
+                    torso_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y], [left_knee_lm.x, left_knee_lm.y])
+                else:
+                    torso_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y], [right_knee_lm.x, right_knee_lm.y])
+                
+                if torso_angle > 100:
+                    self.form_status = "ERROR: STAY BENT OVER"
+                    self.status_color = (0, 0, 255)
 
     def get_status(self):
         return self.rep_counter, self.form_status, self.status_color
@@ -307,7 +320,6 @@ while cap.isOpened():
                 prediction_probs = model.predict(input_data, verbose=0)[0]
                 predicted_index = np.argmax(prediction_probs)
                 
-                # --- CORRECTED: Simplified and safer label lookup ---
                 predicted_class = label_mapping.get(predicted_index, "unknown")
                 current_confidence = prediction_probs[predicted_index]
 
