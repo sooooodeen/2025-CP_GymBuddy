@@ -22,13 +22,11 @@ def plot_confusion_matrix(y_true, y_pred, classes):
     plt.title('Confusion Matrix')
     plt.ylabel('Actual Class')
     plt.xlabel('Predicted Class')
-    # Add a line to display the plot's accuracy
     accuracy = np.trace(cm) / np.sum(cm)
     plt.text(0.5, -0.1, f'Test Accuracy: {accuracy*100:.2f}%', ha='center', transform=plt.gca().transAxes)
     plt.show()
 
 print("Loading and preprocessing data...")
-# --- CHANGED: Read from the augmented CSV file ---
 df = pd.read_csv('exercise_sequences_augmented.csv')
 
 label_encoder = LabelEncoder()
@@ -39,7 +37,11 @@ with open('label_mapping.json', 'w') as f:
     json.dump(label_mapping, f)
 print(f"Saved label mapping: {label_mapping}")
 
-features = ['left_elbow', 'right_elbow', 'left_shoulder', 'right_shoulder', 'left_hip', 'right_hip', 'left_knee', 'right_knee']
+features = [
+    'left_elbow', 'right_elbow', 'left_shoulder', 'right_shoulder', 
+    'left_hip', 'right_hip', 'left_knee', 'right_knee',
+    'left_upper_arm', 'right_upper_arm'
+]
 X = df[features]
 y = df['class_encoded']
 sequence_ids = df['sequence_id']
@@ -64,7 +66,6 @@ X_train, X_test, y_train, y_test = train_test_split(
     X_padded, y_categorical, test_size=0.2, random_state=42, stratify=y_array
 )
 
-print(f"Data shape: (Samples, Timesteps, Features)")
 print(f"X_train shape: {X_train.shape}")
 print(f"X_test shape: {X_test.shape}")
 
@@ -88,16 +89,14 @@ model.summary()
 
 print("Training the model...")
 early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-# --- ADDED: Optional callback for more stable training ---
 reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=0.0001)
-
 
 history = model.fit(
     X_train, y_train,
     epochs=50,
     batch_size=32,
     validation_split=0.2,
-    callbacks=[early_stopping, reduce_lr] # Use both callbacks
+    callbacks=[early_stopping, reduce_lr]
 )
 
 print("Evaluating the model...")
@@ -112,4 +111,4 @@ plot_confusion_matrix(y_true, y_pred, classes=label_encoder.classes_)
 
 print("Saving the trained model...")
 model.save('exercise_classifier_lstm.h5')
-print("Model saved as exercise_classifier_lstm.h5")
+print("Model saved.")

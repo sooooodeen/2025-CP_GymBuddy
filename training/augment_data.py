@@ -1,50 +1,37 @@
 import pandas as pd
 import numpy as np
 
-# --- CONFIGURATION ---
 INPUT_CSV = 'exercise_sequences.csv'
 OUTPUT_CSV = 'exercise_sequences_augmented.csv'
 CLASSES_TO_AUGMENT = ['bentOverRow', 'bicepCurl', 'lateralRaise', 'shoulderPress', 'tricepKickback']
 
-# NEW: Define the pairs of columns to swap for a horizontal flip
 COLUMN_SWAP_PAIRS = {
     'left_elbow': 'right_elbow',
     'left_shoulder': 'right_shoulder',
     'left_hip': 'right_hip',
-    'left_knee': 'right_knee'
+    'left_knee': 'right_knee',
+    'left_upper_arm': 'right_upper_arm'
 }
 
 def augment_data_with_angles(input_path, output_path):
-    """
-    Reads angle feature data from a CSV, creates horizontally flipped (mirrored)
-    versions by swapping left/right columns, and saves a new augmented CSV.
-    """
     print(f"Loading data from {input_path}...")
     df = pd.read_csv(input_path)
     
     augmented_rows = []
-    
     sequences_to_augment = df[df['class'].isin(CLASSES_TO_AUGMENT)]['sequence_id'].unique()
     
     print(f"Found {len(sequences_to_augment)} sequences to augment.")
 
     for seq_id in sequences_to_augment:
         sequence_df = df[df['sequence_id'] == seq_id].copy()
-        
         augmented_seq_id = f"{seq_id}_aug_flip"
         sequence_df['sequence_id'] = augmented_seq_id
         
-        # --- Perform the Augmentation by Swapping Columns ---
         for left_col, right_col in COLUMN_SWAP_PAIRS.items():
-            # Store original left column in a temporary variable
             temp_left = sequence_df[left_col].copy()
-            
-            # Assign right column's data to the left column
             sequence_df[left_col] = sequence_df[right_col]
-            
-            # Assign original left column's data (from temp) to the right column
             sequence_df[right_col] = temp_left
-
+        
         augmented_rows.append(sequence_df)
 
     if not augmented_rows:

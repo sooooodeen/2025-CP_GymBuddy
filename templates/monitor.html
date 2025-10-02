@@ -1,114 +1,278 @@
 {% extends "house.html" %}
 {% block content %}
 <head>
-  <title>Monitor Workout | {{ session.get('user_gym_name', 'Admin') }}</title>
+    <title>Monitor Workout | {{ session.get('user_gym_name', 'Admin') }}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </head>
 <div class="p-10 h-full font-Helvetica flex flex-col gap-6">
     <div id="header" class="w-full grid grid-cols-2 h-[7%]">
         <h1 class="text-4xl font-semibold">Monitor<p class="text-lg text-gray-400 font-normal leading-[15px]">Live monitoring of users workout</p></h1>
         <div class="flex justify-end items-center gap-2">
-          <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
+            <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
         </div>
     </div>
     <div class="grid grid-cols-2 font-Helvetica text-xl">
         <label>
-          Camera 1:
-          <select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-1"></select>
+            Camera 1:
+            <select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-1"></select>
         </label>
         <label>
-          Camera 2:
-          <select class="px-3 rounded-lg border border-gray-400  py-2" id="select-camera-2"></select>
+            Camera 2:
+            <select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-2"></select>
         </label>
     </div>
 
     <div class="flex w-full items-center gap-2 ">
-      <div class="w-1/2">
-        <video class="w-full h-full" id="camera1" controls autoplay playsinline></video>
-      </div>
-      <div class="w-1/2">
-        <video class="w-full h-full" id="camera2" controls autoplay playsinline></video>
-      </div>
+        <!-- ===== CAMERA 1 FEED ===== -->
+        <div class="w-1/2 relative">
+            <video class="w-full h-full bg-gray-200 rounded-lg" id="camera1" autoplay playsinline></video>
+            <canvas id="canvas1" class="absolute top-0 left-0 w-full h-full"></canvas>
+            
+            <div id="results1" 
+                 class="absolute top-0 left-0 m-4 bg-gray-900 bg-opacity-75 text-white p-4 rounded-lg text-left shadow-lg" 
+                 style="display: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">
+                
+                <div class="flex items-center gap-4">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-400">EXERCISE</p>
+                        <p id="exercise1" class="text-3xl font-bold leading-tight">Neutral</p>
+                    </div>
+                    <div class="border-l border-gray-600 pl-4">
+                        <p class="text-sm font-semibold text-gray-400">REPS</p>
+                        <p id="reps1" class="text-3xl font-bold leading-tight">0</p>
+                    </div>
+                </div>
+                <div class="mt-3 pt-3 border-t border-gray-600">
+                    <p id="feedback1" class="text-xl font-medium text-green-400">START EXERCISE</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== CAMERA 2 FEED ===== -->
+        <div class="w-1/2 relative">
+            <video class="w-full h-full bg-gray-200 rounded-lg" id="camera2" autoplay playsinline></video>
+            <canvas id="canvas2" class="absolute top-0 left-0 w-full h-full"></canvas>
+            <div id="results2" 
+                 class="absolute top-0 left-0 m-4 bg-gray-900 bg-opacity-75 text-white p-4 rounded-lg text-left shadow-lg" 
+                 style="display: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">
+                
+                <div class="flex items-center gap-4">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-400">EXERCISE</p>
+                        <p id="exercise2" class="text-3xl font-bold leading-tight">Neutral</p>
+                    </div>
+                    <div class="border-l border-gray-600 pl-4">
+                        <p class="text-sm font-semibold text-gray-400">REPS</p>
+                        <p id="reps2" class="text-3xl font-bold leading-tight">0</p>
+                    </div>
+                </div>
+                <div class="mt-3 pt-3 border-t border-gray-600">
+                    <p id="feedback2" class="text-xl font-medium text-green-400">START EXERCISE</p>
+                </div>
+            </div>
+        </div>
     </div>
-      <div class="flex justify-center  w-full">
-        <button id="btn-open-camera" class="flex  gap-3 cursor-pointer text-2xl justify-center w-[15%] bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-3 py-2 rounded-lg items-center text-white font-Helvetica"><svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-camera-icon lucide-camera"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg> Open Cameras</button>
-      </div>
 
-      <script>
-        var devices;
-        var camSelect1 = document.getElementById("select-camera-1");
-        var camSelect2 = document.getElementById("select-camera-2");
-        window.onload = async function(){
-          await listDevices()
-        }
-  
-        async function listDevices(){
-          devices = await getCameraDevices()
-          for (let index = 0; index < devices.length; index++) {
-            const device = devices[index];
-            camSelect1.appendChild(new Option(device.label ?? "Camera "+index,device.deviceId));
-            camSelect2.appendChild(new Option(device.label ?? "Camera "+index,device.deviceId));
-          }
-          camSelect2.selectedIndex = 1;
-        }
-  
-        async function getCameraDevices(){
-          await askForPermissions();
-          var allDevices = await navigator.mediaDevices.enumerateDevices();
-          var cameraDevices = [];
-          for (var i=0;i<allDevices.length;i++){
-            var device = allDevices[i];
-            if (device.kind == 'videoinput'){
-              cameraDevices.push(device);
+    <div class="flex justify-center w-full">
+        <button id="btn-open-camera" class="flex gap-3 cursor-pointer text-2xl justify-center w-auto bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-6 py-3 rounded-lg items-center text-black font-Helvetica disabled:opacity-50 disabled:cursor-not-allowed">
+            <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-camera-icon lucide-camera"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg>
+            Open Cameras
+        </button>
+    </div>
+
+<script>
+    // --- PART 1: CAMERA CONTROL LOGIC ---
+    let devices;
+    const camSelect1 = document.getElementById("select-camera-1");
+    const camSelect2 = document.getElementById("select-camera-2");
+    const openCameraButton = document.getElementById("btn-open-camera");
+    let isCameraOpen = false;
+    let intervalId = null;
+
+    window.onload = async function() {
+        await listDevices();
+    };
+
+    async function listDevices() {
+        try {
+            devices = await getCameraDevices();
+            if (devices.length === 0) {
+                // Handle case where no cameras are found
+                camSelect1.disabled = true;
+                camSelect2.disabled = true;
+                openCameraButton.disabled = true;
+                openCameraButton.innerText = "No Cameras Found";
+                return;
             }
-          }
-          return cameraDevices;
-        }
-  
-        async function askForPermissions(){
-          var stream;
-          try {
-            var constraints = {video: true, audio: false}; //ask for camera permission
-            stream = await navigator.mediaDevices.getUserMedia(constraints);  
-          } catch (error) {
-            console.log(error);
-          }
-          closeStream(stream);
-        }
-  
-        function closeStream(stream){
-          try{
-            if (stream){
-              stream.getTracks().forEach(track => track.stop());
+            devices.forEach((device, index) => {
+                camSelect1.appendChild(new Option(device.label || `Camera ${index + 1}`, device.deviceId));
+                camSelect2.appendChild(new Option(device.label || `Camera ${index + 1}`, device.deviceId));
+            });
+            if (devices.length > 1) {
+                camSelect2.selectedIndex = 1;
             }
-          } catch (e){
-            alert(e.message);
-          }
+        } catch (e) {
+            console.error("Error listing devices:", e);
+            openCameraButton.innerText = "Camera Permission Denied";
+            openCameraButton.disabled = true;
         }
-  
-        document.getElementById("btn-open-camera").addEventListener("click",function(){
-          captureCamera(document.getElementById("camera1"),camSelect1.selectedOptions[0].value);
-          captureCamera(document.getElementById("camera2"),camSelect2.selectedOptions[0].value);
+    }
+
+    async function getCameraDevices() {
+        // This is a small trick to prompt for permission first.
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        // Stop the tracks immediately after getting permission.
+        stream.getTracks().forEach(track => track.stop());
+        
+        let allDevices = await navigator.mediaDevices.enumerateDevices();
+        return allDevices.filter(device => device.kind === 'videoinput');
+    }
+
+    openCameraButton.addEventListener("click", function() {
+        if (!isCameraOpen) {
+            openCameraButton.disabled = true; // ENHANCEMENT: Disable button to prevent spam clicks
+            captureCamera(document.getElementById("camera1"), camSelect1.value, feedbackElement1);
+            captureCamera(document.getElementById("camera2"), camSelect2.value, feedbackElement2);
+            
+            if (intervalId === null) {
+                intervalId = setInterval(() => {
+                    sendFrame(video1, 'camera1');
+                    sendFrame(video2, 'camera2');
+                }, 1000 / FPS);
+            }
+            document.getElementById('results1').style.display = 'block';
+            document.getElementById('results2').style.display = 'block';
+            isCameraOpen = true;
+            openCameraButton.innerText = "Cameras Live";
+        }
+    });
+
+    function captureCamera(video, selectedCameraId, feedbackElement) {
+        let constraints = {
+            audio: false,
+            video: { deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined }
+        };
+        navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
+            video.srcObject = stream;
+        }).catch(function(error) {
+            // BUG FIX: Replaced alert() with a non-blocking UI message
+            console.error("Camera capture error:", error);
+            feedbackElement.innerText = "CAMERA ERROR!";
+            feedbackElement.className = "text-xl font-medium text-red-500 mt-2";
         });
-  
-        function captureCamera(video, selectedCamera) {
-          var constraints = {
-            audio:false,
-            video:true
-          }
-          if (selectedCamera) {
-            constraints = {
-              video: {deviceId: selectedCamera},
-              audio: false
-            }
-          }
-          navigator.mediaDevices.getUserMedia(constraints).then(function(camera) {
-            video.srcObject = camera;
-          }).catch(function(error) {
-            alert('Unable to capture your camera. Please check console logs.');
-            console.error(error);
-          });
-        }
-      </script>
-</div>
+    }
+    
+    // --- PART 2: AI INTEGRATION LOGIC ---
+    const socket = io();
+    const FPS = 10;
+    
+    const video1 = document.getElementById('camera1');
+    const canvas1 = document.getElementById('canvas1');
+    const canvasCtx1 = canvas1.getContext('2d');
+    const exerciseElement1 = document.getElementById('exercise1');
+    const repsElement1 = document.getElementById('reps1');
+    const feedbackElement1 = document.getElementById('feedback1');
 
+    const video2 = document.getElementById('camera2');
+    const canvas2 = document.getElementById('canvas2');
+    const canvasCtx2 = canvas2.getContext('2d');
+    const exerciseElement2 = document.getElementById('exercise2');
+    const repsElement2 = document.getElementById('reps2');
+    const feedbackElement2 = document.getElementById('feedback2');
+
+    const POSE_CONNECTIONS = [[0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8], [9, 10], [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19], [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20], [11, 23], [12, 24], [23, 24], [23, 25], [24, 26], [25, 27], [26, 28], [27, 29], [28, 30], [29, 31], [30, 32], [27, 31], [28, 32]];
+
+    function drawSkeleton(landmarks, context, canvas) {
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        if (!landmarks || landmarks.length === 0) return;
+        const width = canvas.width;
+        const height = canvas.height;
+        context.lineWidth = 4;
+        context.strokeStyle = 'white';
+        context.beginPath();
+        POSE_CONNECTIONS.forEach(conn => {
+            const start = landmarks[conn[0]];
+            const end = landmarks[conn[1]];
+            if (start && end && start.visibility > 0.5 && end.visibility > 0.5) {
+                context.moveTo(start.x * width, start.y * height);
+                context.lineTo(end.x * width, end.y * height);
+            }
+        });
+        context.stroke();
+        context.fillStyle = '#FF4136';
+        landmarks.forEach(lm => {
+            if (lm && lm.visibility > 0.5) {
+                context.beginPath();
+                context.arc(lm.x * width, lm.y * height, 6, 0, 2 * Math.PI);
+                context.fill();
+            }
+        });
+    }
+
+    socket.on('connect', () => console.log('Connected to Python backend!'));
+    
+    function sendFrame(videoElement, cameraIdentifier) {
+        if (!videoElement.srcObject || videoElement.readyState < 2 || videoElement.videoWidth === 0) {
+            return;
+        }
+        
+        const processWidth = 480;
+        const processHeight = (videoElement.videoHeight / videoElement.videoWidth) * processWidth;
+
+        let tempCanvas = document.createElement('canvas');
+        tempCanvas.width = processWidth;
+        tempCanvas.height = processHeight;
+        let tempCtx = tempCanvas.getContext('2d');
+
+        tempCtx.drawImage(videoElement, 0, 0, processWidth, processHeight);
+        
+        let dataURL = tempCanvas.toDataURL('image/jpeg', 0.4);
+
+        socket.emit('image', {
+            image_data: dataURL,
+            camera_id: cameraIdentifier
+        });
+    }
+
+    // ENHANCEMENT: Refactored UI update logic into its own function
+    function updateUi(data, elements) {
+        elements.exercise.innerText = data.exercise.replace(/([A-Z])/g, ' $1').trim();
+        elements.reps.innerText = data.reps;
+        elements.feedback.innerText = data.form_status;
+        
+        if (data.form_status.includes("ERROR")) {
+            elements.feedback.className = "text-xl font-medium text-red-400 mt-2";
+        } else if (data.form_status.includes("WARNING")) {
+            elements.feedback.className = "text-xl font-medium text-yellow-400 mt-2";
+        } else {
+            elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
+        }
+        
+        if (elements.video.videoWidth > 0) {
+            elements.canvas.width = elements.video.videoWidth;
+            elements.canvas.height = elements.video.videoHeight;
+            drawSkeleton(data.landmarks, elements.canvasCtx, elements.canvas);
+        }
+    }
+    
+    socket.on('response', (data) => {
+        // Map camera_id to its corresponding set of DOM elements
+        const elementMap = {
+            'camera1': {
+                exercise: exerciseElement1, reps: repsElement1, feedback: feedbackElement1,
+                video: video1, canvas: canvas1, canvasCtx: canvasCtx1
+            },
+            'camera2': {
+                exercise: exerciseElement2, reps: repsElement2, feedback: feedbackElement2,
+                video: video2, canvas: canvas2, canvasCtx: canvasCtx2
+            }
+        };
+
+        const elements = elementMap[data.camera_id];
+        if (elements) {
+            updateUi(data, elements);
+        }
+    });
+</script> 
+</div>
 {% endblock %}
