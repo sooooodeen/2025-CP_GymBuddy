@@ -20,15 +20,11 @@
             <div class="border border-gray-300 bg-white h-[49.5%] w-110 rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
                 <h1 class="text-xl font-bold font-Helvetica mb-2">Assigned Trainers</h1>
                 <div class="flex flex-col overflow-y-auto gap-2 h-[100%]">
-                    
                     {% for assignment in assignments %}
                     <div class="border border-[#e2dbdb] h-auto w-full rounded-3xl items-center p-2 grid grid-cols-[15%_1fr_20%_15%] place-items-center justify-center">
                         <img class="h-[45px] w-[45px] object-cover rounded-4xl justify-self-start" src="{{ url_for('static', filename=assignment.trainer.photo_url) if assignment.trainer.photo_url else url_for('static', filename='src/images/Default_pfp.jpg') }}" alt="">
                         <h1 class="text-[#5a5757] text-lg justify-self-start">{{ assignment.trainer.firstname }} {{ assignment.trainer.lastname }}</h1>
-                        
-                        <!-- UPDATED: Time is now in a span with a data-timestamp attribute -->
                         <span class="text-sm text-gray-500 time-ago" data-timestamp="{{ assignment.assigned_at.isoformat() }}"></span>
-
                         <form class="flex justify-center items-center" action="{{ url_for('unassign_trainer', assignment_id=assignment.id) }}" method="POST">
                             <button type="submit" >
                                 <svg class="cursor-pointer stroke-[#ee2e2e] hover:stroke-[#ff7272]" xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="Red" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
@@ -38,15 +34,22 @@
                     {% else %}
                     <div class="text-center text-gray-500 p-4">No trainers assigned yet.</div>
                     {% endfor %}
-                    </div>
+                </div>
             </div>
             <div class="border border-gray-300 bg-white h-[49.5%] w-110 rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
                 <h1 class="text-xl font-bold font-Helvetica mb-2">Recent Error Log</h1>
                 <div class="flex flex-col overflow-y-auto gap-2 h-[100%]">
-                    <div class="border border-[#e2dbdb] h-[22%] w-full rounded-3xl items-center p-4 grid grid-cols-[1fr_20%] place-items-center justify-center">
-                        <h1 class="text-[#5a5757] text-xl justify-self-start">Chest Press</h1>
-                        <h1 class="text-[#5a5757] text-lg">5:30PM</h1>
+                    {% for log, user in recent_errors %}
+                    <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center">
+                        <div class="justify-self-start">
+                            <p class="text-[#5a5757] text-md font-semibold">{{ log.error_type.replace('ERROR: ', '') }}</p>
+                            <p class="text-gray-500 text-sm">{{ user.firstname }} {{ user.lastname }}</p>
+                        </div>
+                        <span class="text-sm text-gray-500 time-ago" data-timestamp="{{ log.timestamp.isoformat() }}"></span>
                     </div>
+                    {% else %}
+                    <div class="text-center text-gray-500 p-4 h-full flex items-center justify-center">No errors recorded yet.</div>
+                    {% endfor %}
                 </div>
             </div>
         </div>
@@ -61,7 +64,7 @@
                         <h1 class="rounded-full flex justify-center items-center py-1 px-3 bg-gray-200 text-xs w-15 text-gray-500 font-Helvetica font-semibold tracking-wider">Today</h1>
                     </div>
                 </div>
-                <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">10</h1>
+                <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">{{ total_errors_today }}</h1>
             </div>
             <div class="bg-white h-full rounded-2xl p-6 flex items-center flex-col">
                 <div class="box-head flex gap-2 w-full items-center">
@@ -73,7 +76,7 @@
                         <h1 class="rounded-full flex justify-center items-center py-1 px-3 bg-gray-200 text-xs w-22 text-gray-500 font-Helvetica font-semibold tracking-wider">This week</h1>
                     </div>
                 </div>
-                <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">Bicep Curls</h1>
+                <h1 class="text-2xl h-full w-full flex justify-center items-center font-bold text-center">{{ most_common_error_week }}</h1>
             </div>
             <div class="bg-white  h-full rounded-2xl p-6 flex items-center flex-col">
                 <div class="box-head flex gap-2 w-full items-center">
@@ -85,170 +88,112 @@
                         <h1 class="rounded-full flex justify-center items-center py-1 px-3 bg-gray-200 text-xs w-24 text-gray-500 font-Helvetica font-semibold tracking-wider">This month</h1>
                     </div>
                 </div>
-                <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">10</h1>
+                <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">{{ total_errors_month }}</h1>
             </div>
             <div class="h-full flex flex-col col-span-2 justify-around rounded-2xl bg-white p-6 px-8">
                 <div class="flex flex-col justify-between items-start gap-4 py-5">
                     <h1 class="font-Helvetica text-3xl font-bold">Muscle Group Errors Chart</h1>
-                    <div class="flex gap-2 items-center">
-                        <p class="inline-flex">Filter by month:</p>
-                        <select class="py-2 px-3 hover:border-gray-600 rounded-2xl border border-gray-300" id="dataToggle">
-                            <option value="january" selected>January</option>
-                            <option value="february">February</option>
-                            <option value="march">March</option>
-                            <option value="april">April</option>
-                            <option value="may">May</option>
-                            <option value="june">June</option>
-                            <option value="july">July</option>
-                            <option value="august">August</option>
-                            <option value="september">September</option>
-                            <option value="october">October</option>
-                            <option value="november">November</option>
-                            <option value="december">December</option>
-                        </select>
-                    </div>
+                     <p>Error distribution for the current month.</p>
                 </div>
                 <canvas class="chart !w-[100%]" id="myBarChart"></canvas>
             </div>
         </div>
     </div>
 </div>
-<!-- NEW: JavaScript for real-time timestamp updates -->
+
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // This function calculates the "time ago" string
-        function formatTimeAgo(utcIsoString) {
-            const now = new Date();
-            const past = new Date(utcIsoString);
-            const seconds = Math.floor((now - past) / 1000);
-
-            let interval = seconds / 31536000;
-            if (interval > 1) return Math.floor(interval) + " years ago";
-            interval = seconds / 2592000;
-            if (interval > 1) return Math.floor(interval) + " months ago";
-            interval = seconds / 86400;
-            if (interval > 1) return Math.floor(interval) + " days ago";
-            interval = seconds / 3600;
-            if (interval > 1) return Math.floor(interval) + " hours ago";
-            interval = seconds / 60;
-            if (interval > 1) return Math.floor(interval) + " minutes ago";
-            
-            return "just now";
-        }
-
-        // This function runs once to update all timestamps on the page
-        function updateAllTimestamps() {
-            const timeElements = document.querySelectorAll('.time-ago');
-            timeElements.forEach(el => {
-                const timestamp = el.getAttribute('data-timestamp');
-                if (timestamp) {
-                    el.textContent = formatTimeAgo(timestamp + 'Z'); // Add 'Z' to ensure it's parsed as UTC
-                }
-            });
-        }
-
-        // 1. Run the update function immediately when the page loads
-        updateAllTimestamps();
-
-        // 2. Set an interval to re-run the update function every 60 seconds
-        // This keeps the "time ago" strings fresh without a page reload
-        setInterval(updateAllTimestamps, 60000);
-    });
-   //sample data
-        const allData = {
-            january: { chest: 65, back: 59, legs: 80, arms: 81 },
-            february: { chest: 70, back: 65, legs: 85, arms: 75 },
-            march: { chest: 72, back: 68, legs: 82, arms: 78 },
-            april: { chest: 75, back: 70, legs: 88, arms: 80 },
-            may: { chest: 78, back: 72, legs: 90, arms: 83 },
-            june: { chest: 80, back: 75, legs: 92, arms: 85 },
-            july: { chest: 85, back: 78, legs: 95, arms: 88 },
-            august: { chest: 82, back: 76, legs: 90, arms: 82 },
-            september: { chest: 79, back: 73, legs: 88, arms: 79 },
-            october: { chest: 77, back: 71, legs: 85, arms: 77 },
-            november: { chest: 74, back: 69, legs: 82, arms: 74 },
-            december: { chest: 70, back: 64, legs: 80, arms: 70 },
-        };
-
-        const ctx = document.getElementById('myBarChart').getContext('2d');
-
-        const colors = {
-            chest: { backgroundColor: 'rgba(255, 99, 132, 0.5)', borderColor: 'rgba(255, 99, 132, 1)' },
-            back: { backgroundColor: 'rgba(54, 162, 235, 0.5)', borderColor: 'rgba(54, 162, 235, 1)' },
-            legs: { backgroundColor: 'rgba(255, 206, 86, 0.5)', borderColor: 'rgba(255, 206, 86, 1)' },
-            arms: { backgroundColor: 'rgba(75, 192, 192, 0.5)', borderColor: 'rgba(75, 192, 192, 1)' }
-        };
-
-        const myChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: ['Muscle Groups'], 
-                datasets: [
-                    {
-                        label: 'Chest',
-                        data: [allData.january.chest],
-                        backgroundColor: colors.chest.backgroundColor,
-                        borderColor: colors.chest.borderColor,
-                        borderWidth: 1
-                    },
-                    {
-                        label: 'Back',
-                        data: [allData.january.back],
-                        backgroundColor: colors.back.backgroundColor,
-                        borderColor: colors.back.borderColor,
-                        borderWidth: 1
-                    },
-                    {
-                        label: 'Legs',
-                        data: [allData.january.legs],
-                        backgroundColor: colors.legs.backgroundColor,
-                        borderColor: colors.legs.borderColor,
-                        borderWidth: 1
-                    },
-                    {
-                        label: 'Arms',
-                        data: [allData.january.arms],
-                        backgroundColor: colors.arms.backgroundColor,
-                        borderColor: colors.arms.borderColor,
-                        borderWidth: 1
-                    }
-                ]
-            },
-            options: {
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 100,
-                        
-                    },
-                    x:{
-                      ticks: {
-                            font: {
-                                size: 14,
-                                weight: 'bold'
-                            },
-                        }  
-                    }
-                }
+// --- MODIFIED: Timestamp logic remains the same ---
+document.addEventListener('DOMContentLoaded', function() {
+    function formatTimeAgo(utcIsoString) {
+        const now = new Date();
+        const past = new Date(utcIsoString);
+        const seconds = Math.floor((now - past) / 1000);
+        let interval = seconds / 31536000;
+        if (interval > 1) return Math.floor(interval) + " years ago";
+        interval = seconds / 2592000;
+        if (interval > 1) return Math.floor(interval) + " months ago";
+        interval = seconds / 86400;
+        if (interval > 1) return Math.floor(interval) + " days ago";
+        interval = seconds / 3600;
+        if (interval > 1) return Math.floor(interval) + " hours ago";
+        interval = seconds / 60;
+        if (interval > 1) return Math.floor(interval) + " minutes ago";
+        return "just now";
+    }
+    function updateAllTimestamps() {
+        const timeElements = document.querySelectorAll('.time-ago');
+        timeElements.forEach(el => {
+            const timestamp = el.getAttribute('data-timestamp');
+            if (timestamp) {
+                el.textContent = formatTimeAgo(timestamp + 'Z');
             }
         });
+    }
+    updateAllTimestamps();
+    setInterval(updateAllTimestamps, 60000);
+});
 
-        function updateChart(dataKey) {
-            const monthData = allData[dataKey]; 
+// --- MODIFIED: Chart.js logic now uses data from the backend ---
+// 1. Get the data passed from Flask. The 'tojson' filter makes it a safe JSON string.
+const chartData = JSON.parse('{{ current_month_chart_data | tojson | safe }}');
 
-            myChart.data.datasets[0].data = [monthData.chest];
-            myChart.data.datasets[1].data = [monthData.back];
-            myChart.data.datasets[2].data = [monthData.legs];
-            myChart.data.datasets[3].data = [monthData.arms];
-            
-            myChart.update();
+const ctx = document.getElementById('myBarChart').getContext('2d');
+const colors = {
+    chest: { backgroundColor: 'rgba(255, 99, 132, 0.5)', borderColor: 'rgba(255, 99, 132, 1)' },
+    back: { backgroundColor: 'rgba(54, 162, 235, 0.5)', borderColor: 'rgba(54, 162, 235, 1)' },
+    legs: { backgroundColor: 'rgba(255, 206, 86, 0.5)', borderColor: 'rgba(255, 206, 86, 1)' },
+    arms: { backgroundColor: 'rgba(75, 192, 192, 0.5)', borderColor: 'rgba(75, 192, 192, 1)' }
+};
+
+const myChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: ['Muscle Groups'], 
+        datasets: [
+            {
+                label: 'Chest',
+                data: [chartData.chest], // Use real data
+                backgroundColor: colors.chest.backgroundColor,
+                borderColor: colors.chest.borderColor,
+                borderWidth: 1
+            },
+            {
+                label: 'Back',
+                data: [chartData.back], // Use real data
+                backgroundColor: colors.back.backgroundColor,
+                borderColor: colors.back.borderColor,
+                borderWidth: 1
+            },
+            {
+                label: 'Legs',
+                data: [chartData.legs], // Use real data
+                backgroundColor: colors.legs.backgroundColor,
+                borderColor: colors.legs.borderColor,
+                borderWidth: 1
+            },
+            {
+                label: 'Arms',
+                data: [chartData.arms], // Use real data
+                backgroundColor: colors.arms.backgroundColor,
+                borderColor: colors.arms.borderColor,
+                borderWidth: 1
+            }
+        ]
+    },
+    options: {
+        scales: {
+            y: {
+                beginAtZero: true,
+                // Make max dynamic or remove it to auto-scale
+                // max: 100, 
+            },
+            x:{
+                ticks: {
+                    font: { size: 14, weight: 'bold' },
+                }  
+            }
         }
-
-        const dataToggle = document.getElementById('dataToggle');
-
-        dataToggle.addEventListener('change', (event) => {
-            const dataKey = event.target.value;
-            updateChart(dataKey);
-        });
+    }
+});
 </script>
 {% endblock %}

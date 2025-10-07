@@ -23,7 +23,6 @@
     </div>
 
     <div class="flex w-full items-center gap-2 ">
-        <!-- ===== CAMERA 1 FEED ===== -->
         <div class="w-1/2 relative">
             <video class="w-full h-full bg-gray-200 rounded-lg" id="camera1" autoplay playsinline></video>
             <canvas id="canvas1" class="absolute top-0 left-0 w-full h-full"></canvas>
@@ -48,7 +47,6 @@
             </div>
         </div>
 
-        <!-- ===== CAMERA 2 FEED ===== -->
         <div class="w-1/2 relative">
             <video class="w-full h-full bg-gray-200 rounded-lg" id="camera2" autoplay playsinline></video>
             <canvas id="canvas2" class="absolute top-0 left-0 w-full h-full"></canvas>
@@ -97,7 +95,6 @@
         try {
             devices = await getCameraDevices();
             if (devices.length === 0) {
-                // Handle case where no cameras are found
                 camSelect1.disabled = true;
                 camSelect2.disabled = true;
                 openCameraButton.disabled = true;
@@ -119,9 +116,7 @@
     }
 
     async function getCameraDevices() {
-        // This is a small trick to prompt for permission first.
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        // Stop the tracks immediately after getting permission.
         stream.getTracks().forEach(track => track.stop());
         
         let allDevices = await navigator.mediaDevices.enumerateDevices();
@@ -130,7 +125,7 @@
 
     openCameraButton.addEventListener("click", function() {
         if (!isCameraOpen) {
-            openCameraButton.disabled = true; // ENHANCEMENT: Disable button to prevent spam clicks
+            openCameraButton.disabled = true;
             captureCamera(document.getElementById("camera1"), camSelect1.value, feedbackElement1);
             captureCamera(document.getElementById("camera2"), camSelect2.value, feedbackElement2);
             
@@ -155,7 +150,6 @@
         navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
             video.srcObject = stream;
         }).catch(function(error) {
-            // BUG FIX: Replaced alert() with a non-blocking UI message
             console.error("Camera capture error:", error);
             feedbackElement.innerText = "CAMERA ERROR!";
             feedbackElement.className = "text-xl font-medium text-red-500 mt-2";
@@ -234,7 +228,6 @@
         });
     }
 
-    // ENHANCEMENT: Refactored UI update logic into its own function
     function updateUi(data, elements) {
         elements.exercise.innerText = data.exercise.replace(/([A-Z])/g, ' $1').trim();
         elements.reps.innerText = data.reps;
@@ -256,7 +249,6 @@
     }
     
     socket.on('response', (data) => {
-        // Map camera_id to its corresponding set of DOM elements
         const elementMap = {
             'camera1': {
                 exercise: exerciseElement1, reps: repsElement1, feedback: feedbackElement1,
@@ -273,6 +265,28 @@
             updateUi(data, elements);
         }
     });
+
+    // --- NEW: AUDIO FEEDBACK LISTENER (P1-4) ---
+    socket.on('form_error', function(data) {
+        console.log(`Audio alert for ${data.camera_id}: ${data.message}`);
+        if (speechSynthesis.speaking) {
+            console.log("Speech synthesis is busy. Skipping new alert.");
+            return;
+        }
+        const utterance = new SpeechSynthesisUtterance(data.message);
+        speechSynthesis.speak(utterance);
+    });
+
+    // --- NEW: TRAINER SAFETY ALERT LISTENER (P2-2) ---
+    socket.on('trainer_alert', function(data) {
+        console.log('--- TRAINER ALERT RECEIVED ---');
+        console.log(`Camera: ${data.camera_id}`);
+        console.log(`Message: ${data.message}`);
+        // For testing, we can use a simple browser alert.
+        // This creates a pop-up that the user must dismiss.
+        alert(`‼️ TRAINER SAFETY ALERT (${data.camera_id}) ‼️\n\n${data.message}`);
+    });
+
 </script> 
 </div>
 {% endblock %}
