@@ -158,7 +158,7 @@
     
     // --- PART 2: AI INTEGRATION LOGIC ---
     const socket = io();
-    const FPS = 10;
+    const FPS = 5;
     
     const video1 = document.getElementById('camera1');
     const canvas1 = document.getElementById('canvas1');
@@ -210,7 +210,7 @@
             return;
         }
         
-        const processWidth = 480;
+        const processWidth = 400;
         const processHeight = (videoElement.videoHeight / videoElement.videoWidth) * processWidth;
 
         let tempCanvas = document.createElement('canvas');

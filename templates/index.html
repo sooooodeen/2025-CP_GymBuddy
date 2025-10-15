@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"  style="scroll-behavior: smooth;">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -8,17 +8,16 @@
     <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
 </head>
 <body class="overflow-x-hidden">
-    <!-- first section -->
-    <div class="sec-one h-[100dvh] w-full grid grid-rows-[10%_15%_75%]">
-        <div class="w-full flex justify-center h-full ">
-            <div class="header flex justify-between w-[30%] h-full items-center font-Helvetica text-xl">
-                <a class="" href="">Home</a>
-                <a href="">Features</a>
-                <a href="">About Us</a>
-                <a href="{{ url_for('login') }}">Login</a>
+      <div id="main-header" class="main-header w-full flex justify-center h-20 sticky top-0 z-50 bg-white/95 backdrop-blur-sm shadow-sm">
+            <div class="flex justify-between w-[30%] h-full items-center font-Helvetica font-semibold text-xl">
+                <a class="scroll-link hover:hover:text-[#ca1d2c] text-[#2D2C2C] transition duration-150" href="#home">Home</a>
+                <a class="scroll-link hover:hover:text-[#ca1d2c] text-[#2D2C2C] transition duration-150" href="#features">Features</a>
+                <a class="scroll-link hover:hover:text-[#ca1d2c] text-[#2D2C2C] transition duration-150" href="#about-us">About Us</a>
+                <a href="/login" class="text-[#F05454] hover:text-[#ca1d2c] transition duration-150">Login</a>
             </div>
         </div>
-        <div class="flex flex-col justify-center items-center gap-2">
+    <div class="sec-one h-[100dvh] w-full grid grid-rows-[15%_75%]">
+        <div id="home" class="flex flex-col justify-center items-center mt-10 gap-2">
             <h1 class="font-Helvetica font-bold text-8xl text-[#2D2C2C]">Gym Buddy</h1>
             <h3 class="font-Helvetica text-2xl text-[#2D2C2C]">No failures. No Injuries. Ensures safety in workouts.</h3>
          </div>
@@ -31,7 +30,7 @@
     <!-- endofFirstsec -->
     <hr class="border-t-1 border-black-500 w-[96%] rounded mx-auto my-4">
     <!-- second section -->
-    <div class="sec-two h-[100dvh] w-full mb-15">
+    <div id="features" class="sec-two h-[100dvh] w-full mb-15">
         <div class="flex justify-around h-full items-center flex-col">
             <h1 class="font-Helvetica font-bold text-5xl my-5">Features</h1>
             <div class="w-[70%] h-[80%] grid grid-cols-4 grid-rows-2 gap-5">
@@ -80,7 +79,7 @@
     </div>
     <!-- endofSecondsec -->
      <!-- Third section -->
-    <div class="h-[130dvh] mb-20">
+    <div id="about-us" class="h-[130dvh] mb-20">
         <div class="!h-[85vh] w-full relative overflow-hidden">
             <img class="w-full h-full object-cover object-bottom scale-115" src="/static/src/images/third.jpg" alt="">
             <div class="absolute bottom-0 left-0 w-full h-[100%] bg-gradient-to-t from-white via-white/70 to-transparent"></div>
@@ -106,13 +105,13 @@
     </div>
     <div class="w-full h-[20dvh] bg-[#2D2C2C] items-center grid grid-cols-3 grid-rows-1 px-80">
         <div class="text-white font-Helvetica ml-20">
-            <a href="">Home</a><br>
-            <a href="">Features</a><br>
-            <a href="">About Us</a><br>
+            <a class="scroll-link" href="#home">Home</a><br>
+            <a class="scroll-link" href="#features">Features</a><br>
+            <a class="scroll-link" href="#about-us">About Us</a><br>
             <a href="{{ url_for('login') }}">Login</a>
         </div>
         <div class="flex flex-col justify-center items-center gap-2">
-            <button class="font-Helvetica bg-none cursor-pointer underline text-white">Back to top</button>
+            <button id="back-to-top-btn" class="font-Helvetica bg-none cursor-pointer underline text-white">Back to top</button>
             <p class="text-white font-Helvetica">GymBuddy All Rights Reserved 2025 ©</p>
         </div>
         <div class="flex flex-col justify-center ml-30">
@@ -136,5 +135,41 @@
             </div>
         </div>
     </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+    const header = document.getElementById('main-header');
+    const headerHeight = header ? header.offsetHeight : 80; 
+    const scrollLinks = document.querySelectorAll('.scroll-link');
+    const backToTopBtn = document.getElementById('back-to-top-btn');
+
+    scrollLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            const targetId = this.getAttribute('href');
+            if (targetId && targetId.startsWith('#') && targetId.length > 1) {
+                e.preventDefault(); 
+                const targetElement = document.querySelector(targetId);
+                
+                if (targetElement) {
+                    const targetPosition = targetElement.offsetTop - headerHeight;
+                    
+                    window.scrollTo({
+                        top: targetPosition,
+                        behavior: 'smooth'
+                    });
+                }
+            }
+        });
+    });
+
+    if (backToTopBtn) {
+        backToTopBtn.addEventListener('click', () => {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        });
+    }
+});
+</script>
 </body> 
 </html>        
