@@ -8,38 +8,33 @@ import time
 import os
 
 # --- CONFIGURATION ---
-# ROBUST FILE PATHS: Build paths relative to the script's location
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_FILENAME = os.path.join(SCRIPT_DIR, 'training', 'exercise_classifier_lstm.h5')
-LABEL_MAPPING_FILENAME = os.path.join(SCRIPT_DIR, 'training', 'label_mapping.json')
+MODEL_FILENAME = os.path.join(SCRIPT_DIR, 'exercise_classifier_lstm.h5')
+LABEL_MAPPING_FILENAME = os.path.join(SCRIPT_DIR, 'label_mapping.json')
 
 SEQUENCE_LENGTH = 90
 CONF_THRESHOLD = 0.80 
 STABILITY_FRAMES = 10
 UI_COLOR = (0, 150, 255)
-# PERFORMANCE ENHANCEMENT: Predict every N frames
 PREDICTION_INTERVAL = 3
 
-# --- FINAL, STANDARDIZED HELPER FUNCTIONS ---
+# --- HELPER FUNCTIONS ---
 
 def calculate_angle(a, b, c):
     """Calculates the angle between three 3D landmark points."""
     a = np.array([a.x, a.y, a.z])
     b = np.array([b.x, b.y, b.z])
     c = np.array([c.x, c.y, c.z])
-    
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = np.abs(radians * 180.0 / np.pi)
-    
     if angle > 180.0:
         angle = 360 - angle
     return angle
 
 def extract_angle_features_for_model(landmarks):
-    """Extracts the 8 key angles using the full 3D landmark data, matching the training script."""
+    """Extracts the 8 key angles using the full 3D landmark data."""
     lm = landmarks
     mp_pose = mp.solutions.pose.PoseLandmark
-
     return np.array([
         calculate_angle(lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_ELBOW], lm[mp_pose.LEFT_WRIST]),
         calculate_angle(lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_ELBOW], lm[mp_pose.RIGHT_WRIST]),
@@ -52,17 +47,15 @@ def extract_angle_features_for_model(landmarks):
     ])
 
 def calculate_angle_2d(a, b, c):
-    """This 2D version is kept for the form checker, which uses 2D coordinate arrays."""
-    a = np.array(a)
-    b = np.array(b)
-    c = np.array(c)
+    """This 2D version is for the form checker."""
+    a = np.array(a); b = np.array(b); c = np.array(c)
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = np.abs(radians*180.0/np.pi)
     if angle > 180.0:
         angle = 360 - angle
     return angle
 
-# --- FINAL CALIBRATED Exercise Analysis Class with Full Form Correction ---
+# --- Exercise Analysis Class with Calibrated Form Correction ---
 class ExerciseAnalyzer:
     def __init__(self, reset_timeout=5.0):
         self.rep_counter = 0
@@ -72,32 +65,25 @@ class ExerciseAnalyzer:
         self.previous_exercise = "neutral"
         self.last_rep_time = time.time()
         self.RESET_TIMEOUT = reset_timeout
-        self.debug_angles = {} # For the debug view
+        self.debug_angles = {}
 
     def analyze_frame(self, exercise_name, landmarks):
         if landmarks is None:
-            if exercise_name == "neutral":
-                self.previous_exercise = "neutral"
-                self.stage = None
+            if exercise_name == "neutral": self.previous_exercise = "neutral"; self.stage = None
             self.debug_angles.clear()
             return
 
         if exercise_name != self.previous_exercise:
-            self.rep_counter = 0
-            self.stage = None
-            self.previous_exercise = exercise_name
+            self.rep_counter = 0; self.stage = None; self.previous_exercise = exercise_name
             self.last_rep_time = time.time()
 
-        self.form_status = "CORRECT FORM"
-        self.status_color = (0, 255, 0)
-
+        self.form_status = "CORRECT FORM"; self.status_color = (0, 255, 0)
         if time.time() - self.last_rep_time > self.RESET_TIMEOUT and self.stage is not None:
-            self.stage = None
-            self.form_status = "INACTIVE - RESET"
+            self.stage = None; self.form_status = "INACTIVE - RESET"
         
         mp_lm = mp.solutions.pose.PoseLandmark
+        self.debug_angles.clear()
         
-        # ENHANCEMENT: Wrap all exercise logic in a try-except for robustness
         try:
             if 'bicepCurl' in exercise_name:
                 left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_wrist_lm = landmarks[mp_lm.LEFT_WRIST.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]
@@ -110,39 +96,45 @@ class ExerciseAnalyzer:
                 else:
                     elbow_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_elbow_lm.x, right_elbow_lm.y], [right_wrist_lm.x, right_wrist_lm.y])
                     shoulder_angle = calculate_angle_2d([right_elbow_lm.x, right_elbow_lm.y], [right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y])
-                self.debug_angles = {'Elbow': elbow_angle, 'Shoulder': shoulder_angle}
-
-                if elbow_angle > 150: self.stage = "down"
-                if elbow_angle < 45 and self.stage == 'down':
+                self.debug_angles.update({'Elbow': elbow_angle, 'Shoulder': shoulder_angle})
+                
+                if elbow_angle > 160: self.stage = "down" 
+                if elbow_angle < 70 and self.stage == 'down': 
                     self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
                 
-                if shoulder_angle > 45:
+                if shoulder_angle > 55:
                     self.form_status = "ERROR: KEEP ELBOWS PINNED"; self.status_color = (0, 0, 255)
 
             elif 'shoulderPress' in exercise_name:
-                left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_wrist_lm = landmarks[mp_lm.LEFT_WRIST.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]
-                right_shoulder_lm = landmarks[mp_lm.RIGHT_SHOULDER.value]; right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]; right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]; right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]
+                left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_wrist_lm = landmarks[mp_lm.LEFT_WRIST.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]; left_knee_lm = landmarks[mp_lm.LEFT_KNEE.value]
+                right_shoulder_lm = landmarks[mp_lm.RIGHT_SHOULDER.value]; right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]; right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]; right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]; right_knee_lm = landmarks[mp_lm.RIGHT_KNEE.value]
 
                 left_elbow_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_elbow_lm.x, left_elbow_lm.y], [left_wrist_lm.x, left_wrist_lm.y])
                 right_elbow_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_elbow_lm.x, right_elbow_lm.y], [right_wrist_lm.x, right_wrist_lm.y])
                 avg_elbow_angle = (left_elbow_angle + right_elbow_angle) / 2
-                self.debug_angles = {'Avg Elbow': avg_elbow_angle}
-
-                if avg_elbow_angle < 95: self.stage = "down"
+                
+                # ENHANCEMENT: Calculate all angles first for debug view
+                torso_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y], [left_knee_lm.x, left_knee_lm.y])
+                left_shoulder_angle = calculate_angle_2d([left_elbow_lm.x, left_elbow_lm.y], [left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y])
+                right_shoulder_angle = calculate_angle_2d([right_elbow_lm.x, right_elbow_lm.y], [right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y])
+                avg_shoulder_angle = (left_shoulder_angle + right_shoulder_angle) / 2
+                self.debug_angles.update({'Avg Elbow': avg_elbow_angle, 'Avg Shoulder': avg_shoulder_angle, 'Torso': torso_angle})
+                
+                if avg_elbow_angle < 100: self.stage = "down"
                 if avg_elbow_angle > 160 and self.stage == 'down':
                     self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
                 
+                # LOGIC FIX: Only check torso recline and elbow tuck in the 'down' position
                 if self.stage == 'down':
-                    left_shoulder_angle = calculate_angle_2d([left_elbow_lm.x, left_elbow_lm.y], [left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y])
-                    right_shoulder_angle = calculate_angle_2d([right_elbow_lm.x, right_elbow_lm.y], [right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y])
-                    avg_shoulder_angle = (left_shoulder_angle + right_shoulder_angle) / 2
-                    self.debug_angles['Avg Shoulder'] = avg_shoulder_angle
-                    if avg_shoulder_angle < 30 or avg_shoulder_angle > 60:
+                    if torso_angle < 70 or torso_angle > 100:
+                        self.form_status = "ERROR: RECLINE AT 85 DEGREES"; self.status_color = (0, 0, 255)
+                    
+                    if avg_shoulder_angle < 25 or avg_shoulder_angle > 65:
                         self.form_status = "WARNING: TUCK ELBOWS AT 45 DEG"; self.status_color = (0, 165, 255)
 
             elif 'lateralRaise' in exercise_name:
-                left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_wrist_lm = landmarks[mp_lm.LEFT_WRIST.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]; left_knee_lm = landmarks[mp_lm.LEFT_KNEE.value]
-                right_shoulder_lm = landmarks[mp_lm.RIGHT_SHOULDER.value]; right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]; right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]; right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]; right_knee_lm = landmarks[mp_lm.RIGHT_KNEE.value]
+                left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]; left_knee_lm = landmarks[mp_lm.LEFT_KNEE.value]
+                right_shoulder_lm = landmarks[mp_lm.RIGHT_SHOULDER.value]; right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]; right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]; right_knee_lm = landmarks[mp_lm.RIGHT_KNEE.value]
 
                 shoulder_angle = 0
                 if left_elbow_lm.visibility > right_elbow_lm.visibility:
@@ -150,16 +142,16 @@ class ExerciseAnalyzer:
                 else:
                     shoulder_angle = calculate_angle_2d([right_elbow_lm.x, right_elbow_lm.y], [right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y])
                 
-                if shoulder_angle < 30: self.stage = "down"
-                if shoulder_angle > 90: self.form_status = "WARNING: DO NOT OVER-RAISE"; self.status_color = (0, 165, 255)
+                if shoulder_angle < 20: self.stage = "down"
+                if shoulder_angle > 95: self.form_status = "WARNING: DO NOT OVER-RAISE"; self.status_color = (0, 165, 255)
                 if shoulder_angle > 75 and self.stage == 'down':
                     self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
 
                 torso_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y], [left_knee_lm.x, left_knee_lm.y])
-                self.debug_angles = {'Shoulder': shoulder_angle, 'Torso': torso_angle}
-                if torso_angle < 160:
-                    self.form_status = "ERROR: KEEP TORSO UPRIGHT"; self.status_color = (0, 0, 255)
-
+                self.debug_angles.update({'Shoulder': shoulder_angle, 'Torso': torso_angle})
+                if torso_angle < 160 or torso_angle > 175:
+                    self.form_status = "ERROR: LEAN FORWARD 10-20 DEG"; self.status_color = (0, 0, 255)
+            
             elif 'tricepKickback' in exercise_name:
                 left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_wrist_lm = landmarks[mp_lm.LEFT_WRIST.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]; left_knee_lm = landmarks[mp_lm.LEFT_KNEE.value]
                 right_shoulder_lm = landmarks[mp_lm.RIGHT_SHOULDER.value]; right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]; right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]; right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]; right_knee_lm = landmarks[mp_lm.RIGHT_KNEE.value]
@@ -175,16 +167,14 @@ class ExerciseAnalyzer:
                     self.stage = "out"; self.rep_counter += 1; self.last_rep_time = time.time()
 
                 if self.stage is not None:
-                    # --- BUG FIX START ---
                     left_torso_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y], [left_knee_lm.x, left_knee_lm.y])
                     right_torso_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y], [right_knee_lm.x, right_knee_lm.y])
                     torso_angle = left_torso_angle if left_hip_lm.visibility > right_hip_lm.visibility else right_torso_angle
-                    self.debug_angles = {'Elbow': elbow_angle, 'Torso': torso_angle}
-                    # --- BUG FIX END ---
+                    self.debug_angles.update({'Elbow': elbow_angle, 'Torso': torso_angle})
                     
-                    if torso_angle > 135:
-                        self.form_status = "ERROR: BEND OVER MORE (45 DEG)"; self.status_color = (0, 0, 255)
-                    elif self.stage == 'out' and elbow_angle < 160:
+                    if torso_angle > 145:
+                        self.form_status = "ERROR: BEND OVER MORE"; self.status_color = (0, 0, 255)
+                    elif self.stage == 'out' and elbow_angle < 155:
                         self.form_status = "EXTEND ARM FULLY"; self.status_color = (0, 165, 255)
 
             elif 'bentOverRow' in exercise_name:
@@ -197,30 +187,27 @@ class ExerciseAnalyzer:
                 else:
                     elbow_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_elbow_lm.x, right_elbow_lm.y], [right_wrist_lm.x, right_wrist_lm.y])
 
-                if elbow_angle > 140: self.stage = "down"
-                if elbow_angle < 70 and self.stage == 'down':
+                if elbow_angle > 150: self.stage = "down"
+                if elbow_angle < 80 and self.stage == 'down':
                     self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
                 
                 if self.stage is not None:
-                    # --- BUG FIX START ---
                     left_torso_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y], [left_knee_lm.x, left_knee_lm.y])
                     right_torso_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y], [right_knee_lm.x, right_knee_lm.y])
                     torso_angle = left_torso_angle if left_hip_lm.visibility > right_hip_lm.visibility else right_torso_angle
-                    self.debug_angles = {'Elbow': elbow_angle, 'Torso': torso_angle}
-                    # --- BUG FIX END ---
+                    self.debug_angles.update({'Elbow': elbow_angle, 'Torso': torso_angle})
                     
-                    if torso_angle > 135:
-                        self.form_status = "ERROR: BEND OVER MORE (45 DEG)"; self.status_color = (0, 0, 255)
+                    if torso_angle > 145:
+                        self.form_status = "ERROR: BEND OVER MORE"; self.status_color = (0, 0, 255)
         except Exception as e:
             print(f"Error during form analysis for {exercise_name}: {e}")
-            self.form_status = "ERROR: TRACKING LOST"
-            self.status_color = (0,0,255)
+            self.form_status = "ERROR: TRACKING LOST"; self.status_color = (0,0,255)
             self.debug_angles.clear()
 
     def get_status(self):
         return self.rep_counter, self.form_status, self.status_color, self.debug_angles
     
-# --- MAIN LOGIC ---
+# --- Main Execution ---
 try:
     model = tf.keras.models.load_model(MODEL_FILENAME)
     with open(LABEL_MAPPING_FILENAME, 'r') as f:
@@ -294,27 +281,33 @@ while cap.isOpened():
 
     rep_counter, form_status, status_color, debug_angles = analyzer.get_status()
     
-    # --- UI DRAWING ---
-    # Draw UI elements first
+    # --- UI Drawing ---
+    # Top Bar
     cv2.rectangle(image_rgb, (0, 0), (1280, 70), UI_COLOR, -1)
     cv2.putText(image_rgb, 'EXERCISE', (15, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
     cv2.putText(image_rgb, stable_exercise.replace('_', ' ').title(), (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
     
+    # Rep Counter Box (with dynamic centering)
     cv2.putText(image_rgb, 'REPS', (1150, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
-    cv2.putText(image_rgb, str(rep_counter), (1140, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2, cv2.LINE_AA)
+    rep_text = str(rep_counter)
+    (w, h), _ = cv2.getTextSize(rep_text, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 2)
+    cv2.putText(image_rgb, rep_text, (1280 - 100 - w//2, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2, cv2.LINE_AA)
 
+    # Feedback Bar
     cv2.rectangle(image_rgb, (0, 660), (1280, 720), status_color, -1)
     cv2.putText(image_rgb, form_status, (15, 700), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3, cv2.LINE_AA)
     
-    # Improved Debug View
+    # Debug View
     y_pos = 110
     for name, angle in debug_angles.items():
         cv2.putText(image_rgb, f"{name}: {int(angle)}", (10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
         y_pos += 30
 
-    # Draw landmarks on top of the UI
     if results.pose_landmarks:
-        mp_drawing.draw_landmarks(image_rgb, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        mp_drawing.draw_landmarks(image_rgb, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                                 mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2), 
+                                 mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
+                                 ) 
     
     image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
     cv2.imshow(window_name, image_bgr)
@@ -326,3 +319,4 @@ while cap.isOpened():
 cap.release()
 cv2.destroyAllWindows()
 pose.close()
+

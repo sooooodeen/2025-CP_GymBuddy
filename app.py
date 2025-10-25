@@ -35,6 +35,8 @@ app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 migrate = Migrate(app, db)
+# Note: You may need to add async_mode='eventlet' if you haven't already
+# for background tasks to work reliably with gunicorn/nginx.
 socketio = SocketIO(app)
 
 # --- Database Model Definitions ---
@@ -82,6 +84,7 @@ LABEL_MAPPING_FILENAME = os.path.join(TRAINING_ARTIFACTS_DIR, 'label_mapping.jso
 SEQUENCE_LENGTH = 90
 CONF_THRESHOLD = 0.80
 STABILITY_FRAMES = 10
+CLASSIFICATION_INTERVAL = 0.5  # (in seconds) How often to run the heavy AI model (0.5 = 2 times per sec)
 
 try:
     model = tf.keras.models.load_model(MODEL_FILENAME)
@@ -289,6 +292,11 @@ def admin_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
+# --- (All your Flask routes: @app.route(...)) ---
+# --- (No changes are needed to any of your regular Flask routes) ---
+# --- (e.g., home, register, login, dashboard, profile, admin_dashboard, etc.) ---
+# --- (These are all left exactly as you wrote them) ---
 
 @app.route("/")
 def home():
@@ -565,6 +573,11 @@ def unassign_by_trainer_id(trainer_id):
         return jsonify({'status': 'success', 'message': 'Trainer unassigned successfully.'})
     return jsonify({'status': 'error', 'message': 'Trainer was not assigned.'})
     
+# --- (End of regular Flask routes) ---
+
+
+# --- START OF OPTIMIZED SOCKETIO CODE ---
+
 @socketio.on('connect')
 def handle_connect():
     print(f'Client connected: {request.sid}')
@@ -574,14 +587,18 @@ def handle_connect():
             'prediction_buffer': deque(maxlen=STABILITY_FRAMES), 
             'stable_exercise': 'neutral', 
             'analyzer': ExerciseAnalyzer(),
-            'last_form_status': None  # Add this line to track audio alerts
+            'last_form_status': None,
+            'is_processing': False,                 # <-- ADDED: Processing lock
+            'last_classification_time': 0           # <-- ADDED: Throttling timer
         },
         'camera2': {
             'sequence_buffer': deque(maxlen=SEQUENCE_LENGTH), 
             'prediction_buffer': deque(maxlen=STABILITY_FRAMES), 
             'stable_exercise': 'neutral', 
             'analyzer': ExerciseAnalyzer(),
-            'last_form_status': None  # And this one
+            'last_form_status': None,
+            'is_processing': False,                 # <-- ADDED: Processing lock
+            'last_classification_time': 0           # <-- ADDED: Throttling timer
         }
     }
 
@@ -617,35 +634,55 @@ def handle_end_session(data):
     else:
         print("Session ended without saving (no user or no reps).")
 
-@socketio.on('image')
-def handle_image(data):
-    if model is None: return
-    try: camera_id = data['camera_id']; image_b64 = data['image_data']
-    except (TypeError, KeyError): return
-    client_camera_state = clients.get(request.sid, {}).get(camera_id)
-    if not client_camera_state: return
+
+def process_frame_task(sid, data):
+    """
+    This function runs in a background thread and does ALL the heavy AI work.
+    It is NOT a direct socketio handler.
+    """
+    camera_id = None
+    client_camera_state = None
     try:
+        camera_id = data['camera_id']
+        image_b64 = data['image_data']
+        client_camera_state = clients.get(sid, {}).get(camera_id)
+        if not client_camera_state:
+            return # Client disconnected or state lost
+            
         sbuf = io.BytesIO(); sbuf.write(base64.b64decode(image_b64.split(',')[1]))
         pimg = Image.open(sbuf); frame = cv2.cvtColor(np.array(pimg), cv2.COLOR_RGB2BGR)
         image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB); results = pose.process(image_rgb)
+        
         stable_exercise = client_camera_state['stable_exercise']
         landmarks_for_js = []
+        
         if results.pose_landmarks:
             for lm in results.pose_landmarks.landmark: landmarks_for_js.append({'x': lm.x, 'y': lm.y, 'visibility': lm.visibility})
             angle_features = extract_angle_features_for_model(results.pose_landmarks.landmark)
+            
             if not np.any(np.isnan(angle_features)):
                 client_camera_state['sequence_buffer'].append(angle_features)
-                if len(client_camera_state['sequence_buffer']) == SEQUENCE_LENGTH:
+                
+                # --- OPTIMIZATION (Solution 3: AI Throttling) ---
+                current_time = time.time()
+                if (len(client_camera_state['sequence_buffer']) == SEQUENCE_LENGTH and
+                   (current_time - client_camera_state['last_classification_time'] > CLASSIFICATION_INTERVAL)):
+                    
+                    client_camera_state['last_classification_time'] = current_time # Reset timer
+                    
                     input_data = np.expand_dims(np.array(client_camera_state['sequence_buffer']), axis=0)
                     pred_probs = model.predict(input_data, verbose=0)[0]
                     pred_idx = np.argmax(pred_probs)
                     pred_class = label_mapping.get(pred_idx, "unknown")
+                    
                     if pred_probs[pred_idx] >= CONF_THRESHOLD:
                         client_camera_state['prediction_buffer'].append(pred_class)
                         if len(client_camera_state['prediction_buffer']) == STABILITY_FRAMES and len(set(client_camera_state['prediction_buffer'])) == 1:
                             stable_exercise = client_camera_state['prediction_buffer'][0]
                     else:
                         client_camera_state['prediction_buffer'].clear(); stable_exercise = "neutral"
+            
+            # Form analysis runs on *every* processed frame, using the last known exercise
             client_camera_state['analyzer'].analyze_frame(stable_exercise, results.pose_landmarks.landmark)
         else:
             client_camera_state['sequence_buffer'].clear(); client_camera_state['prediction_buffer'].clear()
@@ -654,33 +691,71 @@ def handle_image(data):
         alert_data = client_camera_state['analyzer'].get_triggered_alert()
         if alert_data:
             alert_data['camera_id'] = camera_id
-            socketio.emit('trainer_alert', alert_data, room=request.sid)
+            socketio.emit('trainer_alert', alert_data, room=sid)
 
         client_camera_state['stable_exercise'] = stable_exercise
         reps, form, color = client_camera_state['analyzer'].get_status()
 
-        # --- NEW LOGIC FOR AUDIO FEEDBACK (P1-4) ---
         last_form = client_camera_state.get('last_form_status')
-        # If the new status is an error and is different from the last status
         if "ERROR" in form and form != last_form:
-            # Emit an event with the error message for the frontend to speak
-            message = form.replace('ERROR: ', '') # Make the message more natural
-            socketio.emit('form_error', {'message': message, 'camera_id': camera_id}, room=request.sid)
-            # Update the last status to prevent sending the same message repeatedly
+            message = form.replace('ERROR: ', '')
+            socketio.emit('form_error', {'message': message, 'camera_id': camera_id}, room=sid)
             client_camera_state['last_form_status'] = form
-        # If the form is now correct, reset the status so a new error can be announced later
         elif "ERROR" not in form:
             client_camera_state['last_form_status'] = None
 
         socketio.emit('response', {
             'exercise': stable_exercise, 'reps': reps, 'form_status': form,
             'landmarks': landmarks_for_js, 'camera_id': camera_id
-        }, room=request.sid)
+        }, room=sid)
+        
     except Exception as e:
-        print(f"Error processing image for camera {camera_id}: {e}")
+        print(f"Error processing image for camera {camera_id} (SID: {sid}): {e}")
+    finally:
+        # --- CRITICAL ---
+        # Release the lock so the next frame can be processed
+        if client_camera_state:
+            client_camera_state['is_processing'] = False
+
+
+@socketio.on('image')
+def handle_image(data):
+    """
+    This is the NEW handle_image. It is lightweight and returns instantly.
+    It just checks the lock and starts the background task.
+    """
+    if model is None: return
+    try:
+        sid = request.sid
+        camera_id = data['camera_id']
+    except (TypeError, KeyError): 
+        return # Invalid data
+
+    client_camera_state = clients.get(sid, {}).get(camera_id)
+    if not client_camera_state:
+        return # No state for this client/camera
+
+    # --- OPTIMIZATION (Solution 2: Frame Skipping) ---
+    # If a frame is already being processed, just drop this new one.
+    if client_camera_state.get('is_processing', False):
+        # print(f"Dropping frame for {camera_id} (already processing)")
+        return
+        
+    # Set the lock *before* starting the task
+    client_camera_state['is_processing'] = True
+    
+    # Start the background task. This call returns immediately.
+    # The main server thread is now free to handle other requests.
+    socketio.start_background_task(process_frame_task, sid, data)
+
+# --- END OF OPTIMIZED SOCKETIO CODE ---
+
 
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
     print("Starting Flask-SocketIO server...")
+    # You might need to use eventlet or gevent for production:
+    # socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    # For development, this is fine:
     socketio.run(app, debug=True)
