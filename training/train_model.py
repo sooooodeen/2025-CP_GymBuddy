@@ -40,7 +40,6 @@ print(f"Saved label mapping: {label_mapping}")
 features = [
     'left_elbow', 'right_elbow', 'left_shoulder', 'right_shoulder', 
     'left_hip', 'right_hip', 'left_knee', 'right_knee',
-    'left_upper_arm', 'right_upper_arm'
 ]
 X = df[features]
 y = df['class_encoded']

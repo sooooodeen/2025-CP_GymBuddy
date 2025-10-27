@@ -24,7 +24,7 @@
 
     <div class="flex w-full items-center gap-2 ">
         <div class="w-1/2 relative">
-            <video class="w-full h-full bg-gray-200 rounded-lg" id="camera1" autoplay playsinline></video>
+            <video class="w-full h-full bg-gray-200 rounded-lg" id="camera1" autoplay playsinline style="transform: scaleX(-1);"></video>
             <canvas id="canvas1" class="absolute top-0 left-0 w-full h-full"></canvas>
             
             <div id="results1" 
@@ -48,7 +48,7 @@
         </div>
 
         <div class="w-1/2 relative">
-            <video class="w-full h-full bg-gray-200 rounded-lg" id="camera2" autoplay playsinline></video>
+            <video class="w-full h-full bg-gray-200 rounded-lg" id="camera2" autoplay playsinline style="transform: scaleX(-1);"></video>
             <canvas id="canvas2" class="absolute top-0 left-0 w-full h-full"></canvas>
             <div id="results2" 
                  class="absolute top-0 left-0 m-4 bg-gray-900 bg-opacity-75 text-white p-4 rounded-lg text-left shadow-lg" 
@@ -128,17 +128,25 @@
             openCameraButton.disabled = true;
             captureCamera(document.getElementById("camera1"), camSelect1.value, feedbackElement1);
             captureCamera(document.getElementById("camera2"), camSelect2.value, feedbackElement2);
-            
-            if (intervalId === null) {
-                intervalId = setInterval(() => {
-                    sendFrame(video1, 'camera1');
-                    sendFrame(video2, 'camera2');
-                }, 1000 / FPS);
-            }
-            document.getElementById('results1').style.display = 'block';
-            document.getElementById('results2').style.display = 'block';
-            isCameraOpen = true;
-            openCameraButton.innerText = "Cameras Live";
+
+            // --- ADD DELAY HERE ---
+            setTimeout(() => { 
+                if (intervalId === null) {
+                    // Emit start_camera event to backend *before* sending frames
+                    socket.emit('start_camera', { camera_id: 'camera1' });
+                    socket.emit('start_camera', { camera_id: 'camera2' });
+
+                    intervalId = setInterval(() => {
+                        sendFrame(video1, 'camera1');
+                        sendFrame(video2, 'camera2');
+                    }, 1000 / FPS);
+                }
+                document.getElementById('results1').style.display = 'block';
+                document.getElementById('results2').style.display = 'block';
+                isCameraOpen = true;
+                openCameraButton.innerText = "Cameras Live";
+            }, 500); // Wait 500ms before starting interval and showing results
+            // --- END DELAY ---
         }
     });
 
@@ -158,7 +166,7 @@
     
     // --- PART 2: AI INTEGRATION LOGIC ---
     const socket = io();
-    const FPS = 5;
+    const FPS = 10;
     
     const video1 = document.getElementById('camera1');
     const canvas1 = document.getElementById('canvas1');
@@ -177,30 +185,49 @@
     const POSE_CONNECTIONS = [[0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8], [9, 10], [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19], [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20], [11, 23], [12, 24], [23, 24], [23, 25], [24, 26], [25, 27], [26, 28], [27, 29], [28, 30], [29, 31], [30, 32], [27, 31], [28, 32]];
 
     function drawSkeleton(landmarks, context, canvas) {
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        if (!landmarks || landmarks.length === 0) return;
         const width = canvas.width;
         const height = canvas.height;
+
+        // --- FIX: Mirror the canvas context ---
+        context.save(); // Save the current state (important!)
+        context.scale(-1, 1); // Flip horizontally
+        context.translate(-width, 0); // Move the origin back to the top-left after flipping
+        // --- End Fix ---
+
+        // Clear the *entire* (now flipped) canvas area
+        context.clearRect(0, 0, width, height); 
+
+        if (!landmarks || landmarks.length === 0) {
+            context.restore(); // Restore context if no landmarks before exiting
+            return;
+        }
+
         context.lineWidth = 4;
-        context.strokeStyle = 'white';
+        context.strokeStyle = 'white'; // Skeleton line color
+        context.fillStyle = '#FF4136'; // Joint color (Red)
+
+        // Draw connections (on the flipped canvas)
         context.beginPath();
         POSE_CONNECTIONS.forEach(conn => {
             const start = landmarks[conn[0]];
             const end = landmarks[conn[1]];
-            if (start && end && start.visibility > 0.5 && end.visibility > 0.5) {
+            if (start && end && start.visibility > 0.3 && end.visibility > 0.3) { // Adjusted visibility threshold
                 context.moveTo(start.x * width, start.y * height);
                 context.lineTo(end.x * width, end.y * height);
             }
         });
         context.stroke();
-        context.fillStyle = '#FF4136';
+
+        // Draw joints (on the flipped canvas)
         landmarks.forEach(lm => {
-            if (lm && lm.visibility > 0.5) {
+            if (lm && lm.visibility > 0.3) {
                 context.beginPath();
-                context.arc(lm.x * width, lm.y * height, 6, 0, 2 * Math.PI);
+                context.arc(lm.x * width, lm.y * height, 6, 0, 2 * Math.PI); // Joint radius
                 context.fill();
             }
         });
+
+        context.restore(); // Restore the context to its original unflipped state
     }
 
     socket.on('connect', () => console.log('Connected to Python backend!'));
@@ -229,8 +256,11 @@
     }
 
     function updateUi(data, elements) {
-        elements.exercise.innerText = data.exercise.replace(/([A-Z])/g, ' $1').trim();
-        elements.reps.innerText = data.reps;
+        const exerciseName = data.stable_prediction || "Neutral"; // Use "Neutral" if undefined/null/empty
+        elements.exercise.innerText = exerciseName.replace(/([A-Z])/g, ' $1').trim();
+        // --- END FIX ---
+
+        elements.reps.innerText = data.rep_counter; // Use rep_counter
         elements.feedback.innerText = data.form_status;
         
         if (data.form_status.includes("ERROR")) {
