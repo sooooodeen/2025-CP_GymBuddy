@@ -235,6 +235,11 @@ def dashboard():
 def monitor(): 
     return render_template("monitor.html")
 
+@app.route("/errorlog")
+@login_required
+def errorlog(): 
+    return render_template("errorlog.html")
+
 @app.route("/settings")
 @login_required
 def settings(): 
