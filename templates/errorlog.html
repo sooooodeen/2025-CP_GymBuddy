@@ -1,0 +1,298 @@
+{% extends "house.html" %}
+{% block title %}ErrorLog{% endblock %}
+{% block content %}
+
+<head>
+    <title>Error Logs | {{ session.get('user_gym_name', 'Admin') }}</title>
+</head>
+<div class="p-10 bg-[#f1f1f1] min-h-[100dvh] font-Helvetica flex flex-col gap-6">
+    <div id="header" class="w-full grid grid-cols-2">
+        <div>
+            <h1 class="text-4xl font-semibold">Error Log</h1>
+            <p class="text-lg text-gray-400 font-normal leading-[15px]">
+                View all errors and statistics.
+            </p>
+        </div>
+        <div class="flex justify-end items-center gap-2">
+            <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
+        </div>
+    </div>
+
+    <div id="month-filter-wrapper" class="flex items-center gap-2 p-3 bg-white rounded-lg shadow-md w-fit">
+        <label for="month-select" class="font-semibold text-gray-700">Filter by Month:</label>
+        <select id="month-select" 
+                class="px-3 py-2 border border-gray-300 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#2D2C2C] focus:border-[#2D2C2C] transition-all">
+            </select>
+    </div>
+    
+    <div class="bg-white rounded-lg shadow-md font-Helvetica w-full">
+        <div class="overflow-x-auto pb-2">
+            <table class="min-w-full bg-white">
+                <thead class="bg-[#2D2C2C] w-full text-white border-b border-gray-300">
+                    <tr>
+                        <th class="py-5 px-4 uppercase font-semibold text-sm text-left">#</th>
+                        <th class="py-5 px-4 uppercase font-semibold text-sm text-center w-96">Assigned Trainers</th>
+                        <th class="py-5 px-4 uppercase font-semibold text-sm text-left w-96">Critical Error</th>
+                        <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Time of Error</th>
+                        <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Time Assisted</th>
+                    </tr>
+                </thead>
+                <tbody id="error-log-body" class="text-gray-700 h-[500px]">
+                    </tbody>
+            </table>
+              <div class="flex justify-between items-center p-4 border-t border-gray-200">
+            <div class="text-sm text-gray-700" id="pagination-info"></div>
+            <div class="flex space-x-2" id="pagination-controls">
+                <button onclick="changePage(currentPage - 1)" 
+                class="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100"
+                id="prev-button" disabled>
+                Previous
+                </button>
+                <button onclick="changePage(currentPage + 1)" 
+                class="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100"
+                id="next-button">
+                Next
+                </button>
+            </div>
+        </div>
+        </div>
+      
+    </div>
+    
+</div>
+
+<script>
+    // static data for demonstration
+    const allErrors = [];
+    const ALL_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    
+    for (let i = 0; i < 300; i++) {
+        const monthIndex = 5 + (i % 4); 
+        const date = `2024-${String(monthIndex + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`;
+        
+        allErrors.push({
+            id: i + 1,
+            trainers: [
+                '/static/src/images/bicepcurl.jpg', 
+                '/static/src/images/bicepcurl.jpg'
+            ],
+            criticalError: i % 3 === 0 ? 'Bicep Curls Form Error' : (i % 3 === 1 ? 'Squat Depth Violation' : 'Overhead Press Instability'),
+            timeOfError: `${date} 14:30:${String((i * 10) % 60).padStart(2, '0')}`,
+            timeAssisted: `${date} 14:3${String((i * 10 + 10) % 60).padStart(2, '0')}:${String((i * 10 + 10) % 60).padStart(2, '0')}`,
+            month: ALL_MONTHS[monthIndex] 
+        });
+    }
+    // endofStatic Data
+    const rowsPerPage = 8;
+    let currentPage = 1;
+    let filteredErrors = allErrors;
+    let activeMonth = 'All';
+    let totalPages = Math.ceil(filteredErrors.length / rowsPerPage);
+
+
+    function filterByMonth(month) {
+        activeMonth = month; 
+        
+        if (month === 'All') {
+            filteredErrors = allErrors;
+        } else {
+            filteredErrors = allErrors.filter(error => error.month === month);
+        }
+
+        totalPages = Math.ceil(filteredErrors.length / rowsPerPage);
+        
+        changePage(1); 
+    }
+    
+    function displayList(items, wrapper, rows_per_page, page) {
+        wrapper.innerHTML = "";
+        page--; 
+
+        let start = rows_per_page * page;
+        let end = start + rows_per_page;
+        let paginatedItems = items.slice(start, end);
+
+        const actualRowCount = paginatedItems.length;
+    
+        const emptyRowsNeeded = rows_per_page - actualRowCount;
+
+        if (actualRowCount > 0) {
+        for (let i = 0; i < emptyRowsNeeded; i++) {
+            paginatedItems.push({ empty: true });
+            }
+        }
+
+        if (items.length === 0) {
+            wrapper.innerHTML = `<tr><td colspan="6" class="py-10 text-center text-gray-500 font-semibold">No errors recorded for ${activeMonth}.</td></tr>`;
+            updatePaginationInfo(0, 0);
+            setupPaginationControls();
+            return;
+        }
+
+        paginatedItems.forEach((item, index) => {
+            const row = document.createElement('tr');
+            row.className = 'border-b border-gray-100 hover:bg-gray-100';
+
+            if (item.empty) {
+                row.innerHTML = `
+                    <td class="w-[50px] px-4 py-3 opacity-0">.</td>
+                    <td class="w-[250px] h-[65px] gap-2 py-3"></td>
+                    <td class="w-[350px] py-3"></td>
+                    <td class="w-[200px] py-3"></td>
+                    <td class="w-[200px] py-3"></td>
+                `;
+                row.classList.remove('hover:bg-gray-100'); 
+            } else {
+                const sequentialNumber = start + index + 1;
+                row.innerHTML = `
+                    <td class="w-[50px] px-4">${sequentialNumber}</td>
+                    <td class="w-full h-15 flex items-center justify-center gap-2 py-3">
+                        ${item.trainers.map(src => `
+                            <div class="flex justify-center items-center">
+                                <img class="h-[45px] w-[45px] object-cover rounded-full" 
+                                    src="${src}" alt="Trainer photo">
+                            </div>
+                        `).join('')}
+                    </td>
+                    <td class="w-[350px] py-5 px-4">
+                        <div class="flex flex-col">
+                            <h1 class="text-lg font-bold leading-5">${item.criticalError}</h1>
+                        </div>
+                    </td>
+                    <td class="w-[200px] py-5 px-4">${item.timeOfError}</td>
+                    <td class="w-[200px] py-3 px-4 text-center">${item.timeAssisted}</td>
+                `;
+            }
+            wrapper.appendChild(row);
+        });
+
+        updatePaginationInfo(start, end);
+        setupPaginationControls();
+    }
+
+    function updatePaginationInfo(start, end) {
+        const info = document.getElementById('pagination-info');
+        const actualEnd = Math.min(end, filteredErrors.length);
+        const infoText = `Showing ${start + 1} to ${actualEnd} of ${filteredErrors.length} entries (Filtered by: ${activeMonth})`;
+        info.textContent = infoText;
+    }
+
+
+    function setupPaginationControls() {
+    const controlsWrapper = document.getElementById('pagination-controls');
+    const prevButton = document.getElementById('prev-button');
+    const nextButton = document.getElementById('next-button');
+
+    const existingPages = controlsWrapper.querySelectorAll('.page-btn, .ellipsis');
+    existingPages.forEach(btn => btn.remove());
+
+    if (totalPages > 1) {
+        controlsWrapper.classList.remove('hidden');
+        
+        const maxMiddleButtons = 5; 
+        const halfMiddle = Math.floor(maxMiddleButtons / 2);
+
+        let startRange = 2;
+        let endRange = totalPages - 1;
+        
+        if (totalPages > maxMiddleButtons + 2) {
+            if (currentPage <= halfMiddle + 1) {
+                endRange = maxMiddleButtons + 1;
+            } else if (currentPage >= totalPages - halfMiddle) {
+                startRange = totalPages - maxMiddleButtons;
+            } else {
+                startRange = currentPage - halfMiddle;
+                endRange = currentPage + halfMiddle;
+            }
+        }
+        
+        const createButton = (pageNumber, isCurrent) => {
+            const btn = document.createElement('button');
+            btn.classList.add('page-btn', 'px-3', 'py-1', 'text-sm', 'font-medium', 'border', 'rounded-lg', 'transition-colors');
+            btn.textContent = pageNumber;
+            btn.onclick = () => changePage(pageNumber);
+
+            if (isCurrent) {
+                btn.classList.add('bg-[#2D2C2C]', 'text-white', 'border-[#2D2C2C]');
+                btn.classList.remove('text-gray-700', 'bg-white', 'border-gray-300', 'hover:bg-gray-100');
+            } else {
+                btn.classList.add('text-gray-700', 'bg-white', 'border-gray-300', 'hover:bg-gray-100');
+                btn.classList.remove('bg-[#2D2C2C]', 'text-white', 'border-[#2D2C2C]');
+            }
+            controlsWrapper.insertBefore(btn, nextButton);
+        };
+
+        const createEllipsis = () => {
+            const span = document.createElement('span');
+            span.classList.add('ellipsis', 'px-3', 'py-1', 'text-sm', 'font-medium', 'text-gray-500');
+            span.textContent = '...';
+            controlsWrapper.insertBefore(span, nextButton);
+        };
+
+        createButton(1, currentPage === 1);
+
+        if (startRange > 2) {
+            createEllipsis();
+        }
+
+        for (let i = startRange; i <= endRange; i++) {
+          
+            if (i > 1 && i < totalPages) {
+                createButton(i, i === currentPage);
+            }
+        }
+
+        if (endRange < totalPages - 1) {
+            createEllipsis();
+        }
+        
+        if (totalPages > 1 && totalPages !== 1) { 
+            createButton(totalPages, currentPage === totalPages);
+        }
+
+    } else {
+        controlsWrapper.classList.add('hidden'); 
+    }
+
+    prevButton.disabled = currentPage === 1;
+    prevButton.classList.toggle('opacity-50', currentPage === 1);
+    
+    nextButton.disabled = currentPage >= totalPages;
+    nextButton.classList.toggle('opacity-50', currentPage >= totalPages);
+}
+
+    function changePage(page) {
+        if (page < 1 || page > totalPages) return;
+        
+        currentPage = page;
+        displayList(filteredErrors, document.getElementById('error-log-body'), rowsPerPage, currentPage);
+    }
+
+    function setupMonthDropdown() {
+        const selectElement = document.getElementById('month-select');
+        
+        let allOption = document.createElement('option');
+        allOption.value = 'All';
+        allOption.textContent = 'All Months';
+        selectElement.appendChild(allOption);
+
+        ALL_MONTHS.forEach(month => {
+            let option = document.createElement('option');
+            option.value = month;
+            option.textContent = month;
+            selectElement.appendChild(option);
+        });
+
+        selectElement.addEventListener('change', (event) => {
+            filterByMonth(event.target.value);
+        });
+    }
+    
+    window.onload = function() {
+        setupMonthDropdown(); 
+        filterByMonth('All'); 
+    };
+
+</script>
+{% endblock %}
