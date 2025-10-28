@@ -3,27 +3,290 @@
 <head>
     <title>Dashboard | {{ session.get('user_gym_name', 'Admin') }}</title>
 </head>
-<div class="p-10 h-full font-Helvetica flex flex-col gap-6">
+<div class="bg-[#f1f1f1] p-10 h-full font-Helvetica flex overflow-hidden flex-col gap-6">
     <div id="header" class="w-full grid grid-cols-2 h-[7%]">
-        <h1 class="text-4xl font-semibold">Dashboard<p class="text-lg text-gray-400 font-normal leading-[15px]">Statistics for daily and monthly monitoring</p></h1>
+        <div>
+            <h1 class="text-4xl font-semibold">Dashboard</h1>
+            <p class="text-lg text-gray-400 font-normal leading-[15px]">Admin View: Statistics for daily and monthly monitoring</p>
+        </div>
         <div class="flex justify-end items-center gap-2">
             <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
         </div>
     </div>
-    <div id="box" class="h-full w-[20%] flex flex-col gap-10">
-        <div class="bg-[#2D2C2C] h-full rounded-2xl p-6 flex items-center flex-col">
-            <h1 class="text-white text-center text-2xl">Critical Errors Detected</h1>
-            <h1 class="text-5xl h-full w-full flex justify-center items-center text-white font-bold">10</h1>
+    <div class="flex w-full h-full gap-4">
+        <div class="flex flex-col justify-between h-full">
+           
+            <div class="border border-gray-300 bg-white h-full w-110 rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
+                <h1 class="text-xl font-bold font-Helvetica mb-2">Recent Error Log</h1>
+                <div class="flex flex-col overflow-y-auto gap-2 h-[100%]">
+                    {% for log, user in recent_errors %}
+                    <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center">
+                        <div class="justify-self-start">
+                            <p class="text-[#5a5757] text-md font-semibold">{{ log.error_type.replace('ERROR: ', '') }}</p>
+                            <!-- <p class="text-gray-500 text-sm">{{ user.firstname }} {{ user.lastname }}</p> IDK IF NEED CANT TEST-->
+                        </div>
+                        <span class="text-sm text-gray-500 time-ago" data-timestamp="{{ log.timestamp.isoformat() }}"></span>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-gray-500 p-4 h-full flex items-center justify-center">No errors recorded yet.</div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
-        <div class="bg-[#2D2C2C] h-full rounded-2xl p-6 flex items-center flex-col">
-            <h1 class="text-white text-center text-2xl">Overall Incorrect Form Detected</h1>
-            <h1 class="text-5xl h-full w-full flex justify-center items-center text-white font-bold">10</h1>
+        <div class="grid grid-cols-3 grid-rows-[25%_1fr] flex-col w-full gap-5">
+            <div class="bg-white border border-gray-300 h-full rounded-2xl p-6 flex items-center flex-col">
+                <div class="box-head flex gap-2 w-full items-center ">
+                    <div class="rounded-full bg-[#F16767] flex justify-center items-center p-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skull-icon lucide-skull"><path d="m12.5 17-.5-1-.5 1h1z"/><path d="M15 22a1 1 0 0 0 1-1v-1a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20v1a1 1 0 0 0 1 1z"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="12" r="1"/></svg>
+                    </div>
+                    <div>
+                        <h1 class=" text-center text-lg font-semibold">Critical Errors Detected</h1>
+                        <h1 class="rounded-full flex justify-center items-center py-1 px-3 bg-gray-200 text-xs w-15 text-gray-500 font-Helvetica font-semibold tracking-wider">Today</h1>
+                    </div>
+                </div>
+                <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">{{ total_errors_today }}</h1>
+            </div>
+            <div class="bg-white border border-gray-300 h-full rounded-2xl p-6 flex items-center flex-col">
+                <div class="box-head flex gap-2 w-full items-center">
+                    <div class="rounded-full bg-[#FFB84C] flex justify-center items-center p-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-octagon-alert-icon lucide-octagon-alert"><path d="M12 16h.01"/><path d="M12 8v4"/><path d="M15.312 2a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586l-4.688-4.688A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2z"/></svg>
+                    </div>
+                    <div>
+                        <h1 class=" text-center text-lg font-semibold">Common Workout Error</h1>
+                        <h1 class="rounded-full flex justify-center items-center py-1 px-3 bg-gray-200 text-xs w-22 text-gray-500 font-Helvetica font-semibold tracking-wider">This week</h1>
+                    </div>
+                </div>
+                <h1 class="text-2xl h-full w-full flex justify-center items-center font-bold text-center">{{ most_common_error_week }}</h1>
+            </div>
+            <div class="bg-white border border-gray-300 h-full rounded-2xl p-6 flex items-center flex-col">
+                <div class="box-head flex gap-2 w-full items-center">
+                    <div class="rounded-full bg-[#A459D1] flex justify-center items-center p-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clipboard-list-icon lucide-clipboard-list"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>
+                    </div>
+                    <div>
+                        <h1 class=" text-center text-lg font-semibold">Overall Errors Detected</h1>
+                        <h1 class="rounded-full flex justify-center items-center py-1 px-3 bg-gray-200 text-xs w-24 text-gray-500 font-Helvetica font-semibold tracking-wider">This month</h1>
+                    </div>
+                </div>
+                <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">{{ total_errors_month }}</h1>
+            </div>
+             <div class="border border-gray-300 bg-white h-full w-full rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
+                <h1 class="text-xl font-bold font-Helvetica mb-2">Immediate Action Needed</h1>
+                <div class="flex flex-col overflow-y-auto gap-2 max-h-[50vh]">
+                    <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center">
+                        <div class="justify-self-start grid grid-cols-[15%_1fr_15%] w-full gap-2 items-center flex-row">
+                            <div class="flex justify-center items-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F16767" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert-icon lucide-triangle-alert"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                            </div>
+                            <div class="leading-tight">
+                                <p class="text-[#5a5757] text-xl font-semibold">"Workout Error"</p>
+                                <span class="text-md text-gray-500 time-ago">"Time"</span>
+                            </div>
+                            <div class="w-full flex justify-center items-center">
+                                <button class="rounded-full bg-green-500 h-10 hover:bg-green-400 transition ease-in-out delay-50 w-10 flex justify-center items-center cursor-pointer">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-icon lucide-check"><path d="M20 6 9 17l-5-5"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="border border-gray-300 h-full flex flex-col col-span-2 justify-around rounded-2xl bg-white p-6 px-8">
+                <div class="flex flex-col items-start">
+                    <h1 class="font-Helvetica text-3xl font-bold">Muscle Group Errors Chart</h1>
+                     <p>Error distribution for the current month.</p>
+                </div>
+                <canvas class="chart !w-[100%]" id="myBarChart"></canvas>
+            </div>
+           
         </div>
-        <div class="bg-[#2D2C2C] h-full rounded-2xl p-6 flex items-center flex-col">
-            <h1 class="text-white text-center text-2xl">Common Workout Error this Week</h1>
-            <h1 class="text-5xl h-full w-full flex justify-center items-center text-white font-bold">Bicep Curls</h1>
-        </div>
-        <h1>recent errors(?)</h1>
     </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+     function formatTimeAgo(utcIsoString) {
+         const now = new Date();
+         const past = new Date(utcIsoString);
+         const seconds = Math.floor((now - past) / 1000);
+         let interval = seconds / 31536000;
+         if (interval > 1) return Math.floor(interval) + " years ago";
+         interval = seconds / 2592000;
+         if (interval > 1) return Math.floor(interval) + " months ago";
+         interval = seconds / 86400;
+         if (interval > 1) return Math.floor(interval) + " days ago";
+         interval = seconds / 3600;
+         if (interval > 1) return Math.floor(interval) + " hours ago";
+         interval = seconds / 60;
+         if (interval > 1) return Math.floor(interval) + " minutes ago";
+         return "just now";
+     }
+     function updateAllTimestamps() {
+         const timeElements = document.querySelectorAll('.time-ago');
+         timeElements.forEach(el => {
+             const timestamp = el.getAttribute('data-timestamp');
+             if (timestamp) {
+                 el.textContent = formatTimeAgo(timestamp + 'Z');
+             }
+         });
+     }
+     updateAllTimestamps();
+     setInterval(updateAllTimestamps, 60000);
+ });
+
+ const chartData = JSON.parse('{{ current_month_chart_data | tojson | safe }}');
+
+ const ctx = document.getElementById('myBarChart').getContext('2d');
+ const colors = {
+     chest: { backgroundColor: 'rgba(255, 99, 132, 0.5)', borderColor: 'rgba(255, 99, 132, 1)' },
+     back: { backgroundColor: 'rgba(54, 162, 235, 0.5)', borderColor: 'rgba(54, 162, 235, 1)' },
+     legs: { backgroundColor: 'rgba(255, 206, 86, 0.5)', borderColor: 'rgba(255, 206, 86, 1)' },
+     arms: { backgroundColor: 'rgba(75, 192, 192, 0.5)', borderColor: 'rgba(75, 192, 192, 1)' }
+ };
+
+ const myChart = new Chart(ctx, {
+     type: 'bar',
+     data: {
+         labels: ['Muscle Groups'], 
+         datasets: [
+             {
+                 label: 'Chest',
+                 data: [chartData.chest], 
+                 backgroundColor: colors.chest.backgroundColor,
+                 borderColor: colors.chest.borderColor,
+                 borderWidth: 1
+             },
+             {
+                 label: 'Back',
+                 data: [chartData.back], 
+                 backgroundColor: colors.back.backgroundColor,
+                 borderColor: colors.back.borderColor,
+                 borderWidth: 1
+             },
+             {
+                 label: 'Legs',
+                 data: [chartData.legs], 
+                 backgroundColor: colors.legs.backgroundColor,
+                 borderColor: colors.legs.borderColor,
+                 borderWidth: 1
+             },
+             {
+                 label: 'Arms',
+                 data: [chartData.arms],
+                 backgroundColor: colors.arms.backgroundColor,
+                 borderColor: colors.arms.borderColor,
+                 borderWidth: 1
+             }
+         ]
+     },
+     options: {
+         scales: {
+             y: {
+                 beginAtZero: true,
+             },
+             x:{
+                 ticks: {
+                     font: { size: 14, weight: 'bold' },
+                 }  
+             }
+         }
+     }
+ });
+ //Static data version for testing without backend
+// document.addEventListener('DOMContentLoaded', function() {
+//     function formatTimeAgo(utcIsoString) {
+//         const now = new Date();
+//         const past = new Date(utcIsoString);
+//         const seconds = Math.floor((now - past) / 1000);
+//         let interval = seconds / 31536000;
+//         if (interval > 1) return Math.floor(interval) + " years ago";
+//         interval = seconds / 2592000;
+//         if (interval > 1) return Math.floor(interval) + " months ago";
+//         interval = seconds / 86400;
+//         if (interval > 1) return Math.floor(interval) + " days ago";
+//         interval = seconds / 3600;
+//         if (interval > 1) return Math.floor(interval) + " hours ago";
+//         interval = seconds / 60;
+//         if (interval > 1) return Math.floor(interval) + " minutes ago";
+//         return "just now";
+//     }
+//     function updateAllTimestamps() {
+//         const timeElements = document.querySelectorAll('.time-ago');
+//         timeElements.forEach(el => {
+//             const timestamp = el.getAttribute('data-timestamp');
+//             if (timestamp) {
+                
+//                 el.textContent = formatTimeAgo(timestamp + 'Z'); 
+//             }
+//         });
+//     }
+//     updateAllTimestamps();
+//     setInterval(updateAllTimestamps, 60000);
+// });
+
+
+// const chartData = {
+//     chest: 45, 
+//     back: 32,  
+//     legs: 58,  
+//     arms: 15   
+// };
+
+// const ctx = document.getElementById('myBarChart').getContext('2d');
+// const colors = {
+//     chest: { backgroundColor: 'rgba(255, 99, 132, 0.5)', borderColor: 'rgba(255, 99, 132, 1)' },
+//     back: { backgroundColor: 'rgba(54, 162, 235, 0.5)', borderColor: 'rgba(54, 162, 235, 1)' },
+//     legs: { backgroundColor: 'rgba(255, 206, 86, 0.5)', borderColor: 'rgba(255, 206, 86, 1)' },
+//     arms: { backgroundColor: 'rgba(75, 192, 192, 0.5)', borderColor: 'rgba(75, 192, 192, 1)' }
+// };
+
+// const myChart = new Chart(ctx, {
+//     type: 'bar',
+//     data: {
+//         labels: ['Muscle Groups'], 
+//         datasets: [
+//             {
+//                 label: 'Chest',
+//                 data: [chartData.chest],
+//                 backgroundColor: colors.chest.backgroundColor,
+//                 borderColor: colors.chest.borderColor,
+//                 borderWidth: 1
+//             },
+//             {
+//                 label: 'Back',
+//                 data: [chartData.back],
+//                 backgroundColor: colors.back.backgroundColor,
+//                 borderColor: colors.back.borderColor,
+//                 borderWidth: 1
+//             },
+//             {
+//                 label: 'Legs',
+//                 data: [chartData.legs],
+//                 backgroundColor: colors.legs.backgroundColor,
+//                 borderColor: colors.legs.borderColor,
+//                 borderWidth: 1
+//             },
+//             {
+//                 label: 'Arms',
+//                 data: [chartData.arms],
+//                 backgroundColor: colors.arms.backgroundColor,
+//                 borderColor: colors.arms.borderColor,
+//                 borderWidth: 1
+//             }
+//         ]
+//     },
+//     options: {
+//         scales: {
+//             y: {
+//                 beginAtZero: true,
+//                 // Removed 'max' to allow the chart to auto-scale based on the highest value (58 in this static data)
+//             },
+//             x:{
+//                 ticks: {
+//                     font: { size: 14, weight: 'bold' },
+//                 } 
+//             }
+//         }
+//     }
+// });
+</script>
  {% endblock %}
