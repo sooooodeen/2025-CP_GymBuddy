@@ -46,7 +46,9 @@ def extract_angle_features_for_model(landmarks):
             calculate_angle(lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_HIP], lm[mp_pose.LEFT_KNEE]),
             calculate_angle(lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_KNEE]),
             calculate_angle(lm[mp_pose.LEFT_HIP], lm[mp_pose.LEFT_KNEE], lm[mp_pose.LEFT_ANKLE]),
-            calculate_angle(lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_KNEE], lm[mp_pose.RIGHT_ANKLE])
+            calculate_angle(lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_KNEE], lm[mp_pose.RIGHT_ANKLE]),
+            calculate_angle(lm[mp_pose.LEFT_HIP], lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_ELBOW]),
+            calculate_angle(lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_ELBOW])
         ])
     except Exception as e:
         # Return None or NaNs if any landmark is missing
