@@ -184,7 +184,7 @@
 
     const POSE_CONNECTIONS = [[0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8], [9, 10], [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19], [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20], [11, 23], [12, 24], [23, 24], [23, 25], [24, 26], [25, 27], [26, 28], [27, 29], [28, 30], [29, 31], [30, 32], [27, 31], [28, 32]];
 
-    function drawSkeleton(landmarks, context, canvas) {
+    function drawSkeleton(landmarks, context, canvas, color = 'white') {
         const width = canvas.width;
         const height = canvas.height;
 
@@ -203,7 +203,7 @@
         }
 
         context.lineWidth = 4;
-        context.strokeStyle = 'white'; // Skeleton line color
+        context.strokeStyle = color; // Skeleton line color
         context.fillStyle = '#FF4136'; // Joint color (Red)
 
         // Draw connections (on the flipped canvas)
@@ -258,23 +258,34 @@
     function updateUi(data, elements) {
         const exerciseName = data.stable_prediction || "Neutral"; // Use "Neutral" if undefined/null/empty
         elements.exercise.innerText = exerciseName.replace(/([A-Z])/g, ' $1').trim();
-        // --- END FIX ---
-
         elements.reps.innerText = data.rep_counter; // Use rep_counter
         elements.feedback.innerText = data.form_status;
         
+
+
+        let skeletonColor = 'white'; // Default color
+
         if (data.form_status.includes("ERROR")) {
             elements.feedback.className = "text-xl font-medium text-red-400 mt-2";
+            skeletonColor = '#FF4136'; // Set skeleton color to RED (matches joint color)
         } else if (data.form_status.includes("WARNING")) {
             elements.feedback.className = "text-xl font-medium text-yellow-400 mt-2";
-        } else {
+            skeletonColor = '#FFDC00'; // Set skeleton color to YELLOW
+        } else if (data.form_status === "CORRECT FORM") { // Check for "CORRECT FORM"
             elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
+            skeletonColor = '#0074D9'; // Set skeleton color to BLUE
+        } else {
+            // For "START EXERCISE", "Neutral", etc.
+            elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
+            skeletonColor = 'white'; // Default
         }
         
         if (elements.video.videoWidth > 0) {
             elements.canvas.width = elements.video.videoWidth;
             elements.canvas.height = elements.video.videoHeight;
-            drawSkeleton(data.landmarks, elements.canvasCtx, elements.canvas);
+            
+            // Pass the new color variable to drawSkeleton
+            drawSkeleton(data.landmarks, elements.canvasCtx, elements.canvas, skeletonColor); 
         }
     }
     
