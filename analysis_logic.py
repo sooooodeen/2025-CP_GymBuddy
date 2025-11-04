@@ -127,23 +127,34 @@ class ExerciseAnalyzer:
                 output_details, 
                 np.array(self.angle_sequence_buffer)
             )
+
+            print(f"Raw Prediction Output: {prediction_output}")
             
             # Post-processing (stability logic)
             predicted_label_index = np.argmax(prediction_output)
             confidence = prediction_output[predicted_label_index]
+
+            print(f"Predicted Index: {predicted_label_index}, Confidence: {confidence: .2f}")
             
             if confidence > self.CONF_THRESHOLD:
-                predicted_label = label_mapping.get(str(predicted_label_index), "Unknown")
+                predicted_label = label_mapping.get(int(predicted_label_index), "Unknown")
                 self.recent_predictions.append(predicted_label)
+                print(f"Label Mapping Result: {predicted_label}")
             else:
                 self.recent_predictions.append("Neutral") # Use neutral if confidence is low
+                print("Confidence below threshold, adding Neutral.")
 
             # Check for stable prediction over the queue
             prediction_counts = Counter(self.recent_predictions)
             most_common, count = prediction_counts.most_common(1)[0]
+
+            print(f"Recent Predictions Buffer: {list(self.recent_predictions)}")
+            print(f"Prediction Counts: {prediction_counts}")
+            print(f"Most Common: {most_common}, Count: {count}")
             
             if count >= self.STABILITY_FRAMES:
                 self.stable_prediction = most_common
+                print(f"!!! Stable Prediction Updated: {self.stable_prediction} !!!")
             
         # 4. Run Rule-Based Form Analysis and Rep Counting
         # The form check depends on the stable prediction for the current exercise
