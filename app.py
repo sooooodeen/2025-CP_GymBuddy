@@ -226,9 +226,38 @@ def logout():
 @app.route("/dashboard")
 @login_required
 def dashboard(): 
-    # Your standard user dashboard logic should go here.
-    return render_template("dashboard.html")
+    today = datetime.utcnow().date()
+    start_of_week = today - timedelta(days=today.weekday())
+    start_of_month = today.replace(day=1)
+    total_errors_today = db.session.query(func.count(ErrorLog.id)).filter(func.date(ErrorLog.timestamp) == today).scalar() or 0
 
+    most_common_error_week_query = db.session.query(ErrorLog.error_type, func.count(ErrorLog.id).label('count')).filter(ErrorLog.timestamp >= start_of_week).group_by(ErrorLog.error_type).order_by(func.count(ErrorLog.id).desc()).first()
+    most_common_error_week = most_common_error_week_query[0].replace('ERROR: ', '') if most_common_error_week_query else "N/A"
+
+    total_errors_month = db.session.query(func.count(ErrorLog.id)).filter(ErrorLog.timestamp >= start_of_month).scalar() or 0
+
+    recent_errors = db.session.query(ErrorLog, User).join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id).join(User, WorkoutSession.user_id == User.id).order_by(ErrorLog.timestamp.desc()).limit(5).all()
+
+    muscle_group_mapping = {
+        'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms',
+        'lateralRaise': 'arms', 'bentOverRow': 'back',
+    }
+    current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
+    errors_this_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')).filter(ErrorLog.timestamp >= start_of_month).group_by(ErrorLog.exercise_name).all()
+
+    for exercise, count in errors_this_month:
+        group = muscle_group_mapping.get(exercise)
+        if group and group in current_month_chart_data:
+            current_month_chart_data[group] += count
+
+    return render_template(
+        "dashboard.html", 
+        total_errors_today=total_errors_today,
+        most_common_error_week=most_common_error_week,
+        total_errors_month=total_errors_month,
+        recent_errors=recent_errors,
+        current_month_chart_data=current_month_chart_data 
+    )
 # MONITOR WORKOUT (Required by house.html)
 @app.route("/monitor")
 @login_required
@@ -324,12 +353,12 @@ def delete_user_account():
 @app.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
-    # Phase 3: Analytics Queries (Partial implementation to prevent Jinja2 VariableErrors)
+    # Setup for time-based queries
     today = datetime.utcnow().date()
     start_of_week = today - timedelta(days=today.weekday())
     start_of_month = today.replace(day=1)
     
-    # 1. Assigned Trainers
+    # 1. Assigned Trainers (Kept as requested)
     current_assignments = db.session.query(Assignment).join(User).all()
 
     # 2. Critical Errors Today
@@ -358,13 +387,17 @@ def admin_dashboard():
         if group and group in current_month_chart_data:
             current_month_chart_data[group] += count
             
+    # CRITICAL FIX APPLIED: Pass the Python dictionary directly. 
+    # Renders the correct admin template.
     return render_template(
-        "admin_dashboard.html", assignments=current_assignments,
-        total_errors_today=total_errors_today, most_common_error_week=most_common_error_week,
-        total_errors_month=total_errors_month, recent_errors=recent_errors,
-        current_month_chart_data=json.dumps(current_month_chart_data)
+        "admin_dashboard.html", 
+        assignments=current_assignments,
+        total_errors_today=total_errors_today, 
+        most_common_error_week=most_common_error_week,
+        total_errors_month=total_errors_month, 
+        recent_errors=recent_errors,
+        current_month_chart_data=current_month_chart_data # <-- FIXED: Removed json.dumps()
     )
-
 @app.route("/admin/analytics/<int:user_id>")
 @admin_required
 def analytics(user_id):
