@@ -155,8 +155,15 @@ class ExerciseAnalyzer:
             print(f"Most Common: {most_common}, Count: {count}")
             
             if count >= self.STABILITY_FRAMES:
-                self.stable_prediction = most_common
-                print(f"!!! Stable Prediction Updated: {self.stable_prediction} !!!")
+                # Check if the stable prediction is *changing*
+                if self.stable_prediction != most_common:
+                    print(f"!!! Stable Prediction CHANGED: {most_common} !!!")
+                    self.stable_prediction = most_common
+                    
+                    # CRITICAL: Clear all buffers to force a "fresh look"
+                    # This stops the model from getting confused by old data.
+                    self.angle_sequence_buffer.clear()
+                    self.recent_predictions.clear()
             
         # 4. Run Rule-Based Form Analysis and Rep Counting
         # The form check depends on the stable prediction for the current exercise
