@@ -32,17 +32,21 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
                         <h1>Trainers</h1>
                     </a>
+                    <a href="{{ url_for('monitor') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                        <h1>Monitor Workout</h1>
+                    </a>
                 {% else %}
                     <h2 class="self-center text-[34px] text-white font-bold font-Helvetica italic -tracking-[4px]">GYM BUDDY</h2>
                     <a href="{{ url_for('dashboard') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out">
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
                         <h1>Dashboard</h1>
                     </a>
-                {% endif %}
-                    <a href="{{ url_for('monitor') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
-                        <h1>Monitor Workout</h1>
+                    <a href="{{ url_for('trainersession') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clock-fading-icon lucide-clock-fading"><path d="M12 2a10 10 0 0 1 7.38 16.75"/><path d="M12 6v6l4 2"/><path d="M2.5 8.875a10 10 0 0 0-.5 3"/><path d="M2.83 16a10 10 0 0 0 2.43 3.4"/><path d="M4.636 5.235a10 10 0 0 1 .891-.857"/><path d="M8.644 21.42a10 10 0 0 0 7.631-.38"/></svg>
+                        <h1>Trainer Session</h1>
                     </a>
+                {% endif %}
                     <a href="{{ url_for('errorlogpage') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out">
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-logs-icon lucide-logs"><path d="M3 5h1"/><path d="M3 12h1"/><path d="M3 19h1"/><path d="M8 5h1"/><path d="M8 12h1"/><path d="M8 19h1"/><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/></svg>
                         <h1>Error Logs</h1>
