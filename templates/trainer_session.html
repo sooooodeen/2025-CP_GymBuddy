@@ -1,0 +1,134 @@
+{% extends "house.html" %}
+{% block title %}Trainer Session{% endblock %}
+{% block content %}
+<head>
+    <title>Settings | {{ session.get('user_gym_name', 'Admin') }}</title>
+</head>
+<div class="p-10 bg-[#f1f1f1] h-full font-Helvetica flex flex-col items-center gap-6">
+    <div id="header" class="w-full grid grid-cols-2 h-[7%]">
+        <div>
+            <h1 class="text-4xl font-semibold">Trainer Session</h1>
+            <p class="text-lg text-gray-400 font-normal leading-[15px]">Monitor your current session</p>
+        </div>
+        <div class="flex justify-end items-center gap-2">
+            <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
+        </div>
+    </div>
+    
+    <div class="p-6 border gap-4 w-full max-w-4xl flex flex-col font-Helvetica border-gray-300 bg-white rounded-3xl">
+        <div class="flex justify-between w-full items-center">
+            <h1 class="text-2xl font-bold">Current Session</h1>
+            <button id="endSessionBtn" onclick="confirmEndSession()" class="bg-[#F16767] px-4 py-1 rounded-lg cursor-pointer text-white hover:bg-[#e64e4e] transition delay-50 duration-150 ease-in-out flex items-center gap-2">
+                <h1>End Session</h1>
+            </button>
+        </div>
+
+        <hr class="border-gray-100">
+
+        <div class="ml-2 flex gap-1 flex-col">
+            <div class="grid grid-cols-[3%_10%_1fr] gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-activity-icon lucide-activity"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+                <h1 class="text-lg">Status:</h1>
+                <p class="text-lg self-end font-bold text-green-600">Active</p>
+            </div>
+            <div class="grid grid-cols-[3%_10%_1fr] gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-round-icon lucide-user-round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+                <h1 class="text-lg">Trainer:</h1>
+                <p class="text-lg self-end font-bold">Albert Rivera</p>
+            </div>
+            <div class="grid grid-cols-[3%_10%_1fr] gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clock-icon lucide-clock"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></svg> 
+                <h1 class="text-lg">Duration:</h1>
+                <p class="text-lg self-end font-bold">3hrs</p>
+            </div>
+            <div class="grid grid-cols-[3%_10%_1fr] gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar-icon lucide-calendar"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+                <h1 class="text-lg">Date:</h1>
+                <p class="text-lg self-end font-bold">Jun. 30, 2025</p>
+            </div>
+        </div>
+        
+        <hr class="border-gray-100">
+
+        <div class="flex flex-col">
+            <h1 class="text-xl mb-3">Total errors during session</h1>
+            <div class="flex gap-2">
+                <div class="w-1/2 h-40 px-4 py-6 border flex justify-between flex-col border-gray-200 rounded-2xl">
+                    <div class="grid grid-cols-[12%_1fr] gap-2 items-center">
+                        <div class="rounded-full bg-[#FFB84C] flex justify-center items-center p-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert-icon lucide-triangle-alert"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                        </div>
+                        <h1 class="text-lg">Normal Errors</h1>
+                    </div>
+                    <h1 class="font-bold text-6xl flex justify-center">67</h1>
+                </div>
+                <div class="w-1/2 h-40 px-4 py-6 border flex justify-between flex-col border-gray-200 rounded-2xl">
+                    <div class="grid grid-cols-[12%_1fr] gap-2 items-center">
+                        <div class="rounded-full bg-[#F16767] flex justify-center items-center p-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skull-icon lucide-skull"><path d="m12.5 17-.5-1-.5 1h1z"/><path d="M15 22a1 1 0 0 0 1-1v-1a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20v1a1 1 0 0 0 1 1z"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="12" r="1"/></svg>
+                        </div>
+                        <h1 class="text-lg">Critical Errors</h1>
+                    </div>
+                    <h1 class="font-bold text-6xl flex justify-center">67</h1>
+                </div>
+            </div>
+        </div>
+        <div class="border border-gray-200 bg-white h-67 w-full rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
+            <h1 class="text-xl font-bold font-Helvetica mb-2">Recent Error Log</h1>
+            <div class="flex flex-col overflow-y-auto h-[100%]">
+                <div class="border-t border-b border-gray-100 hover:bg-gray-100 w-full items-center px-5 py-3 grid grid-cols-[1fr_auto] place-items-center justify-center">
+                    <div class="justify-self-start">
+                        <p class="text-gray-600 text-md font-semibold">Bicep Curls</p>
+                    </div>
+                    <span class="text-sm text-gray-600 time-ago">3:30PM</span>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    function confirmEndSession() {
+        Swal.fire({
+            title: "Are you sure?",
+            text: "Do you want to end this session?",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'End Session',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // *** IMPORTANT: Insert your logic here to end the session. ***
+                // This could be:
+                // 1. A redirect: window.location.href = '/end_session_endpoint';
+                // 2. An AJAX/Fetch request: 
+                /*
+                fetch('/end_session_endpoint', { method: 'POST' })
+                    .then(response => {
+                        if (response.ok) {
+                            Swal.fire('Ended!', 'The session has been successfully ended.', 'success');
+                            // Optional: Redirect after success
+                            // window.location.href = '/some_other_page';
+                        } else {
+                            Swal.fire('Error!', 'Failed to end the session.', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        Swal.fire('Error!', 'An error occurred.', 'error');
+                    });
+                */
+
+                // For now, let's just show a success message until you add your backend logic:
+                Swal.fire(
+                  'Session Ended!',
+                  'The session has been marked as ended.',
+                  'success'
+                )
+            }
+        })
+    }
+</script>
+{% endblock %}
+
