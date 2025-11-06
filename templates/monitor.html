@@ -136,6 +136,12 @@
                     socket.emit('start_camera', { camera_id: 'camera1' });
                     socket.emit('start_camera', { camera_id: 'camera2' });
 
+                    // --- ‼️‼️ THIS IS THE FIX ‼️‼️ ---
+                    // Tell the backend to create a database session for each camera
+                    socket.emit('start_session', { camera_id: 'camera1' });
+                    socket.emit('start_session', { camera_id: 'camera2' });
+                    // --- END OF FIX ---
+
                     intervalId = setInterval(() => {
                         sendFrame(video1, 'camera1');
                         sendFrame(video2, 'camera2');

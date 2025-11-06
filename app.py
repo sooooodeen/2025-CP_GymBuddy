@@ -12,11 +12,13 @@ import base64
 from PIL import Image
 import io
 import eventlet
+import re # --- FIX: Added for formatting exercise names ---
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_migrate import Migrate
-from flask_socketio import SocketIO, emit
+# --- FIX: Import join_room and leave_room ---
+from flask_socketio import SocketIO, emit, join_room, leave_room
 from functools import wraps
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta # Added for monthly comparison
@@ -137,6 +139,11 @@ load_model_and_labels()
 
 
 # --- Utility Functions (for Authentication and Routing) ---
+
+# --- FIX: Helper function to format camelCase names ---
+def format_exercise_name(name):
+    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1 \2', name)
+    return re.sub('([a-z0-9])([A-Z])', r'\1 \2', s1).capitalize()
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
@@ -333,7 +340,35 @@ def monitor():
 @app.route("/errorlogpage")
 @login_required
 def errorlogpage(): 
-    return render_template("errorlogpage.html")
+    gym_id = session['user_gym_id']
+    
+    # Query all errors for the gym, joining with user info
+    all_errors_query = db.session.query(ErrorLog, User).join(
+        WorkoutSession, ErrorLog.session_id == WorkoutSession.id
+    ).join(
+        User, WorkoutSession.user_id == User.id
+    ).filter(
+        WorkoutSession.gym_id == gym_id
+    ).order_by(
+        ErrorLog.timestamp.desc()
+    ).all()
+
+    # --- Transform data for JavaScript ---
+    js_errors = []
+    for log, user in all_errors_query:
+        js_errors.append({
+            'id': log.id,
+            'userName': f"{user.firstname} {user.lastname}",
+            'userPhoto': url_for('static', filename=user.photo_url if user.photo_url else 'src/images/Default_pfp.jpg'),
+            'errorType': log.error_type.replace('ERROR: ', ''),
+            # --- FIX: Use helper function for correct formatting ---
+            'exerciseName': format_exercise_name(log.exercise_name),
+            'timeOfError': log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'month': log.timestamp.strftime('%b') # 'Jan', 'Feb', etc.
+        })
+
+    # Pass the JSON-ready list to the template
+    return render_template("errorlogpage.html", all_errors_json=json.dumps(js_errors))
 
 @app.route("/settings")
 @login_required
@@ -360,6 +395,8 @@ def profile():
     if request.method == 'POST':
         user.firstname = request.form.get('firstname'); user.lastname = request.form.get('lastname')
         user.email = request.form.get('email'); user.phone_num = request.form.get('phone_num')
+        # --- FIX: Added line to save gender field ---
+        user.gender = request.form.get('gender') 
         
         if 'gym_name' in request.form and session.get('user_role') == 'Gym Owner': 
             gym = Gym.query.get(user.gym_id)
@@ -719,24 +756,51 @@ def trainer_session_detail(session_id):
 # --- SocketIO Handlers (Full Implementation) ---
 clients = {} 
 
+# --- FIX: Updated handle_connect ---
 @socketio.on('connect')
 def handle_connect():
     if 'user_id' not in session:
         print("Warning: Unauthenticated user tried to connect.")
         return False # Reject connection
-    clients[request.sid] = {}
-    print(f"Client connected: {request.sid}")
+    
+    # Get gym_id from the user's session
+    gym_id = session.get('user_gym_id')
+    if not gym_id:
+        print(f"Warning: User {session['user_id']} connected without a gym_id.")
+        return False
 
+    # Add user to a room for their gym
+    join_room(f'gym_{gym_id}')
+    
+    # Store gym_id for later
+    clients[request.sid] = { 'gym_id': gym_id }
+    print(f"Client connected: {request.sid}, joined room: gym_{gym_id}")
+
+# --- FIX: Updated handle_disconnect ---
 @socketio.on('disconnect')
 def handle_disconnect():
     sid = request.sid
-    if sid in clients:
-        for camera_id in list(clients[sid].keys()): 
-            handle_end_session({'camera_id': camera_id}) # Gracefully end sessions
-            if 'mp_pose' in clients[sid][camera_id] and clients[sid][camera_id]['mp_pose']:
-                clients[sid][camera_id]['mp_pose'].close()
-    clients.pop(sid, None)
-    print(f"Client disconnected: {sid}")
+    client_data = clients.pop(sid, None) # Get data and remove user
+    
+    if client_data:
+        # Get gym_id we stored
+        gym_id = client_data.get('gym_id')
+        if gym_id:
+            leave_room(f'gym_{gym_id}') # Leave the gym's room
+            print(f"Client disconnected: {sid}, left room: gym_{gym_id}")
+
+        # Gracefully end all active sessions for this user
+        for camera_id in list(client_data.keys()):
+            if camera_id == 'gym_id': continue # Skip our new key
+
+            # Pass the sid so handle_end_session knows which client to use
+            handle_end_session({'camera_id': camera_id, 'sid_for_shutdown': sid}) 
+            
+            camera_state = client_data.get(camera_id)
+            if camera_state and 'mp_pose' in camera_state and camera_state['mp_pose']:
+                camera_state['mp_pose'].close()
+    else:
+        print(f"Client disconnected: {sid} (no data found)")
 
 
 @socketio.on('start_camera')
@@ -759,6 +823,7 @@ def start_camera(data):
                 min_tracking_confidence=0.5
             )
             
+            # Store camera-specific state under the client's sid
             clients[sid][camera_id] = {
                 'analyzer': analyzer_instance,
                 'mp_pose': pose_instance,
@@ -819,10 +884,18 @@ def handle_start_session(data):
     else:
         print(f"Warning: Could not start session. No state found for {sid}/{camera_id}")
 
+# --- FIX: Updated handle_end_session ---
 @socketio.on('end_session')
 def handle_end_session(data):
     camera_id = data.get('camera_id')
-    sid = request.sid
+    # Use the sid from the data if it's a shutdown, otherwise use request.sid
+    sid = data.get('sid_for_shutdown', request.sid)
+    
+    # Check if client still exists (it might be disconnected)
+    if sid not in clients:
+        print(f"Info: handle_end_session called for disconnected client {sid}")
+        return
+
     client_camera_state = clients.get(sid, {}).get(camera_id)
     
     if not client_camera_state or 'analyzer' not in client_camera_state:
@@ -833,18 +906,22 @@ def handle_end_session(data):
 
     if session_id:
         try:
-            session_to_end = WorkoutSession.query.get(session_id)
-            if session_to_end:
-                session_to_end.end_time = datetime.utcnow()
-                session_to_end.total_reps = analyzer.rep_counter
-                db.session.commit()
+            # We need an app context to query the DB outside of a request
+            with app.app_context():
+                session_to_end = WorkoutSession.query.get(session_id)
+                if session_to_end:
+                    session_to_end.end_time = datetime.utcnow()
+                    session_to_end.total_reps = analyzer.rep_counter
+                    db.session.commit()
+                    
+                    print(f"Session {session_id} ended for user {session_to_end.user_id}.")
+                    # Only emit if the client is still connected
+                    if not data.get('sid_for_shutdown'):
+                        emit('session_saved', {
+                            'camera_id': camera_id, 
+                            'reps': analyzer.rep_counter, 
+                        }, room=sid)
                 
-                print(f"Session {session_id} ended for user {session['user_id']}.")
-                emit('session_saved', {
-                    'camera_id': camera_id, 
-                    'reps': analyzer.rep_counter, 
-                }, room=sid)
-            
         except Exception as e:
             db.session.rollback()
             print(f"Error ending session {session_id} in DB: {e}")
@@ -858,6 +935,9 @@ def handle_end_session(data):
 def process_frame_task(sid, data):
     global interpreter, label_mapping, input_details, output_details, clients
     
+    # --- FIX: Get gym_id for broadcasting ---
+    gym_id = clients.get(sid, {}).get('gym_id')
+
     try:
         camera_id = data['camera_id']
         client_camera_state = clients.get(sid, {}).get(camera_id)
@@ -949,21 +1029,37 @@ def process_frame_task(sid, data):
 
     emit_data['landmarks'] = landmarks_for_js
 
+    # Emit analysis back to the specific user
     socketio.emit('response', emit_data, room=sid)
     
+    # --- FIX: Broadcast form errors to the entire gym room ---
     last_form = client_camera_state.get('last_form_status')
     current_form = emit_data['form_status']
     if "ERROR" in current_form and current_form != last_form:
         message = current_form.replace('ERROR: ', '') 
-        socketio.emit('form_error', {'message': message, 'camera_id': camera_id}, room=sid)
+        
+        if gym_id:
+            error_data = {
+                'message': message, 
+                'camera_id': camera_id,
+                # Get user name from the session context of this task
+                'user_name': f"{session.get('user_firstname', 'Unknown')} {session.get('user_lastname', 'User')}",
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            # Broadcast to everyone in the gym
+            socketio.emit('form_error', error_data, room=f'gym_{gym_id}')
+            
         client_camera_state['last_form_status'] = current_form
     elif "ERROR" not in current_form:
         client_camera_state['last_form_status'] = None
 
+    # --- FIX: Broadcast trainer alerts to the entire gym room ---
     alert_data = analyzer.get_triggered_alert() 
     if alert_data:
         alert_data['camera_id'] = camera_id
-        socketio.emit('trainer_alert', alert_data, room=sid)
+        if gym_id:
+            # Add user/timestamp data if needed, similar to 'form_error'
+            socketio.emit('trainer_alert', alert_data, room=f'gym_{gym_id}')
 
     if client_camera_state: client_camera_state['is_processing'] = False
 
@@ -985,7 +1081,8 @@ def handle_image(data):
         return
         
     client_camera_state['is_processing'] = True
-    socketio.start_background_task(process_frame_task, sid, data)
+    # We must wrap the task in app_context to access 'session' inside it
+    socketio.start_background_task(target=lambda: app.app_context().push() or process_frame_task(sid, data))
 
 
 if __name__ == "__main__":
