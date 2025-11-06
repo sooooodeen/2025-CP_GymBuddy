@@ -40,8 +40,8 @@
                     </a>
                     
                     <a href="{{ url_for('my_sessions') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-history"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                            <h1>Session History</h1>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clock-fading-icon lucide-clock-fading"><path d="M12 2a10 10 0 0 1 7.38 16.75"/><path d="M12 6v6l4 2"/><path d="M2.5 8.875a10 10 0 0 0-.5 3"/><path d="M2.83 16a10 10 0 0 0 2.43 3.4"/><path d="M4.636 5.235a10 10 0 0 1 .891-.857"/><path d="M8.644 21.42a10 10 0 0 0 7.631-.38"/></svg>   
+                        <h1>Session History</h1>
                     </a>
 
                     <a href="{{ url_for('monitor') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out">
@@ -60,10 +60,10 @@
                 </a>
             </div>
 
-            <div class="flex h-[10%] items-center gap-2">
-                <a href="{{ url_for('profile') }}" class="flex gap-2 items-center justify-center py-2 px-3 rounded-2xl !bg-transparent hover:!bg-[#343a44] transition delay-50 duration-150 ease-in-out">
+            <div class="grid grid-cols-[1fr_15%] h-[10%] items-center gap-2">
+                <a href="{{ url_for('profile') }}" class="flex gap-2 items-center py-2 px-3 rounded-2xl !bg-transparent hover:!bg-[#343a44] transition delay-50 duration-150 ease-in-out">
                     <img class="h-[40px] w-[40px] object-cover rounded-4xl" src="{{ url_for('static', filename=session.get('user_photo_url', 'src/images/Default_pfp.jpg')) }}" alt="User Profile Photo">
-                    <h1 class="text-white font-Helvetica !bg-none">{{ session.get('user_firstname', '')|title }} {{ session.get('user_lastname', '')|title }}</h1>
+                    <h1 class="text-white font-Helvetica text-sm !bg-none">{{ session.get('user_firstname', '')|title }} {{ session.get('user_lastname', '')|title }}</h1>
                 </a>
                 <div>
                     <a href="{{ url_for('logout') }}" class="Logout " id="logout-link" title="Logout">
