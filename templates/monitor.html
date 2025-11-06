@@ -380,11 +380,26 @@
 
     // --- TRAINER SAFETY ALERT LISTENER (P2-2) ---
     socket.on('trainer_alert', function(data) {
-        console.log('--- TRAINER ALERT RECEIVED ---');
-        console.log(`Camera: ${data.camera_id}`);
-        console.log(`Message: ${data.message}`);
-        // Simple browser alert for a critical notification
-        alert(`‼️ TRAINER SAFETY ALERT (${data.camera_id}) ‼️\n\n${data.message}`);
+    console.log('--- TRAINER ALERT RECEIVED ---');
+    console.log(`Camera: ${data.camera_id}`);
+    console.log(`Message: ${data.message}`);
+        
+        // Use SweetAlert2 for a prominent, non-blocking notification in the bottom-left
+        Swal.fire({
+            title: `TRAINER SAFETY ALERT (${data.camera_id})`,
+            text: data.message,
+            icon: 'error',
+            toast: true, 
+            position: 'bottom-end',
+            showConfirmButton: false, // Don't require a button click to dismiss
+            timer: 5000,
+            timerProgressBar: true,
+            showCloseButton: true, // Allow manual closing
+            customClass: {
+                // Optional: Customize the appearance with a specific CSS class
+                popup: 'swal2-safety-alert' 
+            }
+        });
     });
 
 </script>
