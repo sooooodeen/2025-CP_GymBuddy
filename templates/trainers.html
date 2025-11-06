@@ -72,13 +72,13 @@
                                         <button class="unassign-btn cursor-pointer" title="Unassign Trainer"
                                                 data-id="{{ trainer.id }}"
                                                 data-name="{{ trainer.firstname }} {{ trainer.lastname }}">
-                                                <svg class="mt-1 hover:stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="31" height="31" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-x-icon lucide-circle-x"><circle cx="12" cy="12" r="10"/><path class="group" stroke="red" d="m15 9-6 6"/><path stroke="red" d="m9 9 6 6"/></svg>
+                                                <svg class="mt-1 stroke-red-600 hover:stroke-red-800 group transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="31" height="31" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-x-icon lucide-circle-x"><circle cx="12" cy="12" r="10"/><path class="stroke-red-600 group-hover:stroke-red-800 transition duration-50 ease-in" stroke="red" d="m15 9-6 6"/><path class="stroke-red-600 group-hover:stroke-red-800 transition duration-50 ease-in stroke="red" d="m9 9 6 6"/></svg>
                                         </button>
                                     {% else %}
                                         <button class="assign-btn cursor-pointer" title="Assign Trainer" 
                                                 data-id="{{ trainer.id }}" 
                                                 data-name="{{ trainer.firstname }} {{ trainer.lastname }}">
-                                                <svg class="mt-1 hover:stroke-gray-500 transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="31" height="31" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-check-icon lucide-circle-check"><circle cx="12" cy="12" r="10"/><path stroke="green" d="m9 12 2 2 4-4"/></svg>
+                                                <svg class="mt-1 stroke-green-600 hover:stroke-green-800 group transition duration-100 ease-in" xmlns="http://www.w3.org/2000/svg" width="31" height="31" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path class="stroke-green-600 group-hover:stroke-green-800 transition duration-50 ease-in" d="m9 12 2 2 4-4"/></svg>
                                         </button>
                                     {% endif %}
                                     
