@@ -26,6 +26,8 @@
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Name</th>
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Contact</th>
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Status</th>
+                            
+                            <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Last Session</th>
                             <th class="py-5 px-4 uppercase font-semibold text-sm text-center">Actions</th>
                         </tr>
                     </thead>
@@ -53,8 +55,20 @@
                                     <span class="bg-gray-200 text-gray-800 font-semibold py-1 px-4 rounded-full text-sm">Inactive</span>
                                 {% endif %}
                             </td>
+                            
+                            <td class="py-5 px-4">
+                                {% if last_sessions.get(trainer.id) %}
+                                    {{ last_sessions[trainer.id].start_time.strftime('%b %d, %Y') }}
+                                {% else %}
+                                    <span class="text-gray-400">N/A</span>
+                                {% endif %}
+                            </td>
                             <td class="py-3 px-4">
                                 <div class="flex gap-2 justify-center">
+                                    
+                                    <a href="{{ url_for('trainer_session_log', user_id=trainer.id) }}" class="cursor-pointer" title="View Session Log">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hover:stroke-blue-500 transition duration-100 ease-in"><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+                                    </a>
                                     {% if trainer.id in assigned_trainer_ids %}
                                         <button class="unassign-btn cursor-pointer" title="Unassign Trainer"
                                                 data-id="{{ trainer.id }}"
@@ -88,7 +102,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="6" class="py-4 px-4 text-center text-gray-500">No trainers found. Add one to get started!</td>
+                            <td colspan="7" class="py-4 px-4 text-center text-gray-500">No trainers found. Add one to get started!</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -101,7 +115,6 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
 
-    // Helper function to show an image preview inside a SweetAlert modal
     function showPreview(inputId, imageId) {
         const input = document.getElementById(inputId);
         const image = document.getElementById(imageId);
@@ -115,7 +128,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // --- Add Trainer Modal ---
     document.getElementById('add-user-btn').addEventListener('click', () => {
         Swal.fire({
             title: '<h1 class="text-black">Add New Trainer</h1>',
@@ -142,7 +154,6 @@ document.addEventListener('DOMContentLoaded', function () {
             focusConfirm: false,
             showCancelButton: true,
             didOpen: () => {
-                // Activate the preview functionality once the modal is open
                 showPreview('add-trainer-photo', 'add-trainer-preview');
             },
             preConfirm: () => {
@@ -158,7 +169,6 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }).then((result) => {
             if (result.isConfirmed) {
-                // CORRECTED: Use FormData to properly handle file uploads
                 const formData = new FormData();
                 formData.append('firstname', document.getElementById('swal-firstname').value);
                 formData.append('lastname', document.getElementById('swal-lastname').value);
@@ -173,7 +183,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 fetch('/admin/trainers/add', {
                     method: 'POST',
-                    body: formData // Body is now FormData, browser handles headers
+                    body: formData
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -183,7 +193,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // --- Edit Trainer Modal ---
     document.querySelectorAll('.edit-btn').forEach(button => {
         button.addEventListener('click', function () {
             const id = this.dataset.id;
@@ -233,7 +242,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     fetch(`/admin/trainers/edit/${id}`, {
                         method: 'POST',
-                        body: formData // Body is now FormData
+                        body: formData
                     })
                     .then(response => response.json())
                     .then(data => {
@@ -244,7 +253,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // --- Assign/Unassign/Delete Listeners ---
     document.querySelectorAll('.assign-btn').forEach(button => {
         button.addEventListener('click', function () {
             const id = this.dataset.id;
@@ -317,4 +325,3 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 {% endblock %}
-

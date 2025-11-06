@@ -76,6 +76,9 @@ class ExerciseAnalyzer:
         self.frame_count = 0 # Added to control prediction interval
         self.PREDICTION_INTERVAL = 3 # Run prediction every 3 frames
         self.triggered_alert = None
+        self.consecutive_error_counter = 0
+        self.last_consecutive_error_type = None
+        self.new_error_to_log = None    
 
     def predict_with_tflite(self, interpreter, input_details, output_details, feature_sequence):
         """
@@ -103,6 +106,12 @@ class ExerciseAnalyzer:
         alert_to_send = self.triggered_alert
         self.triggered_alert = None # Clear the alert after fetching
         return alert_to_send
+    
+    def get_new_error_log(self):
+        """Called by app.py to get a new error log and clear it."""
+        log_entry = self.new_error_to_log
+        self.new_error_to_log = None # Clear after fetching
+        return log_entry
     
     def process_frame(self, interpreter, input_details, output_details, label_mapping, landmarks, current_exercise):
         """
@@ -198,6 +207,8 @@ class ExerciseAnalyzer:
         
         # Wrap all exercise logic in a try-except for robustness
         try:
+            prev_rep_counter = self.rep_counter
+
             if 'bicepCurl' in exercise_name:
                 left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_wrist_lm = landmarks[mp_lm.LEFT_WRIST.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]
                 right_shoulder_lm = landmarks[mp_lm.RIGHT_SHOULDER.value]; right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]; right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]; right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]
@@ -309,12 +320,52 @@ class ExerciseAnalyzer:
                     
                     if torso_angle > 135:
                         self.form_status = "ERROR: BEND OVER MORE (45 DEG)"; self.status_color = (0, 0, 255)
-            
+
+            is_new_rep = (self.rep_counter > prev_rep_counter)
+
+            if is_new_rep:
+                # 1. Check for immediate error logging
+                if "ERROR" in self.form_status:
+                    # Set the new_error_to_log variable. app.py will read this.
+                    self.new_error_to_log = { 
+                        "rep_number": self.rep_counter, 
+                        "error_type": self.form_status, 
+                        "exercise_name": exercise_name 
+                    }
+                
+                # 2. Check for trainer alert (consecutive errors)
+                if "ERROR" in self.form_status:
+                    if self.form_status == self.last_consecutive_error_type:
+                        self.consecutive_error_counter += 1
+                    else:
+                        self.last_consecutive_error_type = self.form_status
+                        self.consecutive_error_counter = 1
+                else: # Correct rep resets the counter
+                    self.consecutive_error_counter = 0
+                    self.last_consecutive_error_type = None
+
+                if self.consecutive_error_counter >= 6:
+                    alert_message = f"Repeated Error: {self.last_consecutive_error_type.replace('ERROR: ', '')}"
+                    self.triggered_alert = {'message': alert_message, 'exercise': exercise_name, 'reps': self.rep_counter}
+                    print(f"!!! TRAINER ALERT TRIGGERED: {alert_message} !!!")
+                    self.consecutive_error_counter = 0
+
         except Exception as e:
             print(f"Error during form analysis for {exercise_name}: {e}")
             self.form_status = "ERROR: TRACKING LOST"
             self.status_color = (0,0,255)
             self.debug_angles.clear()
+            pass
+    
+    def reset_session(self):
+        """Resets all counters for a new session."""
+        self.rep_counter = 0
+        self.stage = None
+        self.consecutive_error_counter = 0
+        self.last_consecutive_error_type = None
+        self.triggered_alert = None
+        self.new_error_to_log = None
+        print("Analyzer reset for new session.")
 
     def get_status(self):
         return self.rep_counter, self.form_status, self.status_color, self.debug_angles

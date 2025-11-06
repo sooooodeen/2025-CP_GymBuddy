@@ -1,0 +1,48 @@
+{% extends "house.html" %}
+{% block title %}Trainer Session Log{% endblock %}
+{% block content %}
+<div class="p-10 bg-[#f1f1f1] h-full font-Helvetica flex flex-col gap-6">
+    <h1 class="text-4xl font-semibold">Trainer Session Log</h1>
+    <h2 class="text-2xl text-gray-600 -mt-4">History for {{ trainer.firstname }} {{ trainer.lastname }}</h2>
+    
+    <div class="border border-gray-300 bg-white rounded-2xl p-4">
+        <table class="w-full">
+            <thead class="border-b border-gray-200">
+                <tr>
+                    <th class="p-3 text-left">Date</th>
+                    <th class="p-3 text-left">Start Time</th>
+                    <th class="p-3 text-left">End Time</th>
+                    <th class="p-3 text-left">Duration</th>
+                    <th class="p-3 text-left">Total Reps</th>
+                    <th class="p-3 text-left">View</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for session in sessions %}
+                <tr class="hover:bg-gray-50 border-b border-gray-100">
+                    <td class="p-3">{{ session.start_time.strftime('%b %d, %Y') }}</td>
+                    <td class="p-3">{{ session.start_time.strftime('%I:%M %p') }}</td>
+                    <td class="p-3">{{ session.end_time.strftime('%I:%M %p') }}</td>
+                    <td class="p-3">
+                        {% set duration = session.end_time - session.start_time %}
+                        {% set hours = (duration.total_seconds() // 3600) | int %}
+                        {% set minutes = ((duration.total_seconds() % 3600) // 60) | int %}
+                        {{ hours }}hrs {{ minutes }}mins
+                    </td>
+                    <td class="p-3">{{ session.total_reps }}</td>
+                    <td class="p-3">
+                        <a href="{{ url_for('trainer_session_detail', session_id=session.id) }}" class="text-blue-500 hover:underline">
+                            View Details
+                        </a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="p-3 text-center text-gray-500">No completed sessions found for this trainer.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
