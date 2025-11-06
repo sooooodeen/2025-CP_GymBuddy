@@ -25,7 +25,6 @@ from sqlalchemy import ForeignKey, func
 from sqlalchemy.orm import relationship
 
 # --- Import the shared logic ---
-# CRITICAL: This line assumes you have a correct and updated analysis_logic.py file.
 from analysis_logic import ExerciseAnalyzer 
 
 # --- App and Database Configuration ---
@@ -47,10 +46,8 @@ socketio = SocketIO(app, async_mode='eventlet')
 # --- Database Model Definitions (Multi-Tenant Update) ---
 
 class Gym(db.Model):
-    """New table to store Gym information."""
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), unique=True, nullable=False)
-    # Relationships
     users = db.relationship('User', backref='gym', lazy=True)
     sessions = db.relationship('WorkoutSession', backref='gym', lazy=True)
 
@@ -64,14 +61,9 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     role = db.Column(db.String(50), nullable=False) # e.g., 'Gym Owner', 'Trainer'
-    
-    # MODIFIED: Replaced gym_name string with gym_id foreign key
     gym_id = db.Column(db.Integer, db.ForeignKey('gym.id'), nullable=False)
-    
     photo_url = db.Column(db.String(200), nullable=True)
     status = db.Column(db.String(20), nullable=False, default='inactive')
-    
-    # Relationships
     assignments = db.relationship('Assignment', foreign_keys='Assignment.trainer_id', backref='trainer', lazy=True, cascade="all, delete-orphan")
     workout_sessions = db.relationship('WorkoutSession', backref='user', lazy=True, cascade="all, delete-orphan")
     
@@ -89,10 +81,7 @@ class Assignment(db.Model):
 class WorkoutSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    
-    # MODIFIED: Added gym_id to link every session to a gym
     gym_id = db.Column(db.Integer, db.ForeignKey('gym.id'), nullable=False)
-    
     start_time = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     end_time = db.Column(db.DateTime, nullable=True)
     total_reps = db.Column(db.Integer, default=0)
@@ -108,7 +97,7 @@ class ErrorLog(db.Model):
 
 # --- AI MODEL AND STATE INITIALIZATION (TFLite Integration) ---
 SEQUENCE_LENGTH = 90
-CONF_THRESHOLD = 0.30 # Lowered threshold to fix detection
+CONF_THRESHOLD = 0.30 # FIX: Lowered threshold for better detection
 STABILITY_FRAMES = 10
 TRAINING_ARTIFACTS_DIR = 'training'
 
@@ -235,13 +224,13 @@ def login():
         user = User.query.filter_by(email=email).first()
         
         if user and bcrypt.check_password_hash(user.password_hash, password):
+            # --- FIX: Clear old session data to prevent KeyError ---
+            session.clear() 
+            
             session['user_id'] = user.id
             session['user_role'] = user.role
-            
-            # --- MODIFIED: Store gym_id and gym_name in session ---
             session['user_gym_id'] = user.gym_id
-            session['user_gym_name'] = user.gym.name # Get name from relationship
-            
+            session['user_gym_name'] = user.gym.name 
             session['user_firstname'] = user.firstname
             session['user_lastname'] = user.lastname
             session['user_photo_url'] = user.photo_url if user.photo_url else 'src/images/Default_pfp.jpg'
@@ -260,14 +249,14 @@ def logout():
 @app.route("/dashboard")
 @login_required
 def dashboard(): 
-    # This is the TRAINER/USER dashboard
-    # --- MODIFIED: Queries are filtered by the logged-in user's ID ---
+    # --- UPDATED: This is the TRAINER/USER dashboard ---
     user_id = session['user_id']
     
     today = datetime.utcnow().date()
     start_of_week = today - timedelta(days=today.weekday())
     start_of_month = today.replace(day=1)
     
+    # --- (Queries for stat cards and charts) ---
     total_errors_today = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, func.date(ErrorLog.timestamp) == today).scalar() or 0
     most_common_error_week_query = db.session.query(ErrorLog.error_type, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, ErrorLog.timestamp >= start_of_week).group_by(ErrorLog.error_type).order_by(func.count(ErrorLog.id).desc()).first()
     most_common_error_week = most_common_error_week_query[0].replace('ERROR: ', '') if most_common_error_week_query else "N/A"
@@ -285,6 +274,16 @@ def dashboard():
         group = muscle_group_mapping.get(exercise)
         if group and group in current_month_chart_data:
             current_month_chart_data[group] += count
+            
+    # --- NEW: Query for Trainer's Session History ---
+    all_sessions = WorkoutSession.query.filter_by(
+        user_id=user_id
+    ).filter(
+        WorkoutSession.end_time != None # Only completed sessions
+    ).order_by(
+        WorkoutSession.start_time.desc()
+    ).all()
+    # --- END: New query ---
 
     return render_template(
         "dashboard.html", 
@@ -292,7 +291,8 @@ def dashboard():
         most_common_error_week=most_common_error_week,
         total_errors_month=total_errors_month,
         recent_errors=recent_errors,
-        current_month_chart_data=current_month_chart_data 
+        current_month_chart_data=current_month_chart_data,
+        sessions=all_sessions  # <-- Pass the session list to the template
     )
 
 @app.route("/monitor")
@@ -344,7 +344,7 @@ def profile():
                 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                 user.photo_url = os.path.join('uploads/profiles', filename).replace('\\', '/')
-                session['user_photo_url'] = user.photo_url # Update session photo
+                session['user_photo_url'] = user.photo_url 
         db.session.commit()
         session['user_firstname'] = user.firstname; session['user_lastname'] = user.lastname
         flash('Profile updated successfully!', 'success')
@@ -451,10 +451,9 @@ def admin_dashboard():
     muscle_group_mapping = {
         'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms',
         'lateralRaise': 'arms', 'bentOverRow': 'back',
-        # Add all your exercises here
     }
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
-    errors_this_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_month).group_by(ErrorLog.exercise_name).all()
+    errors_this_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_current_month).group_by(ErrorLog.exercise_name).all()
     
     for exercise, count in errors_this_month:
         group = muscle_group_mapping.get(exercise)
@@ -704,7 +703,7 @@ def handle_disconnect():
     if sid in clients:
         for camera_id in list(clients[sid].keys()): 
             handle_end_session({'camera_id': camera_id}) # Gracefully end sessions
-            if 'mp_pose' in clients[sid][camera_id]:
+            if 'mp_pose' in clients[sid][camera_id] and clients[sid][camera_id]['mp_pose']:
                 clients[sid][camera_id]['mp_pose'].close()
     clients.pop(sid, None)
     print(f"Client disconnected: {sid}")
@@ -719,18 +718,22 @@ def start_camera(data):
     
     if sid in clients:
         try:
+            # Ensure analyzer gets all config params
+            analyzer_instance = ExerciseAnalyzer(
+                sequence_length=SEQUENCE_LENGTH, 
+                conf_threshold=CONF_THRESHOLD, 
+                stability_frames=STABILITY_FRAMES
+            )
+            pose_instance = mp_pose.Pose(
+                min_detection_confidence=0.5, 
+                min_tracking_confidence=0.5
+            )
+            
             clients[sid][camera_id] = {
-                'analyzer': ExerciseAnalyzer(
-                    sequence_length=SEQUENCE_LENGTH, 
-                    conf_threshold=CONF_THRESHOLD, 
-                    stability_frames=STABILITY_FRAMES
-                ),
-                'mp_pose': mp_pose.Pose(
-                    min_detection_confidence=0.5, 
-                    min_tracking_confidence=0.5
-                ),
+                'analyzer': analyzer_instance,
+                'mp_pose': pose_instance,
                 'is_processing': False,
-                'active_session_id': None, # Session not active yet
+                'active_session_id': None, 
                 'stable_exercise': 'neutral',
                 'last_form_status': None
             }
@@ -747,7 +750,7 @@ def stop_camera(data):
     handle_end_session(data) # End the session for this camera
     
     if sid in clients and camera_id in clients[sid]:
-        if 'mp_pose' in clients[sid][camera_id]:
+        if 'mp_pose' in clients[sid][camera_id] and clients[sid][camera_id]['mp_pose']:
             clients[sid][camera_id]['mp_pose'].close()
         clients[sid].pop(camera_id, None)
         print(f"Stopped camera '{camera_id}' for client {sid}")
@@ -961,4 +964,4 @@ if __name__ == "__main__":
         db.create_all()
     print("Starting Flask-SocketIO server...")
     # FIX: Use port 5001 to avoid socket address conflicts
-    socketio.run(app, debug=True, host='0.0.0.0', port=5001)    
+    socketio.run(app, debug=True, host='0.0.0.0', port=5001)
