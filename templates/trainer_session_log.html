@@ -1,23 +1,31 @@
 {% extends "house.html" %}
 {% block title %}Trainer Session Log{% endblock %}
 {% block content %}
-<div class="p-10 bg-[#f1f1f1] h-full font-Helvetica flex flex-col gap-6">
-    <h1 class="text-4xl font-semibold">Trainer Session Log</h1>
-    <h2 class="text-2xl text-gray-600 -mt-4">History for {{ trainer.firstname }} {{ trainer.lastname }}</h2>
+<div class="p-10 bg-[#f1f1f1] h-full font-Helvetica flex flex-col">
+    <div id="header" class="w-full grid grid-cols-2 h-[7%] mb-5">
+        <div>
+            <h1 class="text-4xl font-semibold">Trainer Session History</h1>
+            <p class="text-lg text-gray-400 font-normal leading-[15px]">View past recorded trainer sessions</p>
+        </div>
+        <div class="flex justify-end items-center gap-2">
+            <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
+        </div>
+    </div>
+    <h2 class="text-2xl text-gray-600 mb-2">History for {{ trainer.firstname }} {{ trainer.lastname }}</h2>
     
-    <div class="border border-gray-300 bg-white rounded-2xl p-4">
+    <div class="border border-gray-300">
         <table class="w-full">
-            <thead class="border-b border-gray-200">
+            <thead class="border-b text-white bg-[#222831]  border-gray-200">
                 <tr>
-                    <th class="p-3 text-left">Date</th>
-                    <th class="p-3 text-left">Start Time</th>
-                    <th class="p-3 text-left">End Time</th>
-                    <th class="p-3 text-left">Duration</th>
-                    <th class="p-3 text-left">Total Reps</th>
-                    <th class="p-3 text-left">View</th>
+                    <th class="p-5 text-left">Date</th>
+                    <th class="p-5 text-left">Start Time</th>
+                    <th class="p-5 text-left">End Time</th>
+                    <th class="p-5 text-left">Duration</th>
+                    <th class="p-5 text-left">Total Reps</th>
+                    <th class="p-5 text-left">Action</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody class="bg-white">
                 {% for session in sessions %}
                 <tr class="hover:bg-gray-50 border-b border-gray-100">
                     <td class="p-3">{{ session.start_time.strftime('%b %d, %Y') }}</td>
@@ -37,7 +45,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr>
+                <tr class="h-[50dvh]">
                     <td colspan="6" class="p-3 text-center text-gray-500">No completed sessions found for this trainer.</td>
                 </tr>
                 {% endfor %}
