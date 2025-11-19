@@ -231,7 +231,6 @@ def login():
         user = User.query.filter_by(email=email).first()
         
         if user and bcrypt.check_password_hash(user.password_hash, password):
-            # --- FIX: Clear old session data to prevent KeyError ---
             session.clear() 
             
             session['user_id'] = user.id
@@ -240,6 +239,10 @@ def login():
             session['user_gym_name'] = user.gym.name 
             session['user_firstname'] = user.firstname
             session['user_lastname'] = user.lastname
+            
+            session['user_email'] = user.email 
+            session['user_phone_num'] = user.phone_num 
+            
             session['user_photo_url'] = user.photo_url if user.photo_url else 'src/images/Default_pfp.jpg'
             
             return redirect(url_for('admin_dashboard') if user.role == 'Gym Owner' else url_for('dashboard'))
@@ -385,6 +388,8 @@ def security_settings():
 def delete_account():
     return render_template("delete_account.html")
 
+# app.py - /profile route (No changes needed from the previous successful version)
+
 @app.route("/profile", methods=['GET', 'POST'])
 @login_required
 def profile():
@@ -392,30 +397,49 @@ def profile():
     if not user:
         flash('User not found.', 'error')
         return redirect(url_for('login'))
+        
     if request.method == 'POST':
-        user.firstname = request.form.get('firstname'); user.lastname = request.form.get('lastname')
-        user.email = request.form.get('email'); user.phone_num = request.form.get('phone_num')
-        # --- FIX: Added line to save gender field ---
+        # 1. Update text fields
+        user.firstname = request.form.get('firstname')
+        user.lastname = request.form.get('lastname')
+        user.email = request.form.get('email')
+        user.phone_num = request.form.get('phone_num')
         user.gender = request.form.get('gender') 
         
+        # 2. Handle Profile Picture Upload
+        if 'photo' in request.files:
+            file = request.files['photo']
+            if file and file.filename != '' and allowed_file(file.filename):
+                
+                filename = secure_filename(f"{user.id}_{file.filename}")
+                os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                
+                new_photo_url = os.path.join('uploads/profiles', filename).replace('\\', '/')
+                user.photo_url = new_photo_url
+                session['user_photo_url'] = new_photo_url # Update session immediately
+        
+        # 3. Handle Gym Name update (if Gym Owner)
         if 'gym_name' in request.form and session.get('user_role') == 'Gym Owner': 
             gym = Gym.query.get(user.gym_id)
             if gym:
                 gym.name = request.form.get('gym_name')
                 session['user_gym_name'] = gym.name
         
-        if 'photo' in request.files:
-            file = request.files['photo']
-            if file and file.filename != '' and allowed_file(file.filename):
-                filename = secure_filename(f"{user.id}_{file.filename}")
-                os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                user.photo_url = os.path.join('uploads/profiles', filename).replace('\\', '/')
-                session['user_photo_url'] = user.photo_url 
+        # 4. Commit changes to the database
         db.session.commit()
-        session['user_firstname'] = user.firstname; session['user_lastname'] = user.lastname
+        
+        # 5. Update session variables for text fields
+        session['user_firstname'] = user.firstname
+        session['user_lastname'] = user.lastname
+        session['user_email'] = user.email
+        session['user_phone_num'] = user.phone_num
+        session['user_gender'] = user.gender
+
         flash('Profile updated successfully!', 'success')
         return redirect(url_for('profile'))
+        
+    # --- GET request ---
     return render_template("profile.html", user=user)
 
 @app.route("/change_password", methods=['GET', 'POST'])
@@ -717,8 +741,8 @@ def trainer_session_log(user_id):
     
     return render_template("trainer_session_log.html", sessions=all_sessions, trainer=trainer)
 
-@app.route("/admin/session/<int:session_id>")
-@admin_required
+@app.route("/session/<int:session_id>")
+@login_required
 def trainer_session_detail(session_id):
     gym_id = session['user_gym_id']
     
@@ -744,7 +768,7 @@ def trainer_session_detail(session_id):
 
     return render_template(
         "trainer_session.html",
-        session=session_obj,
+        workout_session=session_obj,
         user=user_obj,
         duration=duration,
         normal_error_count=len(normal_errors),
