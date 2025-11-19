@@ -725,7 +725,7 @@ def trainer_session_detail(session_id):
     session_data = db.session.query(WorkoutSession, User).join(User).filter(
         WorkoutSession.gym_id == gym_id,
         WorkoutSession.id == session_id
-    ).first_or_404()
+    ).first_or_404() # --- FIX: This was first_or_44()
     
     session_obj = session_data[0]
     user_obj = session_data[1]
@@ -932,7 +932,8 @@ def handle_end_session(data):
 
 
 # --- Main AI Processing Loop ---
-def process_frame_task(sid, data):
+# --- FIX 1: Accept user_info as an argument ---
+def process_frame_task(sid, data, user_info):
     global interpreter, label_mapping, input_details, output_details, clients
     
     # --- FIX: Get gym_id for broadcasting ---
@@ -1042,8 +1043,8 @@ def process_frame_task(sid, data):
             error_data = {
                 'message': message, 
                 'camera_id': camera_id,
-                # Get user name from the session context of this task
-                'user_name': f"{session.get('user_firstname', 'Unknown')} {session.get('user_lastname', 'User')}",
+                # --- FIX 2: Use the user_info variable instead of session ---
+                'user_name': f"{user_info.get('firstname', 'Unknown')} {user_info.get('lastname', 'User')}",
                 'timestamp': datetime.utcnow().isoformat()
             }
             # Broadcast to everyone in the gym
@@ -1081,8 +1082,15 @@ def handle_image(data):
         return
         
     client_camera_state['is_processing'] = True
-    # We must wrap the task in app_context to access 'session' inside it
-    socketio.start_background_task(target=lambda: app.app_context().push() or process_frame_task(sid, data))
+    
+    # --- FIX 3: Get user data now and pass it to the background task ---
+    user_info = {
+        'firstname': session.get('user_firstname', 'Unknown'),
+        'lastname': session.get('user_lastname', 'User')
+    }
+    
+    # Pass arguments to the task. No app_context is needed anymore.
+    socketio.start_background_task(process_frame_task, sid, data, user_info)
 
 
 if __name__ == "__main__":
