@@ -362,6 +362,17 @@ def login():
         user = User.query.filter_by(email=email).first()
         
         if user and bcrypt.check_password_hash(user.password_hash, password):
+<<<<<<< HEAD
+=======
+            
+            # --- FIX: ADDED Verification Check ---
+            if user.status == 'unverified':
+                 flash('Your account is not verified. Please check your email for the verification link.', 'error')
+                 return redirect(url_for('login'))
+            # --- END FIX ---
+            
+            session.clear() 
+>>>>>>> 09c264fb06fe0d03e250ab99de1ab81a825e4417
             
             # --- FIX: ADDED Verification Check ---
             if user.status == 'unverified':
@@ -376,8 +387,15 @@ def login():
             session['user_gym_name'] = user.gym.name 
             session['user_firstname'] = user.firstname
             session['user_lastname'] = user.lastname
+<<<<<<< HEAD
             session['user_email'] = user.email 
             session['user_phone_num'] = user.phone_num 
+=======
+            
+            session['user_email'] = user.email 
+            session['user_phone_num'] = user.phone_num 
+            
+>>>>>>> 09c264fb06fe0d03e250ab99de1ab81a825e4417
             session['user_photo_url'] = user.photo_url if user.photo_url else 'src/images/Default_pfp.jpg'
             
             return redirect(url_for('admin_dashboard') if user.role == 'Gym Owner' else url_for('dashboard'))
@@ -542,6 +560,8 @@ def security_settings():
 def delete_account():
     return render_template("delete_account.html")
 
+# app.py - /profile route (No changes needed from the previous successful version)
+
 @app.route("/profile", methods=['GET', 'POST'])
 @login_required
 def profile():
@@ -549,6 +569,7 @@ def profile():
     if not user:
         flash('User not found.', 'error')
         return redirect(url_for('login'))
+<<<<<<< HEAD
         
     if request.method == 'POST':
         user.firstname = request.form.get('firstname')
@@ -574,6 +595,41 @@ def profile():
                 session['user_gym_name'] = gym.name
         
         db.session.commit()
+=======
+        
+    if request.method == 'POST':
+        # 1. Update text fields
+        user.firstname = request.form.get('firstname')
+        user.lastname = request.form.get('lastname')
+        user.email = request.form.get('email')
+        user.phone_num = request.form.get('phone_num')
+        user.gender = request.form.get('gender') 
+        
+        # 2. Handle Profile Picture Upload
+        if 'photo' in request.files:
+            file = request.files['photo']
+            if file and file.filename != '' and allowed_file(file.filename):
+                
+                filename = secure_filename(f"{user.id}_{file.filename}")
+                os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                
+                new_photo_url = os.path.join('uploads/profiles', filename).replace('\\', '/')
+                user.photo_url = new_photo_url
+                session['user_photo_url'] = new_photo_url # Update session immediately
+        
+        # 3. Handle Gym Name update (if Gym Owner)
+        if 'gym_name' in request.form and session.get('user_role') == 'Gym Owner': 
+            gym = Gym.query.get(user.gym_id)
+            if gym:
+                gym.name = request.form.get('gym_name')
+                session['user_gym_name'] = gym.name
+        
+        # 4. Commit changes to the database
+        db.session.commit()
+        
+        # 5. Update session variables for text fields
+>>>>>>> 09c264fb06fe0d03e250ab99de1ab81a825e4417
         session['user_firstname'] = user.firstname
         session['user_lastname'] = user.lastname
         session['user_email'] = user.email
@@ -583,6 +639,10 @@ def profile():
         flash('Profile updated successfully!', 'success')
         return redirect(url_for('profile'))
         
+<<<<<<< HEAD
+=======
+    # --- GET request ---
+>>>>>>> 09c264fb06fe0d03e250ab99de1ab81a825e4417
     return render_template("profile.html", user=user)
 
 @app.route("/change_password", methods=['GET', 'POST'])
@@ -883,7 +943,11 @@ def trainer_session_detail(session_id):
     session_data = db.session.query(WorkoutSession, User).join(User).filter(
         WorkoutSession.gym_id == gym_id,
         WorkoutSession.id == session_id
+<<<<<<< HEAD
     ).first_or_404() 
+=======
+    ).first_or_404() # --- FIX: This was first_or_44()
+>>>>>>> 09c264fb06fe0d03e250ab99de1ab81a825e4417
     
     session_obj = session_data[0]
     user_obj = session_data[1]
@@ -1066,9 +1130,16 @@ def handle_end_session(data):
             analyzer.reset_session()
 
 
+<<<<<<< HEAD
 # --- Main AI Processing Loop (Updated for Multi-Person) ---
 def process_frame_task(sid, data, user_info):
     global interpreter, label_mapping, input_details, output_details, clients, yolo_model, YOLO_CONF_THRESHOLD, YOLO_TO_MP
+=======
+# --- Main AI Processing Loop ---
+# --- FIX 1: Accept user_info as an argument ---
+def process_frame_task(sid, data, user_info):
+    global interpreter, label_mapping, input_details, output_details, clients
+>>>>>>> 09c264fb06fe0d03e250ab99de1ab81a825e4417
     
     gym_id = clients.get(sid, {}).get('gym_id')
 
@@ -1240,6 +1311,38 @@ def process_frame_task(sid, data, user_info):
     }
 
     socketio.emit('response', emit_data, room=sid)
+<<<<<<< HEAD
+=======
+    
+    # --- FIX: Broadcast form errors to the entire gym room ---
+    last_form = client_camera_state.get('last_form_status')
+    current_form = emit_data['form_status']
+    if "ERROR" in current_form and current_form != last_form:
+        message = current_form.replace('ERROR: ', '') 
+        
+        if gym_id:
+            error_data = {
+                'message': message, 
+                'camera_id': camera_id,
+                # --- FIX 2: Use the user_info variable instead of session ---
+                'user_name': f"{user_info.get('firstname', 'Unknown')} {user_info.get('lastname', 'User')}",
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            # Broadcast to everyone in the gym
+            socketio.emit('form_error', error_data, room=f'gym_{gym_id}')
+            
+        client_camera_state['last_form_status'] = current_form
+    elif "ERROR" not in current_form:
+        client_camera_state['last_form_status'] = None
+
+    # --- FIX: Broadcast trainer alerts to the entire gym room ---
+    alert_data = analyzer.get_triggered_alert() 
+    if alert_data:
+        alert_data['camera_id'] = camera_id
+        if gym_id:
+            # Add user/timestamp data if needed, similar to 'form_error'
+            socketio.emit('trainer_alert', alert_data, room=f'gym_{gym_id}')
+>>>>>>> 09c264fb06fe0d03e250ab99de1ab81a825e4417
 
     if client_camera_state: client_camera_state['is_processing'] = False
 
@@ -1262,11 +1365,19 @@ def handle_image(data):
         
     client_camera_state['is_processing'] = True
     
+<<<<<<< HEAD
+=======
+    # --- FIX 3: Get user data now and pass it to the background task ---
+>>>>>>> 09c264fb06fe0d03e250ab99de1ab81a825e4417
     user_info = {
         'firstname': session.get('user_firstname', 'Unknown'),
         'lastname': session.get('user_lastname', 'User')
     }
     
+<<<<<<< HEAD
+=======
+    # Pass arguments to the task. No app_context is needed anymore.
+>>>>>>> 09c264fb06fe0d03e250ab99de1ab81a825e4417
     socketio.start_background_task(process_frame_task, sid, data, user_info)
 
 
