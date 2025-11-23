@@ -1,6 +1,5 @@
 import os
 import cv2
-import mediapipe as mp
 import pandas as pd
 import uuid
 import numpy as np
@@ -12,22 +11,25 @@ import base64
 from PIL import Image
 import io
 import eventlet
-import re # --- FIX: Added for formatting exercise names ---
+import re
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_migrate import Migrate
-# --- FIX: Import join_room and leave_room ---
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from functools import wraps
 from datetime import datetime, timedelta
-from dateutil.relativedelta import relativedelta # Added for monthly comparison
+from dateutil.relativedelta import relativedelta
 from werkzeug.utils import secure_filename
 from sqlalchemy import ForeignKey, func
 from sqlalchemy.orm import relationship
+from ultralytics import YOLO  # Added for Multi-Person Detection
 
-# --- Import the shared logic ---
 from analysis_logic import ExerciseAnalyzer 
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired
+from flask_mail import Mail, Message
+from dotenv import load_dotenv
+load_dotenv('config.env')
 
 # --- App and Database Configuration ---
 app = Flask(__name__)
@@ -41,11 +43,27 @@ app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 migrate = Migrate(app, db)
-# FIX: Use eventlet for SocketIO stability and async mode
 socketio = SocketIO(app, async_mode='eventlet') 
 
 
 # --- Database Model Definitions (Multi-Tenant Update) ---
+# --- NEW: Flask-Mail Configuration ---
+# NOTE: Replace these with your actual SMTP server and credentials.
+# For Gmail, you MUST use an App Password, not your account password.
+app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True').lower() in ('true', '1', 't')
+app.config['MAIL_USE_SSL'] = os.environ.get('MAIL_USE_SSL', 'False').lower() in ('true', '1', 't') # Set to True for port 465
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', 'your_email@gmail.com')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', 'your_app_password') 
+app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@yourgymapp.com')
+app.config['SECURITY_EMAIL_SALT'] = 'email-confirm-salt' # Used by ItsDangerous
+
+mail = Mail(app) # Initialize Flask-Mail
+# --- END NEW CONFIG ---
+
+# --- NEW: Initialize ItsDangerous Serializer ---
+s = URLSafeTimedSerializer(app.secret_key) # Use your app's secret key for security
 
 class Gym(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -62,10 +80,10 @@ class User(db.Model):
     gender = db.Column(db.String(20), nullable=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.String(50), nullable=False) # e.g., 'Gym Owner', 'Trainer'
+    role = db.Column(db.String(50), nullable=False) 
     gym_id = db.Column(db.Integer, db.ForeignKey('gym.id'), nullable=False)
     photo_url = db.Column(db.String(200), nullable=True)
-    status = db.Column(db.String(20), nullable=False, default='inactive')
+    status = db.Column(db.String(20), nullable=False, default='unverified')
     assignments = db.relationship('Assignment', foreign_keys='Assignment.trainer_id', backref='trainer', lazy=True, cascade="all, delete-orphan")
     workout_sessions = db.relationship('WorkoutSession', backref='user', lazy=True, cascade="all, delete-orphan")
     
@@ -73,7 +91,6 @@ class User(db.Model):
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password_hash, password)
-
 
 class Assignment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -97,9 +114,9 @@ class ErrorLog(db.Model):
     error_type = db.Column(db.String(200), nullable=False)
     timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-# --- AI MODEL AND STATE INITIALIZATION (TFLite Integration) ---
+# --- AI MODEL AND STATE INITIALIZATION ---
 SEQUENCE_LENGTH = 90
-CONF_THRESHOLD = 0.30 # FIX: Lowered threshold for better detection
+CONF_THRESHOLD = 0.30 
 STABILITY_FRAMES = 10
 TRAINING_ARTIFACTS_DIR = 'training'
 
@@ -107,7 +124,27 @@ interpreter = None
 input_details = None
 output_details = None
 label_mapping = {}
-mp_pose = mp.solutions.pose # Global MediaPipe Pose instance
+
+# Initialize YOLO
+yolo_model = YOLO('yolov8n-pose.pt')
+YOLO_CONF_THRESHOLD = 0.60
+
+# YOLO index to MediaPipe index mapping
+YOLO_TO_MP = {
+    0: 0,   # nose
+    5: 11,  # left_shoulder
+    6: 12,  # right_shoulder
+    7: 13,  # left_elbow
+    8: 14,  # right_elbow
+    9: 15,  # left_wrist
+    10: 16, # right_wrist
+    11: 23, # left_hip
+    12: 24, # right_hip
+    13: 25, # left_knee
+    14: 26, # right_knee
+    15: 27, # left_ankle
+    16: 28  # right_ankle
+}
 
 def load_model_and_labels():
     global interpreter, label_mapping, input_details, output_details
@@ -118,26 +155,63 @@ def load_model_and_labels():
         if os.path.exists(TFLITE_MODEL_FILENAME):
             interpreter = tf.lite.Interpreter(model_path=TFLITE_MODEL_FILENAME)
             interpreter.allocate_tensors()
-            
             input_details = interpreter.get_input_details()
             output_details = interpreter.get_output_details()
-            print("TFLite Interpreter loaded successfully (without Flex Delegate).")
+            print("TFLite Interpreter loaded successfully.")
         else:
-            print(f"Error: TFLite model file not found at {TFLITE_MODEL_FILENAME}. Please run convert_model.py.")
+            print(f"Error: TFLite model file not found at {TFLITE_MODEL_FILENAME}")
 
         if os.path.exists(LABEL_MAPPING_FILENAME):
             with open(LABEL_MAPPING_FILENAME, 'r') as f:
                 label_mapping = {int(k): v for k, v in json.load(f).items()}
             print("Label mapping loaded successfully.")
         else:
-            print(f"Error: Label mapping file not found at {LABEL_MAPPING_FILENAME}")
+            print(f"Error: Label mapping file not found.")
             
     except Exception as e:
         print(f"Error loading model or labels: {e}") 
 
 load_model_and_labels()
 
+# app.py - Place this with your utility functions
 
+def generate_verification_token(email):
+    """Generates a time-limited token for email verification."""
+    return s.dumps(email, salt=app.config['SECURITY_EMAIL_SALT'])
+
+def confirm_verification_token(token, expiration=3600):
+    """Validates the token and returns the email if valid and not expired (default 1 hour)."""
+    try:
+        email = s.loads(
+            token,
+            salt=app.config['SECURITY_EMAIL_SALT'],
+            max_age=expiration # Token expiration time in seconds
+        )
+        return email
+    except SignatureExpired:
+        return None
+    except Exception:
+        return None
+
+def send_verification_email(user_email, token):
+    """Sends the actual email to the user."""
+    # Build the external URL for the user to click
+    verify_url = url_for('verify_account', token=token, _external=True)
+    
+    msg = Message(
+        subject="Confirm Your Gym Buddy Account",
+        recipients=[user_email],
+        html=f"""
+            <p>Welcome to Gym Buddy! Please click the link below to verify your email address and activate your account:</p>
+            <p><a href="{verify_url}" style="background-color: #2D2C2C; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Verify My Email</a></p>
+            <p>The link will expire in 1 hour.</p>
+            <p>If you did not register, please ignore this email.</p>
+        """
+    )
+    # The mail.send() function might block, so in a production app, you'd use a background thread (like your existing socketio background tasks) or a task queue (like Celery).
+    # For now, we'll run it synchronously:
+    mail.send(msg)
+    
 # --- Utility Functions (for Authentication and Routing) ---
 
 # --- FIX: Helper function to format camelCase names ---
@@ -166,7 +240,7 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Routes (Consolidated and Fixed) ---
+# --- Routes ---
 
 @app.route("/")
 def home():
@@ -179,6 +253,7 @@ def home():
 @app.route("/register", methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
+        # --- FIX: Retrieve ALL form data here ---
         firstname = request.form.get('firstname')
         middlename = request.form.get('middlename')
         lastname = request.form.get('lastname')
@@ -189,10 +264,10 @@ def register():
         gym_name = request.form.get('gymName')
         
         if not all([firstname, lastname, email, password, gym_name]):
-             flash('Please fill out all required fields.', 'danger')
-             return redirect(url_for('register'))
+            flash('Please fill out all required fields.', 'danger')
+            return redirect(url_for('register'))
 
-        # --- MODIFIED: Multi-Tenant Gym Logic ---
+        # --- MODIFIED: Multi-Tenant Gym Logic (Create Gym if it doesn't exist) ---
         gym = Gym.query.filter_by(name=gym_name).first()
         if not gym:
             gym = Gym(name=gym_name)
@@ -207,21 +282,77 @@ def register():
         if User.query.filter_by(email=email).first():
             flash('Email address already registered.', 'error')
             return redirect(url_for('register'))
-            
+        # --- END Multi-Tenant Gym Logic ---
+        
+        # --- EMAIL VERIFICATION & USER CREATION BLOCK ---
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+        
+        # 1. Generate the secure token
+        verification_token = generate_verification_token(email)
+        
         new_user = User(
             firstname=firstname, middlename=middlename, lastname=lastname,
             phone_num=phone_num, gender=gender, email=email, 
             password_hash=hashed_password, 
-            role='Gym Owner', status='active',
-            gym_id=gym.id  # --- MODIFIED: Assign gym_id ---
+            role='Gym Owner', 
+            status='unverified', # Set status to unverified
+            # Note: We no longer need to store the token in the DB since ItsDangerous
+            # validates the token payload (the email). However, if you add the 
+            # `verification_token` column to your DB, you can store it here:
+            # verification_token=verification_token, 
+            gym_id=gym.id 
         )
         
         db.session.add(new_user)
         db.session.commit()
-        flash('Registration successful! Please log in.', 'success')
-        return redirect(url_for("login"))
+        
+        # 2. Send the actual email
+        try:
+            # We use the token value here to embed it in the verification link
+            send_verification_email(email, verification_token) 
+            flash('Registration successful! Please check your email to verify your account.', 'success')
+        except Exception as e:
+            # Handle failure to send email gracefully
+            print(f"ERROR SENDING EMAIL: {e}")
+            flash('Registration successful, but we could not send the verification email. Please check your configuration.', 'warning')
+        
+        # 3. Redirect to the message page 
+        return redirect(url_for("verify_message")) 
     return render_template("register.html")
+
+@app.route("/verify/<string:token>")
+def verify_account(token):
+    # 1. Confirm the token using ItsDangerous
+    email = confirm_verification_token(token)
+    
+    if not email:
+        # Token is invalid or expired
+        flash('The verification link is invalid or has expired.', 'error')
+        return redirect(url_for('login'))
+        
+    # 2. Find the user by the email extracted from the token
+    user = User.query.filter_by(email=email).first()
+    
+    if user:
+        if user.status == 'active':
+            flash('Your account is already verified. Please log in.', 'success')
+        else:
+            # 3. Update status and clear the token
+            user.status = 'active'
+            user.verification_token = None
+            db.session.commit()
+            flash('Email verified!', 'success')
+    else:
+        # Should not happen if token validation passed, but good for safety
+        flash('Account not found.', 'error') 
+        
+    return redirect(url_for('login'))
+# --- NEW ROUTE: To show the verification message page ---
+@app.route("/verify_message")
+def verify_message():
+    """Renders the page informing the user to check their email."""
+    # This route just displays the message page (verify_message.html)
+    return render_template("verify_message.html")
 
 @app.route("/login", methods=['GET', 'POST'])
 def login():
@@ -231,21 +362,63 @@ def login():
         user = User.query.filter_by(email=email).first()
         
         if user and bcrypt.check_password_hash(user.password_hash, password):
-            # --- FIX: Clear old session data to prevent KeyError ---
-            session.clear() 
             
+            # --- FIX: ADDED Verification Check ---
+            if user.status == 'unverified':
+                 flash('Your account is not verified. Please check your email for the verification link.', 'error')
+                 return redirect(url_for('login'))
+            # --- END FIX ---
+            
+            session.clear() 
             session['user_id'] = user.id
             session['user_role'] = user.role
             session['user_gym_id'] = user.gym_id
             session['user_gym_name'] = user.gym.name 
             session['user_firstname'] = user.firstname
             session['user_lastname'] = user.lastname
+            session['user_email'] = user.email 
+            session['user_phone_num'] = user.phone_num 
             session['user_photo_url'] = user.photo_url if user.photo_url else 'src/images/Default_pfp.jpg'
             
             return redirect(url_for('admin_dashboard') if user.role == 'Gym Owner' else url_for('dashboard'))
         else:
             flash('Invalid email or password.', 'error')
     return render_template("login.html")
+# app.py
+
+@app.route("/resend_verification", methods=['GET', 'POST'])
+def resend_verification():
+    # If the user is already logged in (unverified but has a session), we can use their ID.
+    # Otherwise, we ask for their email via a simple form.
+    
+    if request.method == 'POST':
+        email = request.form.get('email')
+        
+        if not email:
+            flash('Please enter your email address.', 'warning')
+            return redirect(url_for('resend_verification'))
+
+        user = User.query.filter_by(email=email, status='unverified').first()
+
+        if user:
+            # 1. Generate new token
+            new_token = generate_verification_token(email)
+            
+            # 2. Send new email
+            try:
+                send_verification_email(email, new_token)
+                flash('A new verification link has been sent to your email.', 'success')
+            except Exception as e:
+                print(f"ERROR RESENDING EMAIL: {e}")
+                flash('Could not resend the verification email. Please contact support.', 'warning')
+        else:
+            # Be vague for security purposes—don't confirm if the email exists.
+            flash('If an unverified account exists, a new link has been sent.', 'info')
+            
+        return redirect(url_for('login'))
+        
+    # GET request: Show the form to input the email
+    return render_template("resend_form.html") # We need to create this template
 
 @app.route("/logout")
 def logout():
@@ -256,14 +429,11 @@ def logout():
 @app.route("/dashboard")
 @login_required
 def dashboard(): 
-    # --- UPDATED: This is the TRAINER/USER dashboard ---
     user_id = session['user_id']
-    
     today = datetime.utcnow().date()
     start_of_week = today - timedelta(days=today.weekday())
     start_of_month = today.replace(day=1)
     
-    # --- (Queries for stat cards and charts) ---
     total_errors_today = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, func.date(ErrorLog.timestamp) == today).scalar() or 0
     most_common_error_week_query = db.session.query(ErrorLog.error_type, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, ErrorLog.timestamp >= start_of_week).group_by(ErrorLog.error_type).order_by(func.count(ErrorLog.id).desc()).first()
     most_common_error_week = most_common_error_week_query[0].replace('ERROR: ', '') if most_common_error_week_query else "N/A"
@@ -282,15 +452,13 @@ def dashboard():
         if group and group in current_month_chart_data:
             current_month_chart_data[group] += count
             
-    # --- NEW: Query for Trainer's Session History ---
     all_sessions = WorkoutSession.query.filter_by(
         user_id=user_id
     ).filter(
-        WorkoutSession.end_time != None # Only completed sessions
+        WorkoutSession.end_time != None 
     ).order_by(
         WorkoutSession.start_time.desc()
     ).all()
-    # --- END: New query ---
 
     return render_template(
         "dashboard.html", 
@@ -299,13 +467,12 @@ def dashboard():
         total_errors_month=total_errors_month,
         recent_errors=recent_errors,
         current_month_chart_data=current_month_chart_data,
-        sessions=all_sessions  # <-- Pass the session list to the template
+        sessions=all_sessions 
     )
 
 @app.route("/my_sessions")
 @login_required
 def my_sessions():
-    # This route is for trainers to see their *own* session log
     if session.get('user_role') != 'Trainer':
         flash('This page is for trainers.', 'error')
         return redirect(url_for('admin_dashboard'))
@@ -313,24 +480,19 @@ def my_sessions():
     user_id = session['user_id']
     gym_id = session['user_gym_id']
     
-    # Get the logged-in user as the 'trainer' object
     trainer = User.query.get(user_id)
     if not trainer:
         flash('User not found.', 'error')
         return redirect(url_for('dashboard'))
 
-    # Get all sessions for this user
     all_sessions = WorkoutSession.query.filter_by(
         gym_id=gym_id,
         user_id=user_id,
     ).filter(
-        WorkoutSession.end_time != None # Only completed sessions
+        WorkoutSession.end_time != None 
     ).order_by(WorkoutSession.start_time.desc()).all()
     
-    # Re-use the admin's template, but with the trainer's own data
-    return render_template("trainer_session_log.html", 
-                           sessions=all_sessions, 
-                           trainer=trainer)
+    return render_template("trainer_session_log.html", sessions=all_sessions, trainer=trainer)
 
 @app.route("/monitor")
 @login_required
@@ -341,8 +503,6 @@ def monitor():
 @login_required
 def errorlogpage(): 
     gym_id = session['user_gym_id']
-    
-    # Query all errors for the gym, joining with user info
     all_errors_query = db.session.query(ErrorLog, User).join(
         WorkoutSession, ErrorLog.session_id == WorkoutSession.id
     ).join(
@@ -353,7 +513,6 @@ def errorlogpage():
         ErrorLog.timestamp.desc()
     ).all()
 
-    # --- Transform data for JavaScript ---
     js_errors = []
     for log, user in all_errors_query:
         js_errors.append({
@@ -361,13 +520,11 @@ def errorlogpage():
             'userName': f"{user.firstname} {user.lastname}",
             'userPhoto': url_for('static', filename=user.photo_url if user.photo_url else 'src/images/Default_pfp.jpg'),
             'errorType': log.error_type.replace('ERROR: ', ''),
-            # --- FIX: Use helper function for correct formatting ---
             'exerciseName': format_exercise_name(log.exercise_name),
             'timeOfError': log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'month': log.timestamp.strftime('%b') # 'Jan', 'Feb', etc.
+            'month': log.timestamp.strftime('%b') 
         })
 
-    # Pass the JSON-ready list to the template
     return render_template("errorlogpage.html", all_errors_json=json.dumps(js_errors))
 
 @app.route("/settings")
@@ -392,17 +549,13 @@ def profile():
     if not user:
         flash('User not found.', 'error')
         return redirect(url_for('login'))
-    if request.method == 'POST':
-        user.firstname = request.form.get('firstname'); user.lastname = request.form.get('lastname')
-        user.email = request.form.get('email'); user.phone_num = request.form.get('phone_num')
-        # --- FIX: Added line to save gender field ---
-        user.gender = request.form.get('gender') 
         
-        if 'gym_name' in request.form and session.get('user_role') == 'Gym Owner': 
-            gym = Gym.query.get(user.gym_id)
-            if gym:
-                gym.name = request.form.get('gym_name')
-                session['user_gym_name'] = gym.name
+    if request.method == 'POST':
+        user.firstname = request.form.get('firstname')
+        user.lastname = request.form.get('lastname')
+        user.email = request.form.get('email')
+        user.phone_num = request.form.get('phone_num')
+        user.gender = request.form.get('gender') 
         
         if 'photo' in request.files:
             file = request.files['photo']
@@ -410,12 +563,26 @@ def profile():
                 filename = secure_filename(f"{user.id}_{file.filename}")
                 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                user.photo_url = os.path.join('uploads/profiles', filename).replace('\\', '/')
-                session['user_photo_url'] = user.photo_url 
+                new_photo_url = os.path.join('uploads/profiles', filename).replace('\\', '/')
+                user.photo_url = new_photo_url
+                session['user_photo_url'] = new_photo_url 
+        
+        if 'gym_name' in request.form and session.get('user_role') == 'Gym Owner': 
+            gym = Gym.query.get(user.gym_id)
+            if gym:
+                gym.name = request.form.get('gym_name')
+                session['user_gym_name'] = gym.name
+        
         db.session.commit()
-        session['user_firstname'] = user.firstname; session['user_lastname'] = user.lastname
+        session['user_firstname'] = user.firstname
+        session['user_lastname'] = user.lastname
+        session['user_email'] = user.email
+        session['user_phone_num'] = user.phone_num
+        session['user_gender'] = user.gender
+
         flash('Profile updated successfully!', 'success')
         return redirect(url_for('profile'))
+        
     return render_template("profile.html", user=user)
 
 @app.route("/change_password", methods=['GET', 'POST'])
@@ -458,14 +625,13 @@ def delete_user_account():
         db.session.rollback()
         return jsonify({'success': False, 'message': 'An error occurred during deletion.'}), 500
 
-# --- ADMIN ROUTES (Multi-Tenant and New Features Updated) ---
+# --- ADMIN ROUTES ---
 @app.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
     gym_id = session['user_gym_id']
     today = datetime.utcnow().date()
     
-    # --- NEW: Error Rate Comparison Logic ---
     start_of_current_month = today.replace(day=1)
     start_of_last_month = start_of_current_month - relativedelta(months=1)
     
@@ -502,11 +668,8 @@ def admin_dashboard():
          error_rate_color = "gray"
          error_rate_status = "No Errors"
          error_rate_change = 0
-    # --- END: Error Rate Logic ---
 
     start_of_week = today - timedelta(days=today.weekday())
-    
-    # --- NEW: Get the ONE assigned trainer ---
     current_assignment = db.session.query(Assignment).join(User).filter(User.gym_id == gym_id).first()
     
     total_errors_today = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, func.date(ErrorLog.timestamp) == today).scalar() or 0
@@ -529,7 +692,7 @@ def admin_dashboard():
             
     return render_template(
         "admin_dashboard.html", 
-        assignment=current_assignment, # Pass single assignment
+        assignment=current_assignment, 
         total_errors_today=total_errors_today, 
         most_common_error_week=most_common_error_week,
         total_errors_month=total_errors_month, 
@@ -559,7 +722,6 @@ def trainers():
     all_trainers = User.query.filter_by(role='Trainer', gym_id=gym_id).all()
     assigned_trainer_ids = [a.trainer_id for a in Assignment.query.join(User).filter(User.gym_id == gym_id).all()]
     
-    # --- NEW: Logic to Find Last Session Time ---
     last_sessions = {}
     for trainer in all_trainers:
         last_session = WorkoutSession.query.filter_by(
@@ -573,13 +735,12 @@ def trainers():
         
         if last_session:
             last_sessions[trainer.id] = last_session
-    # --- END: New Logic ---
 
     return render_template(
         "trainers.html", 
         trainers=all_trainers, 
         assigned_trainer_ids=assigned_trainer_ids,
-        last_sessions=last_sessions # Pass new data to template
+        last_sessions=last_sessions 
     )
 
 @app.route("/admin/edit_gym_name", methods=['GET', 'POST'])
@@ -657,11 +818,9 @@ def delete_trainer(user_id):
 def assign_trainer(trainer_id):
     gym_id = session['user_gym_id'] 
     
-    # --- NEW: Single Trainer Assignment Rule ---
     existing_assignment = db.session.query(Assignment).join(User).filter(User.gym_id == gym_id).first()
     if existing_assignment:
         return jsonify({'status': 'error', 'message': 'A trainer is already assigned. Please unassign them first.'})
-    # --- END NEW RULE ---
 
     trainer = User.query.filter_by(id=trainer_id, gym_id=gym_id).first()
     if not trainer:
@@ -701,7 +860,6 @@ def unassign_by_trainer_id(trainer_id):
         return jsonify({'status': 'success', 'message': 'Trainer unassigned successfully.'})
     return jsonify({'status': 'error', 'message': 'Trainer was not assigned.'})
 
-# --- NEW: Trainer Session Log Routes ---
 @app.route("/admin/session_log/<int:user_id>")
 @admin_required
 def trainer_session_log(user_id):
@@ -712,20 +870,20 @@ def trainer_session_log(user_id):
         gym_id=gym_id,
         user_id=user_id,
     ).filter(
-        WorkoutSession.end_time != None # Only completed sessions
+        WorkoutSession.end_time != None
     ).order_by(WorkoutSession.start_time.desc()).all()
     
     return render_template("trainer_session_log.html", sessions=all_sessions, trainer=trainer)
 
-@app.route("/admin/session/<int:session_id>")
-@admin_required
+@app.route("/session/<int:session_id>")
+@login_required
 def trainer_session_detail(session_id):
     gym_id = session['user_gym_id']
     
     session_data = db.session.query(WorkoutSession, User).join(User).filter(
         WorkoutSession.gym_id == gym_id,
         WorkoutSession.id == session_id
-    ).first_or_404()
+    ).first_or_404() 
     
     session_obj = session_data[0]
     user_obj = session_data[1]
@@ -744,7 +902,7 @@ def trainer_session_detail(session_id):
 
     return render_template(
         "trainer_session.html",
-        session=session_obj,
+        workout_session=session_obj,
         user=user_obj,
         duration=duration,
         normal_error_count=len(normal_errors),
@@ -756,49 +914,38 @@ def trainer_session_detail(session_id):
 # --- SocketIO Handlers (Full Implementation) ---
 clients = {} 
 
-# --- FIX: Updated handle_connect ---
 @socketio.on('connect')
 def handle_connect():
     if 'user_id' not in session:
         print("Warning: Unauthenticated user tried to connect.")
-        return False # Reject connection
+        return False 
     
-    # Get gym_id from the user's session
     gym_id = session.get('user_gym_id')
     if not gym_id:
         print(f"Warning: User {session['user_id']} connected without a gym_id.")
         return False
 
-    # Add user to a room for their gym
     join_room(f'gym_{gym_id}')
     
-    # Store gym_id for later
     clients[request.sid] = { 'gym_id': gym_id }
     print(f"Client connected: {request.sid}, joined room: gym_{gym_id}")
 
-# --- FIX: Updated handle_disconnect ---
 @socketio.on('disconnect')
 def handle_disconnect():
     sid = request.sid
-    client_data = clients.pop(sid, None) # Get data and remove user
+    client_data = clients.pop(sid, None) 
     
     if client_data:
-        # Get gym_id we stored
         gym_id = client_data.get('gym_id')
         if gym_id:
-            leave_room(f'gym_{gym_id}') # Leave the gym's room
+            leave_room(f'gym_{gym_id}') 
             print(f"Client disconnected: {sid}, left room: gym_{gym_id}")
 
-        # Gracefully end all active sessions for this user
         for camera_id in list(client_data.keys()):
-            if camera_id == 'gym_id': continue # Skip our new key
+            if camera_id == 'gym_id': continue 
 
-            # Pass the sid so handle_end_session knows which client to use
             handle_end_session({'camera_id': camera_id, 'sid_for_shutdown': sid}) 
             
-            camera_state = client_data.get(camera_id)
-            if camera_state and 'mp_pose' in camera_state and camera_state['mp_pose']:
-                camera_state['mp_pose'].close()
     else:
         print(f"Client disconnected: {sid} (no data found)")
 
@@ -812,25 +959,12 @@ def start_camera(data):
     
     if sid in clients:
         try:
-            # Ensure analyzer gets all config params
-            analyzer_instance = ExerciseAnalyzer(
-                sequence_length=SEQUENCE_LENGTH, 
-                conf_threshold=CONF_THRESHOLD, 
-                stability_frames=STABILITY_FRAMES
-            )
-            pose_instance = mp_pose.Pose(
-                min_detection_confidence=0.5, 
-                min_tracking_confidence=0.5
-            )
-            
-            # Store camera-specific state under the client's sid
+            # Initialize Multi-Person Storage
             clients[sid][camera_id] = {
-                'analyzer': analyzer_instance,
-                'mp_pose': pose_instance,
+                'analyzers': {},  # Key: track_id, Value: ExerciseAnalyzer instance
                 'is_processing': False,
                 'active_session_id': None, 
-                'stable_exercise': 'neutral',
-                'last_form_status': None
+                'last_form_status': {} # Key: track_id, Value: status
             }
             print(f"✅ Successfully started camera '{camera_id}' for client {sid}") 
         except Exception as e:
@@ -842,16 +976,14 @@ def stop_camera(data):
     camera_id = data.get('camera_id')
     if not camera_id: return
     
-    handle_end_session(data) # End the session for this camera
+    handle_end_session(data) 
     
     if sid in clients and camera_id in clients[sid]:
-        if 'mp_pose' in clients[sid][camera_id] and clients[sid][camera_id]['mp_pose']:
-            clients[sid][camera_id]['mp_pose'].close()
         clients[sid].pop(camera_id, None)
         print(f"Stopped camera '{camera_id}' for client {sid}")
 
 
-# --- Session Handlers (Multi-Tenant Updated) ---
+# --- Session Handlers ---
 @socketio.on('start_session')
 def handle_start_session(data):
     camera_id = data.get('camera_id')
@@ -862,11 +994,12 @@ def handle_start_session(data):
         print(f"Warning: Anonymous user {sid} tried to start session.")
         return
 
-    if client_camera_state and 'analyzer' in client_camera_state:
-        client_camera_state['analyzer'].reset_session()
+    if client_camera_state:
+        # Reset all active analyzers
+        for analyzer in client_camera_state['analyzers'].values():
+            analyzer.reset_session()
         
         try:
-            # MODIFIED: Tag new session with the user's gym_id
             new_session = WorkoutSession(
                 user_id=session['user_id'],
                 gym_id=session['user_gym_id'] 
@@ -884,42 +1017,43 @@ def handle_start_session(data):
     else:
         print(f"Warning: Could not start session. No state found for {sid}/{camera_id}")
 
-# --- FIX: Updated handle_end_session ---
 @socketio.on('end_session')
 def handle_end_session(data):
     camera_id = data.get('camera_id')
-    # Use the sid from the data if it's a shutdown, otherwise use request.sid
     sid = data.get('sid_for_shutdown', request.sid)
     
-    # Check if client still exists (it might be disconnected)
     if sid not in clients:
         print(f"Info: handle_end_session called for disconnected client {sid}")
         return
 
     client_camera_state = clients.get(sid, {}).get(camera_id)
     
-    if not client_camera_state or 'analyzer' not in client_camera_state:
+    if not client_camera_state:
         return
 
-    analyzer = client_camera_state['analyzer']
     session_id = client_camera_state.get('active_session_id')
 
     if session_id:
         try:
-            # We need an app context to query the DB outside of a request
             with app.app_context():
                 session_to_end = WorkoutSession.query.get(session_id)
                 if session_to_end:
                     session_to_end.end_time = datetime.utcnow()
-                    session_to_end.total_reps = analyzer.rep_counter
+                    
+                    # Aggregate reps from all tracked people
+                    total_reps = 0
+                    for analyzer in client_camera_state['analyzers'].values():
+                        total_reps += analyzer.rep_counter
+                    
+                    session_to_end.total_reps = total_reps
                     db.session.commit()
                     
-                    print(f"Session {session_id} ended for user {session_to_end.user_id}.")
-                    # Only emit if the client is still connected
+                    print(f"Session {session_id} ended for user {session_to_end.user_id}. Total Reps: {total_reps}")
+                    
                     if not data.get('sid_for_shutdown'):
                         emit('session_saved', {
                             'camera_id': camera_id, 
-                            'reps': analyzer.rep_counter, 
+                            'reps': total_reps, 
                         }, room=sid)
                 
         except Exception as e:
@@ -928,14 +1062,14 @@ def handle_end_session(data):
     
     if client_camera_state:
         client_camera_state['active_session_id'] = None
-    analyzer.reset_session()
+        for analyzer in client_camera_state['analyzers'].values():
+            analyzer.reset_session()
 
 
-# --- Main AI Processing Loop ---
-def process_frame_task(sid, data):
-    global interpreter, label_mapping, input_details, output_details, clients
+# --- Main AI Processing Loop (Updated for Multi-Person) ---
+def process_frame_task(sid, data, user_info):
+    global interpreter, label_mapping, input_details, output_details, clients, yolo_model, YOLO_CONF_THRESHOLD, YOLO_TO_MP
     
-    # --- FIX: Get gym_id for broadcasting ---
     gym_id = clients.get(sid, {}).get('gym_id')
 
     try:
@@ -957,109 +1091,155 @@ def process_frame_task(sid, data):
         if client_camera_state: client_camera_state['is_processing'] = False
         return
 
-    pose = client_camera_state.get('mp_pose')
-    analyzer = client_camera_state.get('analyzer')
-    
-    if not pose or not analyzer:
-        if client_camera_state: client_camera_state['is_processing'] = False
-        return
+    # --- 1. YOLOv8 Tracking ---
+    # Run tracking. Persist=True tracks IDs across frames.
+    results = yolo_model.track(frame_rgb, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True)
 
-    results = pose.process(frame_rgb)
+    current_frame_data = [] 
     
-    landmarks_for_js = []
-    if results.pose_landmarks:
-        for lm in results.pose_landmarks.landmark:
-            landmarks_for_js.append({'x': lm.x, 'y': lm.y, 'visibility': lm.visibility})
+    # Check if boxes exist
+    if results[0].boxes is not None:
+        
+        boxes = results[0].boxes.xyxy.cpu().numpy()
+        
+        # CRITICAL FIX: Handle cases where ID is None (detection without track ID)
+        if results[0].boxes.id is not None:
+            track_ids = results[0].boxes.id.int().cpu().tolist()
+            keypoints = results[0].keypoints
             
+            for i, track_id in enumerate(track_ids):
+                # --- 2. State Management for this specific Person ID ---
+                if track_id not in client_camera_state['analyzers']:
+                    client_camera_state['analyzers'][track_id] = ExerciseAnalyzer(
+                        sequence_length=SEQUENCE_LENGTH, 
+                        conf_threshold=CONF_THRESHOLD, 
+                        stability_frames=STABILITY_FRAMES
+                    )
+                    client_camera_state.setdefault('last_form_status', {})[track_id] = None
+                
+                analyzer = client_camera_state['analyzers'][track_id]
+
+                # --- 3. Extract Landmarks ---
+                # Convert YOLO keypoints to MediaPipe format
+                # NOTE: keypoints is a container. We need .data or iterate directly.
+                # The Ultralytics Keypoints object behaves differently in different versions.
+                # Safest way is usually keypoints.data[i] or keypoints.xy[i]
+                
+                # Get the raw (x,y) tensor for person 'i'
+                xy_tensor = keypoints.xy[i] 
+                conf_tensor = keypoints.conf[i] if keypoints.conf is not None else None
+                
+                # Move to CPU and numpy
+                xy_arr = xy_tensor.cpu().numpy() # shape (17, 2)
+                conf_arr = conf_tensor.cpu().numpy() if conf_tensor is not None else np.ones(17)
+
+                # 33-point list to match MediaPipe logic in analysis_logic.py
+                mp_landmarks = [type('obj', (object,), {'x': 0.0, 'y': 0.0, 'z': 0.0, 'visibility': 0.0})() for _ in range(33)]
+                
+                landmarks_valid = False
+                landmarks_for_js = []
+
+                # Map YOLO indices to MP indices
+                for yolo_idx, mp_idx in YOLO_TO_MP.items():
+                    if yolo_idx < len(conf_arr):
+                        conf = float(conf_arr[yolo_idx])
+                        # Use normalized coordinates for logic consistency
+                        if conf > 0.5: 
+                            x, y = xy_arr[yolo_idx]
+                            mp_landmarks[mp_idx].x = float(x) / frame.shape[1]
+                            mp_landmarks[mp_idx].y = float(y) / frame.shape[0]
+                            mp_landmarks[mp_idx].visibility = conf
+                            landmarks_valid = True
+                
+                # Create visual list for frontend
+                for lm in mp_landmarks:
+                    landmarks_for_js.append({'x': lm.x, 'y': lm.y, 'visibility': lm.visibility})
+
+                person_response = {
+                    'track_id': track_id,
+                    'rep_counter': analyzer.rep_counter,
+                    'form_status': analyzer.form_status,
+                    'stable_prediction': analyzer.stable_prediction,
+                    'landmarks': landmarks_for_js,
+                    'debug_angles' : {}
+                }
+
+            # --- 4. Run Analysis ---
+            if landmarks_valid and interpreter:
+                try:
+                    # Get current prediction state from this specific analyzer
+                    current_exercise_pred = analyzer.stable_prediction 
+                    
+                    rep_count, form, prediction, angles = analyzer.process_frame(
+                        interpreter=interpreter,
+                        input_details=input_details,
+                        output_details=output_details,
+                        label_mapping=label_mapping,
+                        landmarks=mp_landmarks,
+                        current_exercise=current_exercise_pred
+                    )
+                    
+                    person_response.update({
+                        'rep_counter': rep_count,
+                        'form_status': form,
+                        'stable_prediction': prediction,
+                        'debug_angles': {k: int(v) for k, v in angles.items()}
+                    })
+                    
+                    # --- Continuous Logging (Multi-Person) ---
+                    log_entry = analyzer.get_new_error_log()
+                    session_id = client_camera_state.get('active_session_id')
+                    
+                    if session_id and log_entry:
+                        try:
+                            # Note: We append Person ID to error type to distinguish users in logs
+                            error_type_str = f"[P{track_id}] {log_entry['error_type']}"
+                            new_log = ErrorLog(
+                                session_id=session_id, 
+                                exercise_name=log_entry['exercise_name'], 
+                                rep_number=log_entry['rep_number'], 
+                                error_type=error_type_str
+                            )
+                            db.session.add(new_log)
+                            db.session.commit()
+                        except Exception as e:
+                            db.session.rollback()
+                            print(f"Error during logging: {e}")
+
+                    # --- Form Error Broadcasting ---
+                    last_form = client_camera_state['last_form_status'].get(track_id)
+                    if "ERROR" in form and form != last_form:
+                         if gym_id:
+                            socketio.emit('form_error', {
+                                'message': f"Person {track_id}: {form.replace('ERROR: ', '')}",
+                                'camera_id': camera_id,
+                                'user_name': f"{user_info.get('firstname', 'Unknown')} {user_info.get('lastname', 'User')}",
+                                'timestamp': datetime.utcnow().isoformat()
+                            }, room=f'gym_{gym_id}')
+                         client_camera_state['last_form_status'][track_id] = form
+                    elif "ERROR" not in form:
+                         client_camera_state['last_form_status'][track_id] = None
+                    
+                    # --- Trainer Alert Broadcasting ---
+                    alert_data = analyzer.get_triggered_alert() 
+                    if alert_data:
+                        alert_data['camera_id'] = camera_id
+                        alert_data['message'] = f"Person {track_id}: {alert_data['message']}"
+                        if gym_id:
+                            socketio.emit('trainer_alert', alert_data, room=f'gym_{gym_id}')
+
+                except Exception as e:
+                    print(f"Error analyzing person {track_id}: {e}")
+            
+            current_frame_data.append(person_response)
+
+    # --- 5. Emit List of Data ---
     emit_data = {
         'camera_id': camera_id,
-        'rep_counter': analyzer.rep_counter,
-        'form_status': analyzer.form_status,
-        'stable_prediction': client_camera_state.get('stable_exercise', 'neutral'), 
-        'landmarks': landmarks_for_js,
-        'debug_angles': {}
+        'people': current_frame_data 
     }
 
-    if results.pose_landmarks and interpreter:
-        try:
-            rep_count, form, prediction, angles = analyzer.process_frame(
-                interpreter=interpreter,
-                input_details=input_details,
-                output_details=output_details,
-                label_mapping=label_mapping,
-                landmarks=results.pose_landmarks.landmark, 
-                current_exercise=client_camera_state.get('stable_exercise', 'neutral')
-            )
-            
-            emit_data.update({
-                'rep_counter': rep_count,
-                'form_status': form,
-                'stable_prediction': prediction, 
-                'debug_angles': {k: int(v) for k, v in angles.items()} 
-            })
-            client_camera_state['stable_exercise'] = prediction 
-
-            # CONTINUOUS LOGGING (Multi-Tenant)
-            log_entry = analyzer.get_new_error_log()
-            session_id = client_camera_state.get('active_session_id')
-            
-            if session_id and log_entry:
-                try:
-                    new_log = ErrorLog(
-                        session_id=session_id, 
-                        exercise_name=log_entry['exercise_name'], 
-                        rep_number=log_entry['rep_number'], 
-                        error_type=log_entry['error_type']
-                    )
-                    db.session.add(new_log)
-                    db.session.commit()
-                except Exception as e:
-                    db.session.rollback()
-                    print(f"Error during continuous error logging: {e}")
-
-        except Exception as e:
-            print(f"Error during frame processing: {e}")
-            emit_data['form_status'] = "Error in AI processing"
-
-    elif not results.pose_landmarks:
-         analyzer.analyze_frame("neutral", None)
-         emit_data['form_status'] = analyzer.form_status
-         emit_data['stable_prediction'] = "neutral"
-         client_camera_state['stable_exercise'] = "neutral"
-
-    emit_data['landmarks'] = landmarks_for_js
-
-    # Emit analysis back to the specific user
     socketio.emit('response', emit_data, room=sid)
-    
-    # --- FIX: Broadcast form errors to the entire gym room ---
-    last_form = client_camera_state.get('last_form_status')
-    current_form = emit_data['form_status']
-    if "ERROR" in current_form and current_form != last_form:
-        message = current_form.replace('ERROR: ', '') 
-        
-        if gym_id:
-            error_data = {
-                'message': message, 
-                'camera_id': camera_id,
-                # Get user name from the session context of this task
-                'user_name': f"{session.get('user_firstname', 'Unknown')} {session.get('user_lastname', 'User')}",
-                'timestamp': datetime.utcnow().isoformat()
-            }
-            # Broadcast to everyone in the gym
-            socketio.emit('form_error', error_data, room=f'gym_{gym_id}')
-            
-        client_camera_state['last_form_status'] = current_form
-    elif "ERROR" not in current_form:
-        client_camera_state['last_form_status'] = None
-
-    # --- FIX: Broadcast trainer alerts to the entire gym room ---
-    alert_data = analyzer.get_triggered_alert() 
-    if alert_data:
-        alert_data['camera_id'] = camera_id
-        if gym_id:
-            # Add user/timestamp data if needed, similar to 'form_error'
-            socketio.emit('trainer_alert', alert_data, room=f'gym_{gym_id}')
 
     if client_camera_state: client_camera_state['is_processing'] = False
 
@@ -1081,14 +1261,17 @@ def handle_image(data):
         return
         
     client_camera_state['is_processing'] = True
-    # We must wrap the task in app_context to access 'session' inside it
-    socketio.start_background_task(target=lambda: app.app_context().push() or process_frame_task(sid, data))
+    
+    user_info = {
+        'firstname': session.get('user_firstname', 'Unknown'),
+        'lastname': session.get('user_lastname', 'User')
+    }
+    
+    socketio.start_background_task(process_frame_task, sid, data, user_info)
 
 
 if __name__ == "__main__":
     with app.app_context():
-        # Remember to delete database.db for new model changes to take effect
         db.create_all()
     print("Starting Flask-SocketIO server...")
-    # FIX: Use port 5001 to avoid socket address conflicts
     socketio.run(app, debug=True, host='0.0.0.0', port=5001)

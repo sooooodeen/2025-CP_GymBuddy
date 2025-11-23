@@ -2,3 +2,7 @@ venv/
 node_modules/
 *.pkl
 *.csv
+raw_videos
+*.mp4
+*.avi
+*.mov

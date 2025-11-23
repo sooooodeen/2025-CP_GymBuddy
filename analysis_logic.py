@@ -1,7 +1,7 @@
 import numpy as np
 import mediapipe as mp
 import time
-import tensorflow as tf # Added for TFLite object types
+import tensorflow as tf 
 from collections import deque, Counter
 
 # --- 3D ANGLE FUNCTION (For Model Prediction) ---
@@ -32,26 +32,19 @@ def calculate_angle_2d(a, b, c):
 
 # --- FEATURE EXTRACTION (For Model Prediction) ---
 def extract_angle_features_for_model(landmarks):
-    """Extracts the 8 key angles using the full 3D landmark data."""
-    lm = landmarks
-    mp_pose = mp.solutions.pose.PoseLandmark
-
-    # Ensure all landmarks are present before calculating
+    """Extracts 8 key angles using raw indices."""
     try:
         return np.array([
-            calculate_angle(lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_ELBOW], lm[mp_pose.LEFT_WRIST]),
-            calculate_angle(lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_ELBOW], lm[mp_pose.RIGHT_WRIST]),
-            calculate_angle(lm[mp_pose.LEFT_ELBOW], lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_HIP]),
-            calculate_angle(lm[mp_pose.RIGHT_ELBOW], lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_HIP]),
-            calculate_angle(lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_HIP], lm[mp_pose.LEFT_KNEE]),
-            calculate_angle(lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_KNEE]),
-            calculate_angle(lm[mp_pose.LEFT_HIP], lm[mp_pose.LEFT_KNEE], lm[mp_pose.LEFT_ANKLE]),
-            calculate_angle(lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_KNEE], lm[mp_pose.RIGHT_ANKLE]),
-            calculate_angle(lm[mp_pose.LEFT_HIP], lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_ELBOW]),
-            calculate_angle(lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_ELBOW])
+            calculate_angle(landmarks[11], landmarks[13], landmarks[15]),  # Left arm
+            calculate_angle(landmarks[12], landmarks[14], landmarks[16]),  # Right arm
+            calculate_angle(landmarks[13], landmarks[11], landmarks[23]),  # Left shoulder
+            calculate_angle(landmarks[14], landmarks[12], landmarks[24]),  # Right shoulder
+            calculate_angle(landmarks[11], landmarks[23], landmarks[25]),  # Left torso
+            calculate_angle(landmarks[12], landmarks[24], landmarks[26]),  # Right torso
+            calculate_angle(landmarks[23], landmarks[25], landmarks[27]),  # Left leg
+            calculate_angle(landmarks[24], landmarks[26], landmarks[28])   # Right leg
         ])
     except Exception as e:
-        # Return None or NaNs if any landmark is missing
         print(f"Error extracting features: {e}")
         return None
 
@@ -66,58 +59,39 @@ class ExerciseAnalyzer:
         self.previous_exercise = "neutral"
         self.last_rep_time = time.time()
         self.RESET_TIMEOUT = reset_timeout
-        self.debug_angles = {} # For the debug view
+        self.debug_angles = {} 
         self.angle_sequence_buffer = deque(maxlen=sequence_length)
         self.SEQUENCE_LENGTH = sequence_length
         self.CONF_THRESHOLD = conf_threshold
         self.STABILITY_FRAMES = stability_frames
         self.recent_predictions = deque(maxlen=stability_frames)
-        self.stable_prediction = "Neutral" # Added for prediction output
-        self.frame_count = 0 # Added to control prediction interval
-        self.PREDICTION_INTERVAL = 3 # Run prediction every 3 frames
+        self.stable_prediction = "neutral" 
+        self.frame_count = 0 
+        self.PREDICTION_INTERVAL = 3 
         self.triggered_alert = None
         self.consecutive_error_counter = 0
         self.last_consecutive_error_type = None
         self.new_error_to_log = None    
 
     def predict_with_tflite(self, interpreter, input_details, output_details, feature_sequence):
-        """
-        Runs inference on the TFLite interpreter. 
-        Uses Float32 I/O since the model was converted with Weight-Only Quantization.
-        """
-        
-        # Reshape for TFLite input (1, SEQUENCE_LENGTH, FEATURE_SIZE)
+        """Runs inference on the TFLite interpreter."""
         input_data = np.expand_dims(feature_sequence, axis=0).astype(np.float32)
-
-        # 1. Set the input tensor
-        # Input tensor is always at index 0
         interpreter.set_tensor(input_details[0]['index'], input_data)
-        
-        # 2. Run the inference (This is the fast part!)
         interpreter.invoke()
-        
-        # 3. Get the output tensor (raw prediction probabilities)
         output = interpreter.get_tensor(output_details[0]['index'])
-        
-        return output[0] # Return the prediction array (e.g., [0.1, 0.9, 0.0])
+        return output[0]
     
     def get_triggered_alert(self):
-        """ Checks if a trainer alert was triggered and clears it. """
         alert_to_send = self.triggered_alert
-        self.triggered_alert = None # Clear the alert after fetching
+        self.triggered_alert = None 
         return alert_to_send
     
     def get_new_error_log(self):
-        """Called by app.py to get a new error log and clear it."""
         log_entry = self.new_error_to_log
-        self.new_error_to_log = None # Clear after fetching
+        self.new_error_to_log = None 
         return log_entry
     
     def process_frame(self, interpreter, input_details, output_details, label_mapping, landmarks, current_exercise):
-        """
-        Handles feature extraction, model prediction (via TFLite), rep counting, 
-        and form logic for a single frame.
-        """
         self.frame_count += 1
         
         # 1. Feature Extraction
@@ -126,69 +100,48 @@ class ExerciseAnalyzer:
             self.form_status = "NO PERSON DETECTED"
             return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
 
-        # 2. Update the internal sequence buffer for the LSTM
+        # 2. Update Buffer
         self.angle_sequence_buffer.append(features)
         
-        # 3. Model Prediction (TFLite)
+        # 3. Model Prediction
         if len(self.angle_sequence_buffer) == self.SEQUENCE_LENGTH and self.frame_count % self.PREDICTION_INTERVAL == 0:
-            
             prediction_output = self.predict_with_tflite(
-                interpreter, 
-                input_details, 
-                output_details, 
-                np.array(self.angle_sequence_buffer)
+                interpreter, input_details, output_details, np.array(self.angle_sequence_buffer)
             )
 
-            print(f"Raw Prediction Output: {prediction_output}")
-            
-            # Post-processing (stability logic)
             predicted_label_index = np.argmax(prediction_output)
             confidence = prediction_output[predicted_label_index]
-
-            print(f"Predicted Index: {predicted_label_index}, Confidence: {confidence: .2f}")
             
             if confidence > self.CONF_THRESHOLD:
                 predicted_label = label_mapping.get(int(predicted_label_index), "Unknown")
                 self.recent_predictions.append(predicted_label)
-                print(f"Label Mapping Result: {predicted_label}")
             else:
-                self.recent_predictions.append("Neutral") # Use neutral if confidence is low
-                print("Confidence below threshold, adding Neutral.")
+                self.recent_predictions.append("neutral")
 
-            # Check for stable prediction over the queue
+            # Stability Check
             prediction_counts = Counter(self.recent_predictions)
             most_common, count = prediction_counts.most_common(1)[0]
-
-            print(f"Recent Predictions Buffer: {list(self.recent_predictions)}")
-            print(f"Prediction Counts: {prediction_counts}")
-            print(f"Most Common: {most_common}, Count: {count}")
             
             if count >= self.STABILITY_FRAMES:
-                # Check if the stable prediction is *changing*
                 if self.stable_prediction != most_common:
-                    print(f"!!! Stable Prediction CHANGED: {most_common} !!!")
                     self.stable_prediction = most_common
-                    
-                    # CRITICAL: Clear all buffers to force a "fresh look"
-                    # This stops the model from getting confused by old data.
                     self.angle_sequence_buffer.clear()
                     self.recent_predictions.clear()
             
-        # 4. Run Rule-Based Form Analysis and Rep Counting
-        # The form check depends on the stable prediction for the current exercise
+        # 4. Run Rule-Based Form Analysis
         self.analyze_frame(self.stable_prediction, landmarks)
 
         return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
 
     def analyze_frame(self, exercise_name, landmarks):
-        if landmarks is None:
+        if landmarks is None or exercise_name == "neutral":
             if exercise_name == "neutral":
                 self.previous_exercise = "neutral"
                 self.stage = None
             self.debug_angles.clear()
             return
 
-        # Reset counters if exercise changes
+        # Reset if exercise changes
         if exercise_name != self.previous_exercise:
             self.rep_counter = 0
             self.stage = None
@@ -198,175 +151,223 @@ class ExerciseAnalyzer:
         self.form_status = "CORRECT FORM"
         self.status_color = (0, 255, 0)
 
-        # Reset stage if user is inactive
+        # Reset inactive users
         if time.time() - self.last_rep_time > self.RESET_TIMEOUT and self.stage is not None:
             self.stage = None
             self.form_status = "INACTIVE - RESET"
         
-        mp_lm = mp.solutions.pose.PoseLandmark
-        
-        # Wrap all exercise logic in a try-except for robustness
         try:
             prev_rep_counter = self.rep_counter
+            
+            # --- EXTRACT COMMON LANDMARKS ONCE ---
+            ls = landmarks[11]; le = landmarks[13]; lw = landmarks[15] # Left: Shoulder, Elbow, Wrist
+            rs = landmarks[12]; re = landmarks[14]; rw = landmarks[16] # Right: Shoulder, Elbow, Wrist
+            lh = landmarks[23]; lk = landmarks[25]; la = landmarks[27] # Left: Hip, Knee, Ankle
+            rh = landmarks[24]; rk = landmarks[26]; ra = landmarks[28] # Right: Hip, Knee, Ankle
 
-            if 'bicepCurl' in exercise_name:
-                left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_wrist_lm = landmarks[mp_lm.LEFT_WRIST.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]
-                right_shoulder_lm = landmarks[mp_lm.RIGHT_SHOULDER.value]; right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]; right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]; right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]
-                
-                elbow_angle, shoulder_angle = 0, 0
-                # Choose the most visible arm for analysis
-                if left_wrist_lm.visibility > right_wrist_lm.visibility:
-                    elbow_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_elbow_lm.x, left_elbow_lm.y], [left_wrist_lm.x, left_wrist_lm.y])
-                    shoulder_angle = calculate_angle_2d([left_elbow_lm.x, left_elbow_lm.y], [left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y])
+            # --- EXERCISE LOGIC BLOCKS ---
+
+            # 1. BICEP CURL
+            if exercise_name == 'bicepCurl':
+                if lw.visibility > rw.visibility:
+                    elbow_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                    shoulder_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
                 else:
-                    elbow_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_elbow_lm.x, right_elbow_lm.y], [right_wrist_lm.x, right_wrist_lm.y])
-                    shoulder_angle = calculate_angle_2d([right_elbow_lm.x, right_elbow_lm.y], [right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y])
-                self.debug_angles = {'Elbow': elbow_angle, 'Shoulder': shoulder_angle}
-
-                # Rep counting logic
-                if elbow_angle > 150: self.stage = "down"
+                    elbow_angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+                    shoulder_angle = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
+                
+                self.debug_angles = {'Elbow': int(elbow_angle)}
+                
+                if elbow_angle > 160: self.stage = "down"
                 if elbow_angle < 45 and self.stage == 'down':
                     self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
-                
-                # Form correction
                 if shoulder_angle > 45:
-                    self.form_status = "ERROR: KEEP ELBOWS PINNED"; self.status_color = (0, 0, 255)
+                    self.form_status = "ERROR: ELBOWS SWINGING"; self.status_color = (0, 0, 255)
 
-            elif 'shoulderPress' in exercise_name:
-                left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_wrist_lm = landmarks[mp_lm.LEFT_WRIST.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]
-                right_shoulder_lm = landmarks[mp_lm.RIGHT_SHOULDER.value]; right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]; right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]; right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]
-
-                left_elbow_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_elbow_lm.x, left_elbow_lm.y], [left_wrist_lm.x, left_wrist_lm.y])
-                right_elbow_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_elbow_lm.x, right_elbow_lm.y], [right_wrist_lm.x, right_wrist_lm.y])
-                avg_elbow_angle = (left_elbow_angle + right_elbow_angle) / 2
-                self.debug_angles = {'Avg Elbow': avg_elbow_angle}
-
-                if avg_elbow_angle < 95: self.stage = "down"
-                if avg_elbow_angle > 160 and self.stage == 'down':
-                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
-                
-                if self.stage == 'down':
-                    left_shoulder_angle = calculate_angle_2d([left_elbow_lm.x, left_elbow_lm.y], [left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y])
-                    right_shoulder_angle = calculate_angle_2d([right_elbow_lm.x, right_elbow_lm.y], [right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y])
-                    avg_shoulder_angle = (left_shoulder_angle + right_shoulder_angle) / 2
-                    self.debug_angles['Avg Shoulder'] = avg_shoulder_angle
-                    if avg_shoulder_angle < 30 or avg_shoulder_angle > 60:
-                        self.form_status = "WARNING: TUCK ELBOWS AT 45 DEG"; self.status_color = (0, 165, 255)
-
-            elif 'lateralRaise' in exercise_name:
-                left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_wrist_lm = landmarks[mp_lm.LEFT_WRIST.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]; left_knee_lm = landmarks[mp_lm.LEFT_KNEE.value]
-                right_shoulder_lm = landmarks[mp_lm.RIGHT_SHOULDER.value]; right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]; right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]; right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]; right_knee_lm = landmarks[mp_lm.RIGHT_KNEE.value]
-
-                shoulder_angle = 0
-                if left_elbow_lm.visibility > right_elbow_lm.visibility:
-                    shoulder_angle = calculate_angle_2d([left_elbow_lm.x, left_elbow_lm.y], [left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y])
+            # 2. TRICEP KICKBACK
+            elif exercise_name == 'tricepKickback':
+                if lw.visibility > rw.visibility:
+                    elbow_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                    torso_angle = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 else:
-                    shoulder_angle = calculate_angle_2d([right_elbow_lm.x, right_elbow_lm.y], [right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y])
+                    elbow_angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+                    torso_angle = calculate_angle_2d([rs.x, rs.y], [rh.x, rh.y], [rk.x, rk.y])
                 
-                if shoulder_angle < 30: self.stage = "down"
-                if shoulder_angle > 90: self.form_status = "WARNING: DO NOT OVER-RAISE"; self.status_color = (0, 165, 255)
-                if shoulder_angle > 75 and self.stage == 'down':
-                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
-
-                torso_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y], [left_knee_lm.x, left_knee_lm.y])
-                self.debug_angles = {'Shoulder': shoulder_angle, 'Torso': torso_angle}
-                if torso_angle < 160:
-                    self.form_status = "ERROR: KEEP TORSO UPRIGHT"; self.status_color = (0, 0, 255)
-
-            elif 'tricepKickback' in exercise_name:
-                left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_wrist_lm = landmarks[mp_lm.LEFT_WRIST.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]; left_knee_lm = landmarks[mp_lm.LEFT_KNEE.value]
-                right_shoulder_lm = landmarks[mp_lm.RIGHT_SHOULDER.value]; right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]; right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]; right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]; right_knee_lm = landmarks[mp_lm.RIGHT_KNEE.value]
+                self.debug_angles = {'Elbow': int(elbow_angle)}
                 
-                elbow_angle = 0
-                if left_wrist_lm.visibility > right_wrist_lm.visibility:
-                    elbow_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_elbow_lm.x, left_elbow_lm.y], [left_wrist_lm.x, left_wrist_lm.y])
-                else:
-                    elbow_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_elbow_lm.x, right_elbow_lm.y], [right_wrist_lm.x, right_wrist_lm.y])
-                
-                if elbow_angle < 100: self.stage = "in"
+                if elbow_angle < 90: self.stage = "in"
                 if elbow_angle > 160 and self.stage == 'in':
                     self.stage = "out"; self.rep_counter += 1; self.last_rep_time = time.time()
+                if torso_angle > 135:
+                    self.form_status = "ERROR: BEND OVER MORE"
 
-                if self.stage is not None:
-                    left_torso_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y], [left_knee_lm.x, left_knee_lm.y])
-                    right_torso_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y], [right_knee_lm.x, right_knee_lm.y])
-                    torso_angle = left_torso_angle if left_hip_lm.visibility > right_hip_lm.visibility else right_torso_angle
-                    self.debug_angles = {'Elbow': elbow_angle, 'Torso': torso_angle}
-                    
-                    if torso_angle > 135:
-                        self.form_status = "ERROR: BEND OVER MORE (45 DEG)"; self.status_color = (0, 0, 255)
-                    elif self.stage == 'out' and elbow_angle < 160:
-                        self.form_status = "EXTEND ARM FULLY"; self.status_color = (0, 165, 255)
-
-            elif 'bentOverRow' in exercise_name:
-                left_shoulder_lm = landmarks[mp_lm.LEFT_SHOULDER.value]; left_elbow_lm = landmarks[mp_lm.LEFT_ELBOW.value]; left_wrist_lm = landmarks[mp_lm.LEFT_WRIST.value]; left_hip_lm = landmarks[mp_lm.LEFT_HIP.value]; left_knee_lm = landmarks[mp_lm.LEFT_KNEE.value]
-                right_shoulder_lm = landmarks[mp_lm.RIGHT_SHOULDER.value]; right_elbow_lm = landmarks[mp_lm.RIGHT_ELBOW.value]; right_wrist_lm = landmarks[mp_lm.RIGHT_WRIST.value]; right_hip_lm = landmarks[mp_lm.RIGHT_HIP.value]; right_knee_lm = landmarks[mp_lm.RIGHT_KNEE.value]
-                
-                elbow_angle = 0
-                if left_wrist_lm.visibility > right_wrist_lm.visibility:
-                    elbow_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_elbow_lm.x, left_elbow_lm.y], [left_wrist_lm.x, left_wrist_lm.y])
+            # 3. LATERAL RAISE & REVERSE FLY
+            elif exercise_name in ['lateralRaise', 'dumbbellReverseFly']:
+                if le.visibility > re.visibility:
+                    arm_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
                 else:
-                    elbow_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_elbow_lm.x, right_elbow_lm.y], [right_wrist_lm.x, right_wrist_lm.y])
+                    arm_angle = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
+                
+                self.debug_angles = {'Shoulder': int(arm_angle)}
 
-                if elbow_angle > 140: self.stage = "down"
-                if elbow_angle < 70 and self.stage == 'down':
+                if arm_angle < 30: self.stage = "down"
+                if arm_angle > 80 and self.stage == 'down':
+                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
+                if arm_angle > 100:
+                    self.form_status = "WARNING: DO NOT OVER-RAISE"
+
+            # 4. VERTICAL & INCLINE PRESSES (Shoulder, Push Press, Incline Bench)
+            elif exercise_name in ['shoulderPress', 'dumbbellPushPress', 'inclineBenchPress']:
+                l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+                avg_elb = (l_elb + r_elb) / 2
+                
+                self.debug_angles = {'Elbow': int(avg_elb)}
+
+                if avg_elb < 80: self.stage = "down"
+                if avg_elb > 150 and self.stage == 'down':
+                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
+
+            # 5. HORIZONTAL PRESS (Svend Press)
+            elif exercise_name == 'dumbbellSvendPress':
+                # Similar to other presses but checking for full extension
+                l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+                avg_elb = (l_elb + r_elb) / 2
+                
+                self.debug_angles = {'Elbow': int(avg_elb)}
+
+                if avg_elb < 90: self.stage = "in"
+                if avg_elb > 160 and self.stage == 'in':
+                    self.stage = "out"; self.rep_counter += 1; self.last_rep_time = time.time()
+
+            # 6. UPRIGHT ROW
+            elif exercise_name == 'uprightRow':
+                # Elbows flare out and up. Angle at elbow closes.
+                l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+                avg_elb = (l_elb + r_elb) / 2
+                
+                self.debug_angles = {'Elbow': int(avg_elb)}
+
+                if avg_elb > 140: self.stage = "down"
+                if avg_elb < 75 and self.stage == 'down':
+                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
+
+            # 7. CHEST FLY (Incline)
+            elif exercise_name == 'inclineDumbbellChestFly':
+                # Shoulder angle changes (arms open), Elbow angle stays constant
+                if le.visibility > re.visibility:
+                    sh_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
+                    el_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                else:
+                    sh_angle = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
+                    el_angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+                
+                self.debug_angles = {'Shoulder': int(sh_angle)}
+
+                if sh_angle > 100: self.stage = "open"
+                if sh_angle < 60 and self.stage == 'open':
+                    self.stage = "closed"; self.rep_counter += 1; self.last_rep_time = time.time()
+                
+                if el_angle < 120:
+                    self.form_status = "WARNING: DON'T BEND ARMS TOO MUCH"
+
+            # 8. SQUATS (Goblet & Sumo)
+            elif exercise_name in ['gobletSquat', 'sumoSquat']:
+                l_knee = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y])
+                r_knee = calculate_angle_2d([rh.x, rh.y], [rk.x, rk.y], [ra.x, ra.y])
+                avg_knee = (l_knee + r_knee) / 2
+                
+                # Torso lean check
+                l_torso = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
+                
+                self.debug_angles = {'Knee': int(avg_knee)}
+
+                if avg_knee > 160: self.stage = "up"
+                if avg_knee < 100 and self.stage == 'up':
+                    self.stage = "down"
+                if avg_knee > 160 and self.stage == 'down':
                     self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
                 
-                if self.stage is not None:
-                    left_torso_angle = calculate_angle_2d([left_shoulder_lm.x, left_shoulder_lm.y], [left_hip_lm.x, left_hip_lm.y], [left_knee_lm.x, left_knee_lm.y])
-                    right_torso_angle = calculate_angle_2d([right_shoulder_lm.x, right_shoulder_lm.y], [right_hip_lm.x, right_hip_lm.y], [right_knee_lm.x, right_knee_lm.y])
-                    torso_angle = left_torso_angle if left_hip_lm.visibility > right_hip_lm.visibility else right_torso_angle
-                    self.debug_angles = {'Elbow': elbow_angle, 'Torso': torso_angle}
-                    
-                    if torso_angle > 135:
-                        self.form_status = "ERROR: BEND OVER MORE (45 DEG)"; self.status_color = (0, 0, 255)
+                if l_torso < 50: 
+                     self.form_status = "ERROR: KEEP CHEST UP"
+                elif self.stage == 'down' and avg_knee > 110:
+                     self.form_status = "WARNING: SQUAT DEEPER"
 
+            # 9. HINGES (RDL & Good Morning)
+            elif exercise_name in ['romanianDeadlift', 'dumbbellGoodMorning']:
+                l_hip = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
+                r_hip = calculate_angle_2d([rs.x, rs.y], [rh.x, rh.y], [rk.x, rk.y])
+                avg_hip = (l_hip + r_hip) / 2
+                
+                l_knee = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y])
+
+                self.debug_angles = {'Hip': int(avg_hip)}
+
+                if avg_hip > 160: self.stage = "up"
+                if avg_hip < 120 and self.stage == 'up':
+                    self.stage = "down"
+                if avg_hip > 160 and self.stage == 'down':
+                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
+
+                if l_knee < 130:
+                     self.form_status = "ERROR: TOO MUCH KNEE BEND"
+            
+            # 10. BENT OVER ROW
+            elif exercise_name == 'bentOverRow':
+                if lw.visibility > rw.visibility:
+                    el_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                    torso_angle = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
+                else:
+                    el_angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+                    torso_angle = calculate_angle_2d([rs.x, rs.y], [rh.x, rh.y], [rk.x, rk.y])
+
+                self.debug_angles = {'Elbow': int(el_angle)}
+
+                if el_angle > 150: self.stage = "down"
+                if el_angle < 75 and self.stage == 'down':
+                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
+                
+                if torso_angle > 150:
+                    self.form_status = "ERROR: BEND OVER MORE"
+
+            # --- Post-Rep Processing ---
             is_new_rep = (self.rep_counter > prev_rep_counter)
 
             if is_new_rep:
-                # 1. Check for immediate error logging
                 if "ERROR" in self.form_status:
-                    # Set the new_error_to_log variable. app.py will read this.
                     self.new_error_to_log = { 
                         "rep_number": self.rep_counter, 
                         "error_type": self.form_status, 
                         "exercise_name": exercise_name 
                     }
-                
-                # 2. Check for trainer alert (consecutive errors)
-                if "ERROR" in self.form_status:
                     if self.form_status == self.last_consecutive_error_type:
                         self.consecutive_error_counter += 1
                     else:
                         self.last_consecutive_error_type = self.form_status
                         self.consecutive_error_counter = 1
-                else: # Correct rep resets the counter
+                else: 
                     self.consecutive_error_counter = 0
                     self.last_consecutive_error_type = None
 
                 if self.consecutive_error_counter >= 6:
                     alert_message = f"Repeated Error: {self.last_consecutive_error_type.replace('ERROR: ', '')}"
                     self.triggered_alert = {'message': alert_message, 'exercise': exercise_name, 'reps': self.rep_counter}
-                    print(f"!!! TRAINER ALERT TRIGGERED: {alert_message} !!!")
                     self.consecutive_error_counter = 0
 
         except Exception as e:
-            print(f"Error during form analysis for {exercise_name}: {e}")
-            self.form_status = "ERROR: TRACKING LOST"
-            self.status_color = (0,0,255)
-            self.debug_angles.clear()
+            print(f"Error in analyze_frame: {e}")
+            self.form_status = "ERROR: ANALYSIS FAILED"
             pass
     
     def reset_session(self):
-        """Resets all counters for a new session."""
         self.rep_counter = 0
         self.stage = None
         self.consecutive_error_counter = 0
         self.last_consecutive_error_type = None
         self.triggered_alert = None
         self.new_error_to_log = None
-        print("Analyzer reset for new session.")
 
     def get_status(self):
         return self.rep_counter, self.form_status, self.status_color, self.debug_angles
-

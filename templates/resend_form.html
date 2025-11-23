@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resend Verification Link</title>
+    <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='src/images/favicon.ico') }}">
+</head>
+<body>
+    <div class="flex h-[100dvh] p-5 gap-5">
+        <img src="/static/src/images/loginIMG.jpg" alt="" class="rounded-3xl object-cover">
+        <div class="grid grid-rows-[3%_1fr] w-full">
+            <div class="w-full flex justify-start items-start">
+                <a href="{{ url_for('home') }}" class="self-start items-start">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="currentColor" class="bi bi-arrow-bar-left" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M12.5 15a.5.5 0 0 1-.5-.5v-13a.5.5 0 0 1 1 0v13a.5.5 0 0 1-.5.5M10 8a.5.5 0 0 1-.5.5H3.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L3.707 7.5H9.5a.5.5 0 0 1 .5.5"/>
+                    </svg>
+                </a>
+            </div>
+             <div class="w-full h-3/4 flex flex-col items-center justify-center">
+                <h2 class="text-xl font-bold mb-4">Resend Verification Email</h2>
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} mb-3">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <form class="w-2/3" method="POST" action="{{ url_for('resend_verification') }}">
+                    <label for="email" class="block mb-2">Enter your registered Email Address:</label>
+                    <input type="email" id="email" name="email" required class="w-full p-2 border rounded mb-4">
+                    
+                    <button type="submit" class="w-full bg-[#2D2C2C] text-white py-2 cursor-pointer rounded hover:bg-[#474646]">Resend Link</button>
+                </form>
+                <p class="text-center mt-4">
+                    <a href="{{ url_for('login') }}" class="text-gray-600 text-sm hover:underline">Back to Login</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

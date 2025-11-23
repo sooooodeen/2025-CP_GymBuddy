@@ -1,53 +1,63 @@
 import pandas as pd
 import numpy as np
+import os
 
-INPUT_CSV = 'exercise_sequences.csv'
+# --- CONFIGURATION ---
+INPUT_CSV = 'exercise_sequences_landmarks.csv'
 OUTPUT_CSV = 'exercise_sequences_augmented.csv'
-CLASSES_TO_AUGMENT = ['bentOverRow', 'bicepCurl', 'lateralRaise', 'shoulderPress', 'tricepKickback']
 
-COLUMN_SWAP_PAIRS = {
-    'left_elbow': 'right_elbow',
-    'left_shoulder': 'right_shoulder',
-    'left_hip': 'right_hip',
-    'left_knee': 'right_knee',
-    'left_upper_arm': 'right_upper_arm'
-}
+def augment_data_with_mirroring(input_path, output_path):
+    if not os.path.exists(input_path):
+        print(f"Error: Input file '{input_path}' not found.")
+        return
 
-def augment_data_with_angles(input_path, output_path):
     print(f"Loading data from {input_path}...")
     df = pd.read_csv(input_path)
     
-    augmented_rows = []
-    sequences_to_augment = df[df['class'].isin(CLASSES_TO_AUGMENT)]['sequence_id'].unique()
+    # 1. Identify all landmark columns (ending in _x, _y, _z, _visibility)
+    all_cols = df.columns.tolist()
+    landmark_cols = [c for c in all_cols if c.endswith(('_x', '_y', '_z', '_visibility'))]
     
-    print(f"Found {len(sequences_to_augment)} sequences to augment.")
+    # 2. Find Left/Right pairs automatically
+    # We look for 'left_' columns and try to find the matching 'right_' column
+    swap_pairs = {}
+    for col in landmark_cols:
+        if 'left_' in col:
+            right_col = col.replace('left_', 'right_')
+            if right_col in all_cols:
+                swap_pairs[col] = right_col
+    
+    print(f"identified {len(swap_pairs)} left/right landmark pairs to swap.")
 
-    for seq_id in sequences_to_augment:
-        sequence_df = df[df['sequence_id'] == seq_id].copy()
-        augmented_seq_id = f"{seq_id}_aug_flip"
-        sequence_df['sequence_id'] = augmented_seq_id
-        
-        for left_col, right_col in COLUMN_SWAP_PAIRS.items():
-            temp_left = sequence_df[left_col].copy()
-            sequence_df[left_col] = sequence_df[right_col]
-            sequence_df[right_col] = temp_left
-        
-        augmented_rows.append(sequence_df)
+    # 3. Create the Augmented Dataframe
+    # We copy the original DF, generate new IDs, and apply transformations
+    augmented_df = df.copy()
+    
+    # Update sequence IDs so they don't clash
+    augmented_df['sequence_id'] = augmented_df['sequence_id'].apply(lambda x: str(x) + "_flip")
+    
+    print("Applying mirror transformation (Left/Right Swap + X-Flip)...")
+    
+    # Apply Swaps
+    for left_col, right_col in swap_pairs.items():
+        # Swap values
+        temp = augmented_df[left_col].copy()
+        augmented_df[left_col] = augmented_df[right_col]
+        augmented_df[right_col] = temp
 
-    if not augmented_rows:
-        print("No rows were augmented. Saving original data.")
-        df.to_csv(output_path, index=False)
-        return
+    # Apply X-Flip (Mirroring logic: x_new = 1 - x_old)
+    # This simulates the camera being mirrored horizontally
+    x_cols = [c for c in landmark_cols if c.endswith('_x')]
+    augmented_df[x_cols] = 1.0 - augmented_df[x_cols]
 
-    print("Concatenating original and augmented data...")
-    augmented_df = pd.concat(augmented_rows, ignore_index=True)
+    # 4. Combine and Save
     final_df = pd.concat([df, augmented_df], ignore_index=True)
-
-    print(f"Original number of sequences: {len(df['sequence_id'].unique())}")
-    print(f"New total number of sequences: {len(final_df['sequence_id'].unique())}")
+    
+    print(f"Original Rows: {len(df)}")
+    print(f"New Total Rows: {len(final_df)}")
     
     final_df.to_csv(output_path, index=False)
-    print(f"Successfully saved augmented data to {output_path}")
+    print(f"Successfully saved augmented dataset to: {output_path}")
 
 if __name__ == '__main__':
-    augment_data_with_angles(INPUT_CSV, OUTPUT_CSV)
+    augment_data_with_mirroring(INPUT_CSV, OUTPUT_CSV)

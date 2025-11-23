@@ -22,8 +22,8 @@
         </label>
     </div>
 
-    <div class="flex w-full items-center gap-2 ">
-        <div class="w-1/2 relative">
+    <div class="flex w-full items-center gap-2 h-[100dvh]">
+        <div class="w-1/2 h-full relative">
             <video class="w-full h-full bg-gray-200 rounded-lg" id="camera1" autoplay playsinline style="transform: scaleX(-1);"></video>
             <canvas id="canvas1" class="absolute top-0 left-0 w-full h-full"></canvas>
             
@@ -47,7 +47,7 @@
             </div>
         </div>
 
-        <div class="w-1/2 relative">
+        <div class="w-1/2 h-full relative">
             <video class="w-full h-full bg-gray-200 rounded-lg" id="camera2" autoplay playsinline style="transform: scaleX(-1);"></video>
             <canvas id="canvas2" class="absolute top-0 left-0 w-full h-full"></canvas>
             <div id="results2" 
@@ -72,9 +72,14 @@
     </div>
 
     <div class="flex justify-center w-full">
-        <button id="btn-open-camera" class="flex gap-3 cursor-pointer text-2xl justify-center w-auto bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-6 py-3 rounded-lg items-center text-black font-Helvetica disabled:opacity-50 disabled:cursor-not-allowed">
-            <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-camera-icon lucide-camera"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg>
-            Open Cameras
+        <button id="btn-open-camera" class="flex gap-3 cursor-pointer text-2xl text-white justify-center w-auto bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-6 py-3 rounded-lg items-center text-black font-Helvetica disabled:opacity-50 disabled:cursor-not-allowed">
+            <span id="camera-icon-open">
+                <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-camera"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg>
+            </span>
+            <span id="camera-icon-closed" class="hidden"> 
+                <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-camera-off-icon lucide-camera-off"><path d="M14.564 14.558a3 3 0 1 1-4.122-4.121"/><path d="m2 2 20 20"/><path d="M20 20H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 .819-.175"/><path d="M9.695 4.024A2 2 0 0 1 10.004 4h3.993a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v7.344"/></svg>
+            </span>
+            <span id="button-text">Open Cameras</span>
         </button>
     </div>
 
@@ -84,8 +89,15 @@
     const camSelect1 = document.getElementById("select-camera-1");
     const camSelect2 = document.getElementById("select-camera-2");
     const openCameraButton = document.getElementById("btn-open-camera");
+    const cameraIconOpen = document.getElementById("camera-icon-open"); // New reference
+    const cameraIconClosed = document.getElementById("camera-icon-closed"); // New reference
+    const buttonText = document.getElementById("button-text");
     let isCameraOpen = false;
     let intervalId = null;
+
+    // References to the MediaStreams for stopping the tracks (CRITICAL ADDITION)
+    let stream1 = null; 
+    let stream2 = null; 
 
     window.onload = async function() {
         await listDevices();
@@ -116,6 +128,7 @@
     }
 
     async function getCameraDevices() {
+        // This requests permission and immediately stops the tracks to release the camera
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         stream.getTracks().forEach(track => track.stop());
         
@@ -123,16 +136,37 @@
         return allDevices.filter(device => device.kind === 'videoinput');
     }
 
+    // --- NEW FUNCTION TO STOP CAMERAS AND RELEASE RESOURCES ---
+    function stopCameras(videoElement, streamReference) {
+        if (streamReference) {
+            // Stop all tracks in the MediaStream to turn off the camera light
+            streamReference.getTracks().forEach(track => track.stop());
+        }
+        videoElement.srcObject = null; // Disconnect the stream from the video element
+        
+        // Clear the canvas
+        const canvas = document.getElementById(videoElement.id === 'camera1' ? 'canvas1' : 'canvas2');
+        const context = canvas.getContext('2d');
+        context.clearRect(0, 0, canvas.videoWidth, canvas.videoHeight);
+        
+        // Hide the results/feedback box
+        document.getElementById(videoElement.id === 'camera1' ? 'results1' : 'results2').style.display = 'none';
+        
+        // Optional: Send a stop signal to the backend
+        socket.emit('stop_camera', { camera_id: videoElement.id });
+    }
+    // ------------------------------------
+
     openCameraButton.addEventListener("click", function() {
         if (!isCameraOpen) {
+            // ================== OPEN CAMERAS LOGIC ==================
             openCameraButton.disabled = true;
-            captureCamera(document.getElementById("camera1"), camSelect1.value, feedbackElement1);
-            captureCamera(document.getElementById("camera2"), camSelect2.value, feedbackElement2);
+            captureCamera(video1, camSelect1.value, feedbackElement1, 'stream1');
+            captureCamera(video2, camSelect2.value, feedbackElement2, 'stream2');
 
-            // --- ADD DELAY HERE ---
+            // Wait for streams to connect before starting the send interval
             setTimeout(() => { 
                 if (intervalId === null) {
-                    // Emit start_camera event to backend *before* sending frames
                     socket.emit('start_camera', { camera_id: 'camera1' });
                     socket.emit('start_camera', { camera_id: 'camera2' });
 
@@ -149,20 +183,47 @@
                 }
                 document.getElementById('results1').style.display = 'block';
                 document.getElementById('results2').style.display = 'block';
+                
+                // Set state and update button to 'Stop' mode
                 isCameraOpen = true;
-                openCameraButton.innerText = "Cameras Live";
-            }, 500); // Wait 500ms before starting interval and showing results
-            // --- END DELAY ---
+                buttonText.innerText = "Stop Cameras"; // Update button text
+                cameraIconOpen.classList.add('hidden'); // Hide open icon
+                cameraIconClosed.classList.remove('hidden'); // Show closed icon
+                openCameraButton.className = openCameraButton.className.replace('bg-[#F05454] hover:bg-[#f77777]', 'bg-gray-500 hover:bg-gray-600');
+                openCameraButton.disabled = false;
+            }, 500); 
+        } else {
+            // ================== CLOSE CAMERAS LOGIC ==================
+            clearInterval(intervalId); // Stop sending frames to backend
+            intervalId = null;
+            
+            stopCameras(video1, stream1);
+            stopCameras(video2, stream2);
+            
+            // Reset state and update button to 'Open' mode
+            isCameraOpen = false;
+            buttonText.innerText = "Open Cameras"; // Update button text
+            cameraIconOpen.classList.remove('hidden'); // Show open icon
+            cameraIconClosed.classList.add('hidden'); // Hide closed icon
+            openCameraButton.className = openCameraButton.className.replace('bg-gray-500 hover:bg-gray-600', 'bg-[#F05454] hover:bg-[#f77777]');
+            openCameraButton.disabled = false;
+            
+            // Reset feedback elements text
+            feedbackElement1.innerText = "START EXERCISE";
+            feedbackElement2.innerText = "START EXERCISE";
         }
     });
 
-    function captureCamera(video, selectedCameraId, feedbackElement) {
+    function captureCamera(video, selectedCameraId, feedbackElement, streamRefName) {
         let constraints = {
             audio: false,
             video: { deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined }
         };
         navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
             video.srcObject = stream;
+            // Store the stream reference globally
+            if (streamRefName === 'stream1') stream1 = stream;
+            if (streamRefName === 'stream2') stream2 = stream;
         }).catch(function(error) {
             console.error("Camera capture error:", error);
             feedbackElement.innerText = "CAMERA ERROR!";
@@ -267,19 +328,18 @@
         elements.reps.innerText = data.rep_counter; // Use rep_counter
         elements.feedback.innerText = data.form_status;
         
-
-
-        let skeletonColor = 'white'; // Default color
+        // Define skeleton color based on feedback status
+        let skeletonColor = 'white'; 
 
         if (data.form_status.includes("ERROR")) {
             elements.feedback.className = "text-xl font-medium text-red-400 mt-2";
-            skeletonColor = '#FF4136'; // Set skeleton color to RED (matches joint color)
+            skeletonColor = '#FF4136'; // RED
         } else if (data.form_status.includes("WARNING")) {
             elements.feedback.className = "text-xl font-medium text-yellow-400 mt-2";
-            skeletonColor = '#FFDC00'; // Set skeleton color to YELLOW
-        } else if (data.form_status === "CORRECT FORM") { // Check for "CORRECT FORM"
+            skeletonColor = '#FFDC00'; // YELLOW
+        } else if (data.form_status === "CORRECT FORM") {
             elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
-            skeletonColor = '#0074D9'; // Set skeleton color to BLUE
+            skeletonColor = '#0074D9'; // BLUE (Can change to green if preferred: '#2ECC40')
         } else {
             // For "START EXERCISE", "Neutral", etc.
             elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
@@ -287,10 +347,10 @@
         }
         
         if (elements.video.videoWidth > 0) {
+            // Ensure canvas size matches video size for accurate overlay
             elements.canvas.width = elements.video.videoWidth;
             elements.canvas.height = elements.video.videoHeight;
             
-            // Pass the new color variable to drawSkeleton
             drawSkeleton(data.landmarks, elements.canvasCtx, elements.canvas, skeletonColor); 
         }
     }
@@ -313,7 +373,7 @@
         }
     });
 
-    // --- NEW: AUDIO FEEDBACK LISTENER (P1-4) ---
+    // --- AUDIO FEEDBACK LISTENER (P1-4) ---
     socket.on('form_error', function(data) {
         console.log(`Audio alert for ${data.camera_id}: ${data.message}`);
         if (speechSynthesis.speaking) {
@@ -324,16 +384,30 @@
         speechSynthesis.speak(utterance);
     });
 
-    // --- NEW: TRAINER SAFETY ALERT LISTENER (P2-2) ---
+    // --- TRAINER SAFETY ALERT LISTENER (P2-2) ---
     socket.on('trainer_alert', function(data) {
-        console.log('--- TRAINER ALERT RECEIVED ---');
-        console.log(`Camera: ${data.camera_id}`);
-        console.log(`Message: ${data.message}`);
-        // For testing, we can use a simple browser alert.
-        // This creates a pop-up that the user must dismiss.
-        alert(`‼️ TRAINER SAFETY ALERT (${data.camera_id}) ‼️\n\n${data.message}`);
+    console.log('--- TRAINER ALERT RECEIVED ---');
+    console.log(`Camera: ${data.camera_id}`);
+    console.log(`Message: ${data.message}`);
+        
+        // Use SweetAlert2 for a prominent, non-blocking notification in the bottom-left
+        Swal.fire({
+            title: `TRAINER SAFETY ALERT (${data.camera_id})`,
+            text: data.message,
+            icon: 'error',
+            toast: true, 
+            position: 'bottom-end',
+            showConfirmButton: false, // Don't require a button click to dismiss
+            timer: 5000,
+            timerProgressBar: true,
+            showCloseButton: true, // Allow manual closing
+            customClass: {
+                // Optional: Customize the appearance with a specific CSS class
+                popup: 'swal2-safety-alert' 
+            }
+        });
     });
 
-</script> 
+</script>
 </div>
 {% endblock %}

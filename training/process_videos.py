@@ -3,46 +3,27 @@ import cv2
 import mediapipe as mp
 import pandas as pd
 import uuid
-import numpy as np
 
-def calculate_angle(a, b, c):
-    a = np.array([a.x, a.y, a.z])
-    b = np.array([b.x, b.y, b.z])
-    c = np.array([c.x, c.y, c.z])
-    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
-    angle = np.abs(radians * 180.0 / np.pi)
-    if angle > 180.0:
-        angle = 360 - angle
-    return angle
+# --- Define all 33 landmark names for the CSV header ---
+LANDMARK_NAMES = [
+    'nose', 'left_eye_inner', 'left_eye', 'left_eye_outer', 'right_eye_inner', 'right_eye', 'right_eye_outer',
+    'left_ear', 'right_ear', 'mouth_left', 'mouth_right', 'left_shoulder', 'right_shoulder',
+    'left_elbow', 'right_elbow', 'left_wrist', 'right_wrist', 'left_pinky', 'right_pinky',
+    'left_index', 'right_index', 'left_thumb', 'right_thumb', 'left_hip', 'right_hip',
+    'left_knee', 'right_knee', 'left_ankle', 'right_ankle', 'left_heel', 'right_heel',
+    'left_foot_index', 'right_foot_index'
+]
 
-def extract_angle_features(landmarks):
-    lm = landmarks.landmark
-    mp_pose = mp.solutions.pose.PoseLandmark
+# Create headers for X, Y, Z, and Visibility for each landmark
+csv_header = ['class', 'sequence_id', 'frame_id', 'timestamp_ms']
+for name in LANDMARK_NAMES:
+    csv_header.extend([f'{name}_x', f'{name}_y', f'{name}_z', f'{name}_visibility'])
 
-    angles = {
-        'left_elbow': calculate_angle(lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_ELBOW], lm[mp_pose.LEFT_WRIST]),
-        'right_elbow': calculate_angle(lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_ELBOW], lm[mp_pose.RIGHT_WRIST]),
-        'left_shoulder': calculate_angle(lm[mp_pose.LEFT_ELBOW], lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_HIP]),
-        'right_shoulder': calculate_angle(lm[mp_pose.RIGHT_ELBOW], lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_HIP]),
-        'left_hip': calculate_angle(lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_HIP], lm[mp_pose.LEFT_KNEE]),
-        'right_hip': calculate_angle(lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_KNEE]),
-        'left_knee': calculate_angle(lm[mp_pose.LEFT_HIP], lm[mp_pose.LEFT_KNEE], lm[mp_pose.LEFT_ANKLE]),
-        'right_knee': calculate_angle(lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_KNEE], lm[mp_pose.RIGHT_ANKLE]),
-        'left_upper_arm': calculate_angle(lm[mp_pose.LEFT_HIP], lm[mp_pose.LEFT_SHOULDER], lm[mp_pose.LEFT_ELBOW]),
-        'right_upper_arm': calculate_angle(lm[mp_pose.RIGHT_HIP], lm[mp_pose.RIGHT_SHOULDER], lm[mp_pose.RIGHT_ELBOW])
-    }
-    return angles
-
-def process_videos_to_csv_with_angles(videos_directory, output_csv_path):
+def process_videos_to_csv_with_landmarks(videos_directory, output_csv_path):
     mp_pose = mp.solutions.pose
     pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
     data_rows = []
     
-    feature_names = ['left_elbow', 'right_elbow', 'left_shoulder', 'right_shoulder', 
-                     'left_hip', 'right_hip', 'left_knee', 'right_knee',
-                     'left_upper_arm', 'right_upper_arm']
-    header = ['class', 'sequence_id', 'frame_id'] + feature_names
-
     print(f"Starting to process videos in: {videos_directory}")
     for root, dirs, files in os.walk(videos_directory):
         if not files:
@@ -52,38 +33,53 @@ def process_videos_to_csv_with_angles(videos_directory, output_csv_path):
                 video_path = os.path.join(root, file)
                 relative_path = os.path.relpath(video_path, videos_directory)
                 path_parts = relative_path.split(os.path.sep)
-                class_name_from_folder = path_parts[0]
-                class_name = 'neutral' if class_name_from_folder.startswith('neutral') else class_name_from_folder
+                
+                # Get class name from the folder name
+                class_name = path_parts[0]
                 
                 print(f"Processing: {file}  =>  Assigned Label: '{class_name}'")
                 sequence_id = uuid.uuid4()
                 cap = cv2.VideoCapture(video_path)
                 if not cap.isOpened():
+                    print(f"Warning: Could not open video file {video_path}")
                     continue
+                    
                 frame_id = 0
                 while cap.isOpened():
                     success, image = cap.read()
                     if not success:
                         break
+                    
+                    # Get the timestamp for velocity calculation
+                    timestamp_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+                    
                     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                     results = pose.process(image_rgb)
+                    
                     if results.pose_landmarks:
-                        angles = extract_angle_features(results.pose_landmarks)
-                        ordered_angles = [angles[name] for name in feature_names]
-                        row = [class_name, sequence_id, frame_id] + ordered_angles
+                        # Extract all 33 landmarks
+                        landmarks = results.pose_landmarks.landmark
+                        
+                        # Create a single row for the CSV
+                        row = [class_name, sequence_id, frame_id, timestamp_ms]
+                        for lm in landmarks:
+                            row.extend([lm.x, lm.y, lm.z, lm.visibility])
+                        
                         data_rows.append(row)
+                        
                     frame_id += 1
                 cap.release()
+                
     if data_rows:
         print("\nCreating DataFrame and saving to CSV...")
-        df = pd.DataFrame(data_rows, columns=header)
+        df = pd.DataFrame(data_rows, columns=csv_header)
         df.to_csv(output_csv_path, index=False)
-        print(f"Successfully saved data to {output_csv_path}")
+        print(f"Successfully saved landmark data to {output_csv_path}")
     else:
         print("No data was extracted.")
     pose.close()
 
 if __name__ == '__main__':
     videos_directory = 'raw_videos'
-    output_csv_path = 'exercise_sequences.csv'
-    process_videos_to_csv_with_angles(videos_directory, output_csv_path)
+    output_csv_path = 'exercise_sequences_landmarks.csv' # New output file name
+    process_videos_to_csv_with_landmarks(videos_directory, output_csv_path)
