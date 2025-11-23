@@ -10,7 +10,7 @@
 <body>
     <div class="flex h-[100dvh] p-5 gap-5">
         <img src="/static/src/images/loginIMG.jpg" alt="" class="rounded-3xl object-cover">
-        <div class="grid grid-rows-[3%_15%_1fr] w-full">
+        <div class="grid grid-rows-[7%_15%_1fr] w-full">
             <div class="w-full flex justify-start items-start">
                 <a href="{{ url_for('home') }}" class="self-start items-start">
                     <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="currentColor" class="bi bi-arrow-bar-left" viewBox="0 0 16 16">
@@ -25,7 +25,7 @@
                             
                             {% set is_unverified_error = (message == 'Your account is not verified. Please check your email for the verification link.') %}
 
-                            <div class="p-2 my-2 text-sm rounded-lg w-full max-w-md text-center 
+                            <div class="p-2 text-sm rounded-lg w-[60%] text-center 
                                 {% if is_unverified_error or category == 'error' %} 
                                     bg-red-100 text-red-700 
                                 {% else %} 
