@@ -16,18 +16,29 @@
         }
     </style>
 </head>
-<body>
-    <div class="full-screen-center">
-        <div class="w-full max-w-md bg-white p-8 rounded-xl shadow-2xl text-center">
-            <h2 class="text-2xl font-bold text-gray-900 mt-4">Email Verification Sent!</h2>
-            <p class="mt-2 text-gray-600">
-                A verification link has been sent to your email address. 
-                Please click the link to activate your account before attempting to log in.
-            </p>
-            <div class="mt-6">
-                <a href="{{ url_for('login') }}" class="inline-flex items-center justify-center w-full px-4 py-3 border border-transparent text-base font-medium rounded-md text-white bg-[#2D2C2C] hover:bg-[#474646]">
-                    Go to Login Page
-                </a>
+<body class="p-0 m-0 overflow-y-hidden">
+    <div class="full-screen-center ">
+        <div class="h-[100dvh] w-full">
+            <div class="h-full p-3 ">
+                <img class="object-cover h-full w-full rounded-2xl" src="/static/src/images/home.jpg" alt="">
+                <div class="absolute bottom-5 -left-12 z-10 w-[80%]">
+                    <h2 class="text-[550px] text-white font-bold font-Helvetica italic -tracking-[50px] leading-110">GYM BUDDY</h2>
+                </div>
+            </div>
+            <div class="w-[100dvw] top-0 absolute z-11 h-[100dvh] bg-black/25 flex items-center justify-end pr-30">
+                <div class="w-[23%]  shadow drop-shadow-xl/50 rounded-xl bg-white p-9">
+
+                    <h2 class="text-2xl font-bold text-gray-900 mt-4">Email Verification Sent!</h2>
+                    <p class="mt-2 text-gray-600">
+                        A <b>verification link</b> has been sent to your email address. 
+                        Please click the link to sent to your email to activate your account.
+                    </p>
+                    <div class="mt-6">
+                        <a href="{{ url_for('login') }}" class="inline-flex items-center justify-center w-full px-4 py-3 border border-transparent text-base font-medium rounded-md text-white bg-[#2D2C2C] hover:bg-[#474646]">
+                            Return to Login
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
