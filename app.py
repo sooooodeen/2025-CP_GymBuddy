@@ -325,7 +325,7 @@ def verify_account(token):
             user.status = 'active'
             user.verification_token = None
             db.session.commit()
-            flash('Your email has been successfully verified! You can now log in.', 'success')
+            flash('Email verified!', 'success')
     else:
         # Should not happen if token validation passed, but good for safety
         flash('Account not found.', 'error') 
@@ -371,6 +371,41 @@ def login():
         else:
             flash('Invalid email or password.', 'error')
     return render_template("login.html")
+# app.py
+
+@app.route("/resend_verification", methods=['GET', 'POST'])
+def resend_verification():
+    # If the user is already logged in (unverified but has a session), we can use their ID.
+    # Otherwise, we ask for their email via a simple form.
+    
+    if request.method == 'POST':
+        email = request.form.get('email')
+        
+        if not email:
+            flash('Please enter your email address.', 'warning')
+            return redirect(url_for('resend_verification'))
+
+        user = User.query.filter_by(email=email, status='unverified').first()
+
+        if user:
+            # 1. Generate new token
+            new_token = generate_verification_token(email)
+            
+            # 2. Send new email
+            try:
+                send_verification_email(email, new_token)
+                flash('A new verification link has been sent to your email.', 'success')
+            except Exception as e:
+                print(f"ERROR RESENDING EMAIL: {e}")
+                flash('Could not resend the verification email. Please contact support.', 'warning')
+        else:
+            # Be vague for security purposes—don't confirm if the email exists.
+            flash('If an unverified account exists, a new link has been sent.', 'info')
+            
+        return redirect(url_for('login'))
+        
+    # GET request: Show the form to input the email
+    return render_template("resend_form.html") # We need to create this template
 
 @app.route("/logout")
 def logout():
