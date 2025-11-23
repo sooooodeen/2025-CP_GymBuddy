@@ -26,8 +26,11 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import ForeignKey, func
 from sqlalchemy.orm import relationship
 
-# --- Import the shared logic ---
 from analysis_logic import ExerciseAnalyzer 
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired
+from flask_mail import Mail, Message
+from dotenv import load_dotenv
+load_dotenv('config.env')
 
 # --- App and Database Configuration ---
 app = Flask(__name__)
@@ -46,6 +49,23 @@ socketio = SocketIO(app, async_mode='eventlet')
 
 
 # --- Database Model Definitions (Multi-Tenant Update) ---
+# --- NEW: Flask-Mail Configuration ---
+# NOTE: Replace these with your actual SMTP server and credentials.
+# For Gmail, you MUST use an App Password, not your account password.
+app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True').lower() in ('true', '1', 't')
+app.config['MAIL_USE_SSL'] = os.environ.get('MAIL_USE_SSL', 'False').lower() in ('true', '1', 't') # Set to True for port 465
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', 'your_email@gmail.com')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', 'your_app_password') 
+app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@yourgymapp.com')
+app.config['SECURITY_EMAIL_SALT'] = 'email-confirm-salt' # Used by ItsDangerous
+
+mail = Mail(app) # Initialize Flask-Mail
+# --- END NEW CONFIG ---
+
+# --- NEW: Initialize ItsDangerous Serializer ---
+s = URLSafeTimedSerializer(app.secret_key) # Use your app's secret key for security
 
 class Gym(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -65,7 +85,7 @@ class User(db.Model):
     role = db.Column(db.String(50), nullable=False) # e.g., 'Gym Owner', 'Trainer'
     gym_id = db.Column(db.Integer, db.ForeignKey('gym.id'), nullable=False)
     photo_url = db.Column(db.String(200), nullable=True)
-    status = db.Column(db.String(20), nullable=False, default='inactive')
+    status = db.Column(db.String(20), nullable=False, default='unverified')
     assignments = db.relationship('Assignment', foreign_keys='Assignment.trainer_id', backref='trainer', lazy=True, cascade="all, delete-orphan")
     workout_sessions = db.relationship('WorkoutSession', backref='user', lazy=True, cascade="all, delete-orphan")
     
@@ -137,7 +157,45 @@ def load_model_and_labels():
 
 load_model_and_labels()
 
+# app.py - Place this with your utility functions
 
+def generate_verification_token(email):
+    """Generates a time-limited token for email verification."""
+    return s.dumps(email, salt=app.config['SECURITY_EMAIL_SALT'])
+
+def confirm_verification_token(token, expiration=3600):
+    """Validates the token and returns the email if valid and not expired (default 1 hour)."""
+    try:
+        email = s.loads(
+            token,
+            salt=app.config['SECURITY_EMAIL_SALT'],
+            max_age=expiration # Token expiration time in seconds
+        )
+        return email
+    except SignatureExpired:
+        return None
+    except Exception:
+        return None
+
+def send_verification_email(user_email, token):
+    """Sends the actual email to the user."""
+    # Build the external URL for the user to click
+    verify_url = url_for('verify_account', token=token, _external=True)
+    
+    msg = Message(
+        subject="Confirm Your Gym Buddy Account",
+        recipients=[user_email],
+        html=f"""
+            <p>Welcome to Gym Buddy! Please click the link below to verify your email address and activate your account:</p>
+            <p><a href="{verify_url}" style="background-color: #2D2C2C; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Verify My Email</a></p>
+            <p>The link will expire in 1 hour.</p>
+            <p>If you did not register, please ignore this email.</p>
+        """
+    )
+    # The mail.send() function might block, so in a production app, you'd use a background thread (like your existing socketio background tasks) or a task queue (like Celery).
+    # For now, we'll run it synchronously:
+    mail.send(msg)
+    
 # --- Utility Functions (for Authentication and Routing) ---
 
 # --- FIX: Helper function to format camelCase names ---
@@ -179,6 +237,7 @@ def home():
 @app.route("/register", methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
+        # --- FIX: Retrieve ALL form data here ---
         firstname = request.form.get('firstname')
         middlename = request.form.get('middlename')
         lastname = request.form.get('lastname')
@@ -189,10 +248,10 @@ def register():
         gym_name = request.form.get('gymName')
         
         if not all([firstname, lastname, email, password, gym_name]):
-             flash('Please fill out all required fields.', 'danger')
-             return redirect(url_for('register'))
+            flash('Please fill out all required fields.', 'danger')
+            return redirect(url_for('register'))
 
-        # --- MODIFIED: Multi-Tenant Gym Logic ---
+        # --- MODIFIED: Multi-Tenant Gym Logic (Create Gym if it doesn't exist) ---
         gym = Gym.query.filter_by(name=gym_name).first()
         if not gym:
             gym = Gym(name=gym_name)
@@ -207,21 +266,77 @@ def register():
         if User.query.filter_by(email=email).first():
             flash('Email address already registered.', 'error')
             return redirect(url_for('register'))
-            
+        # --- END Multi-Tenant Gym Logic ---
+        
+        # --- EMAIL VERIFICATION & USER CREATION BLOCK ---
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+        
+        # 1. Generate the secure token
+        verification_token = generate_verification_token(email)
+        
         new_user = User(
             firstname=firstname, middlename=middlename, lastname=lastname,
             phone_num=phone_num, gender=gender, email=email, 
             password_hash=hashed_password, 
-            role='Gym Owner', status='active',
-            gym_id=gym.id  # --- MODIFIED: Assign gym_id ---
+            role='Gym Owner', 
+            status='unverified', # Set status to unverified
+            # Note: We no longer need to store the token in the DB since ItsDangerous
+            # validates the token payload (the email). However, if you add the 
+            # `verification_token` column to your DB, you can store it here:
+            # verification_token=verification_token, 
+            gym_id=gym.id 
         )
         
         db.session.add(new_user)
         db.session.commit()
-        flash('Registration successful! Please log in.', 'success')
-        return redirect(url_for("login"))
+        
+        # 2. Send the actual email
+        try:
+            # We use the token value here to embed it in the verification link
+            send_verification_email(email, verification_token) 
+            flash('Registration successful! Please check your email to verify your account.', 'success')
+        except Exception as e:
+            # Handle failure to send email gracefully
+            print(f"ERROR SENDING EMAIL: {e}")
+            flash('Registration successful, but we could not send the verification email. Please check your configuration.', 'warning')
+        
+        # 3. Redirect to the message page 
+        return redirect(url_for("verify_message")) 
     return render_template("register.html")
+
+@app.route("/verify/<string:token>")
+def verify_account(token):
+    # 1. Confirm the token using ItsDangerous
+    email = confirm_verification_token(token)
+    
+    if not email:
+        # Token is invalid or expired
+        flash('The verification link is invalid or has expired.', 'error')
+        return redirect(url_for('login'))
+        
+    # 2. Find the user by the email extracted from the token
+    user = User.query.filter_by(email=email).first()
+    
+    if user:
+        if user.status == 'active':
+            flash('Your account is already verified. Please log in.', 'success')
+        else:
+            # 3. Update status and clear the token
+            user.status = 'active'
+            user.verification_token = None
+            db.session.commit()
+            flash('Your email has been successfully verified! You can now log in.', 'success')
+    else:
+        # Should not happen if token validation passed, but good for safety
+        flash('Account not found.', 'error') 
+        
+    return redirect(url_for('login'))
+# --- NEW ROUTE: To show the verification message page ---
+@app.route("/verify_message")
+def verify_message():
+    """Renders the page informing the user to check their email."""
+    # This route just displays the message page (verify_message.html)
+    return render_template("verify_message.html")
 
 @app.route("/login", methods=['GET', 'POST'])
 def login():
@@ -231,6 +346,13 @@ def login():
         user = User.query.filter_by(email=email).first()
         
         if user and bcrypt.check_password_hash(user.password_hash, password):
+            
+            # --- FIX: ADDED Verification Check ---
+            if user.status == 'unverified':
+                 flash('Your account is not verified. Please check your email for the verification link.', 'error')
+                 return redirect(url_for('login'))
+            # --- END FIX ---
+            
             session.clear() 
             
             session['user_id'] = user.id
