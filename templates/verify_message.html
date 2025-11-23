@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email</title>
+    <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
+    <style>
+        .full-screen-center {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100dvh;
+            width: 100vw;
+            background-color: #f7f7f7;
+        }
+    </style>
+</head>
+<body>
+    <div class="full-screen-center">
+        <div class="w-full max-w-md bg-white p-8 rounded-xl shadow-2xl text-center">
+            <h2 class="text-2xl font-bold text-gray-900 mt-4">Email Verification Sent!</h2>
+            <p class="mt-2 text-gray-600">
+                A verification link has been sent to your email address. 
+                Please click the link to activate your account before attempting to log in.
+            </p>
+            <div class="mt-6">
+                <a href="{{ url_for('login') }}" class="inline-flex items-center justify-center w-full px-4 py-3 border border-transparent text-base font-medium rounded-md text-white bg-[#2D2C2C] hover:bg-[#474646]">
+                    Go to Login Page
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
