@@ -3,6 +3,7 @@
 <head>
     <title>Monitor Workout | {{ session.get('user_gym_name', 'Admin') }}</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 <div class="p-10 bg-[#f1f1f1] h-full font-Helvetica flex flex-col gap-6">
     <div id="header" class="w-full grid grid-cols-2 h-[7%]">
@@ -23,14 +24,15 @@
     </div>
 
     <div class="flex w-full items-center gap-2 h-[100dvh]">
+        <!-- Camera 1 Container -->
         <div class="w-1/2 h-full relative">
             <video class="w-full h-full bg-gray-200 rounded-lg" id="camera1" autoplay playsinline style="transform: scaleX(-1);"></video>
             <canvas id="canvas1" class="absolute top-0 left-0 w-full h-full"></canvas>
             
+            <!-- Fixed Results Box (Shows Person 1 data as primary) -->
             <div id="results1" 
                  class="absolute top-0 left-0 m-4 bg-gray-900 bg-opacity-75 text-white p-4 rounded-lg text-left shadow-lg" 
                  style="display: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">
-                
                 <div class="flex items-center gap-4">
                     <div>
                         <p class="text-sm font-semibold text-gray-400">EXERCISE</p>
@@ -44,16 +46,21 @@
                 <div class="mt-3 pt-3 border-t border-gray-600">
                     <p id="feedback1" class="text-xl font-medium text-green-400">START EXERCISE</p>
                 </div>
+                <!-- New Indicator for Multiple People -->
+                <div id="multi-user-indicator1" class="mt-2 text-xs text-yellow-400 hidden">
+                    • Multiple Users Detected
+                </div>
             </div>
         </div>
 
+        <!-- Camera 2 Container -->
         <div class="w-1/2 h-full relative">
             <video class="w-full h-full bg-gray-200 rounded-lg" id="camera2" autoplay playsinline style="transform: scaleX(-1);"></video>
             <canvas id="canvas2" class="absolute top-0 left-0 w-full h-full"></canvas>
+            
             <div id="results2" 
                  class="absolute top-0 left-0 m-4 bg-gray-900 bg-opacity-75 text-white p-4 rounded-lg text-left shadow-lg" 
                  style="display: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">
-                
                 <div class="flex items-center gap-4">
                     <div>
                         <p class="text-sm font-semibold text-gray-400">EXERCISE</p>
@@ -66,6 +73,9 @@
                 </div>
                 <div class="mt-3 pt-3 border-t border-gray-600">
                     <p id="feedback2" class="text-xl font-medium text-green-400">START EXERCISE</p>
+                </div>
+                 <div id="multi-user-indicator2" class="mt-2 text-xs text-yellow-400 hidden">
+                    • Multiple Users Detected
                 </div>
             </div>
         </div>
@@ -89,13 +99,11 @@
     const camSelect1 = document.getElementById("select-camera-1");
     const camSelect2 = document.getElementById("select-camera-2");
     const openCameraButton = document.getElementById("btn-open-camera");
-    const cameraIconOpen = document.getElementById("camera-icon-open"); // New reference
-    const cameraIconClosed = document.getElementById("camera-icon-closed"); // New reference
+    const cameraIconOpen = document.getElementById("camera-icon-open");
+    const cameraIconClosed = document.getElementById("camera-icon-closed");
     const buttonText = document.getElementById("button-text");
     let isCameraOpen = false;
     let intervalId = null;
-
-    // References to the MediaStreams for stopping the tracks (CRITICAL ADDITION)
     let stream1 = null; 
     let stream2 = null; 
 
@@ -128,53 +136,39 @@
     }
 
     async function getCameraDevices() {
-        // This requests permission and immediately stops the tracks to release the camera
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         stream.getTracks().forEach(track => track.stop());
-        
         let allDevices = await navigator.mediaDevices.enumerateDevices();
         return allDevices.filter(device => device.kind === 'videoinput');
     }
 
-    // --- NEW FUNCTION TO STOP CAMERAS AND RELEASE RESOURCES ---
     function stopCameras(videoElement, streamReference) {
         if (streamReference) {
-            // Stop all tracks in the MediaStream to turn off the camera light
             streamReference.getTracks().forEach(track => track.stop());
         }
-        videoElement.srcObject = null; // Disconnect the stream from the video element
+        videoElement.srcObject = null;
         
-        // Clear the canvas
+        // Clear Canvas
         const canvas = document.getElementById(videoElement.id === 'camera1' ? 'canvas1' : 'canvas2');
         const context = canvas.getContext('2d');
-        context.clearRect(0, 0, canvas.videoWidth, canvas.videoHeight);
+        context.clearRect(0, 0, canvas.width, canvas.height); // Use canvas width/height
         
-        // Hide the results/feedback box
         document.getElementById(videoElement.id === 'camera1' ? 'results1' : 'results2').style.display = 'none';
-        
-        // Optional: Send a stop signal to the backend
         socket.emit('stop_camera', { camera_id: videoElement.id });
     }
-    // ------------------------------------
 
     openCameraButton.addEventListener("click", function() {
         if (!isCameraOpen) {
-            // ================== OPEN CAMERAS LOGIC ==================
             openCameraButton.disabled = true;
             captureCamera(video1, camSelect1.value, feedbackElement1, 'stream1');
             captureCamera(video2, camSelect2.value, feedbackElement2, 'stream2');
 
-            // Wait for streams to connect before starting the send interval
             setTimeout(() => { 
                 if (intervalId === null) {
                     socket.emit('start_camera', { camera_id: 'camera1' });
                     socket.emit('start_camera', { camera_id: 'camera2' });
-
-                    // --- ‼️‼️ THIS IS THE FIX ‼️‼️ ---
-                    // Tell the backend to create a database session for each camera
                     socket.emit('start_session', { camera_id: 'camera1' });
                     socket.emit('start_session', { camera_id: 'camera2' });
-                    // --- END OF FIX ---
 
                     intervalId = setInterval(() => {
                         sendFrame(video1, 'camera1');
@@ -184,31 +178,27 @@
                 document.getElementById('results1').style.display = 'block';
                 document.getElementById('results2').style.display = 'block';
                 
-                // Set state and update button to 'Stop' mode
                 isCameraOpen = true;
-                buttonText.innerText = "Stop Cameras"; // Update button text
-                cameraIconOpen.classList.add('hidden'); // Hide open icon
-                cameraIconClosed.classList.remove('hidden'); // Show closed icon
+                buttonText.innerText = "Stop Cameras";
+                cameraIconOpen.classList.add('hidden');
+                cameraIconClosed.classList.remove('hidden');
                 openCameraButton.className = openCameraButton.className.replace('bg-[#F05454] hover:bg-[#f77777]', 'bg-gray-500 hover:bg-gray-600');
                 openCameraButton.disabled = false;
             }, 500); 
         } else {
-            // ================== CLOSE CAMERAS LOGIC ==================
-            clearInterval(intervalId); // Stop sending frames to backend
+            clearInterval(intervalId);
             intervalId = null;
             
             stopCameras(video1, stream1);
             stopCameras(video2, stream2);
             
-            // Reset state and update button to 'Open' mode
             isCameraOpen = false;
-            buttonText.innerText = "Open Cameras"; // Update button text
-            cameraIconOpen.classList.remove('hidden'); // Show open icon
-            cameraIconClosed.classList.add('hidden'); // Hide closed icon
+            buttonText.innerText = "Open Cameras";
+            cameraIconOpen.classList.remove('hidden');
+            cameraIconClosed.classList.add('hidden');
             openCameraButton.className = openCameraButton.className.replace('bg-gray-500 hover:bg-gray-600', 'bg-[#F05454] hover:bg-[#f77777]');
             openCameraButton.disabled = false;
             
-            // Reset feedback elements text
             feedbackElement1.innerText = "START EXERCISE";
             feedbackElement2.innerText = "START EXERCISE";
         }
@@ -221,7 +211,6 @@
         };
         navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
             video.srcObject = stream;
-            // Store the stream reference globally
             if (streamRefName === 'stream1') stream1 = stream;
             if (streamRefName === 'stream2') stream2 = stream;
         }).catch(function(error) {
@@ -238,63 +227,103 @@
     const video1 = document.getElementById('camera1');
     const canvas1 = document.getElementById('canvas1');
     const canvasCtx1 = canvas1.getContext('2d');
+    // Elements for Main Box
     const exerciseElement1 = document.getElementById('exercise1');
     const repsElement1 = document.getElementById('reps1');
     const feedbackElement1 = document.getElementById('feedback1');
+    const multiUserInd1 = document.getElementById('multi-user-indicator1');
 
     const video2 = document.getElementById('camera2');
     const canvas2 = document.getElementById('canvas2');
     const canvasCtx2 = canvas2.getContext('2d');
+    // Elements for Main Box
     const exerciseElement2 = document.getElementById('exercise2');
     const repsElement2 = document.getElementById('reps2');
     const feedbackElement2 = document.getElementById('feedback2');
+    const multiUserInd2 = document.getElementById('multi-user-indicator2');
 
     const POSE_CONNECTIONS = [[0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8], [9, 10], [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19], [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20], [11, 23], [12, 24], [23, 24], [23, 25], [24, 26], [25, 27], [26, 28], [27, 29], [28, 30], [29, 31], [30, 32], [27, 31], [28, 32]];
 
+    // --- UPDATED DRAW FUNCTION (Handles Single Skeleton) ---
     function drawSkeleton(landmarks, context, canvas, color = 'white') {
         const width = canvas.width;
         const height = canvas.height;
 
-        // --- FIX: Mirror the canvas context ---
-        context.save(); // Save the current state (important!)
-        context.scale(-1, 1); // Flip horizontally
-        context.translate(-width, 0); // Move the origin back to the top-left after flipping
-        // --- End Fix ---
-
-        // Clear the *entire* (now flipped) canvas area
-        context.clearRect(0, 0, width, height); 
+        context.save(); 
+        context.scale(-1, 1); 
+        context.translate(-width, 0); 
 
         if (!landmarks || landmarks.length === 0) {
-            context.restore(); // Restore context if no landmarks before exiting
+            context.restore();
             return;
         }
 
         context.lineWidth = 4;
-        context.strokeStyle = color; // Skeleton line color
-        context.fillStyle = '#FF4136'; // Joint color (Red)
+        context.strokeStyle = color; 
+        context.fillStyle = '#FF4136'; 
 
-        // Draw connections (on the flipped canvas)
+        // Draw connections
         context.beginPath();
         POSE_CONNECTIONS.forEach(conn => {
             const start = landmarks[conn[0]];
             const end = landmarks[conn[1]];
-            if (start && end && start.visibility > 0.3 && end.visibility > 0.3) { // Adjusted visibility threshold
+            
+            // CRITICAL FIX: Check if start/end exist AND have valid coordinates
+            if (start && end && 
+                start.visibility > 0.3 && end.visibility > 0.3 &&
+                start.x !== undefined && start.y !== undefined &&
+                end.x !== undefined && end.y !== undefined) { 
+                    
                 context.moveTo(start.x * width, start.y * height);
                 context.lineTo(end.x * width, end.y * height);
             }
         });
         context.stroke();
 
-        // Draw joints (on the flipped canvas)
+        // Draw joints
         landmarks.forEach(lm => {
-            if (lm && lm.visibility > 0.3) {
+            // CRITICAL FIX: Check existence here too
+            if (lm && lm.visibility > 0.3 && lm.x !== undefined && lm.y !== undefined) {
                 context.beginPath();
-                context.arc(lm.x * width, lm.y * height, 6, 0, 2 * Math.PI); // Joint radius
+                context.arc(lm.x * width, lm.y * height, 6, 0, 2 * Math.PI); 
                 context.fill();
             }
         });
 
-        context.restore(); // Restore the context to its original unflipped state
+        context.restore();
+    }
+
+    // --- NEW: DRAW FLOATING TEXT STATS ---
+    function drawFloatingStats(context, canvas, landmarks, track_id, reps, status, color) {
+        if (!landmarks || landmarks.length < 1) return;
+        const head = landmarks[0]; // Nose landmark
+        
+        if (!head || head.visibility < 0.3) return;
+
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // Calculate flipped X coordinate
+        const drawX = (1 - head.x) * width; 
+        const drawY = head.y * height - 40; // Slightly above head
+
+        context.font = "bold 16px Helvetica";
+        context.fillStyle = color;
+        context.strokeStyle = "black";
+        context.lineWidth = 3;
+        
+        const text = `ID:${track_id} | Reps: ${reps}`;
+        
+        context.strokeText(text, drawX, drawY);
+        context.fillText(text, drawX, drawY);
+
+        // Draw status below it
+        if (status.includes("ERROR")) {
+             context.fillStyle = "#FF4136"; // Red for error
+             const errText = status.replace("ERROR: ", "");
+             context.strokeText(errText, drawX, drawY + 20);
+             context.fillText(errText, drawX, drawY + 20);
+        }
     }
 
     socket.on('connect', () => console.log('Connected to Python backend!'));
@@ -303,67 +332,87 @@
         if (!videoElement.srcObject || videoElement.readyState < 2 || videoElement.videoWidth === 0) {
             return;
         }
-        
         const processWidth = 360;
         const processHeight = (videoElement.videoHeight / videoElement.videoWidth) * processWidth;
-
         let tempCanvas = document.createElement('canvas');
         tempCanvas.width = processWidth;
         tempCanvas.height = processHeight;
         let tempCtx = tempCanvas.getContext('2d');
-
         tempCtx.drawImage(videoElement, 0, 0, processWidth, processHeight);
-        
         let dataURL = tempCanvas.toDataURL('image/jpeg', 0.4);
 
-        socket.emit('image', {
-            image_data: dataURL,
-            camera_id: cameraIdentifier
-        });
+        socket.emit('image', { image_data: dataURL, camera_id: cameraIdentifier });
     }
 
+    // --- UPDATED UI UPDATE LOGIC (Multi-Person) ---
     function updateUi(data, elements) {
-        const exerciseName = data.stable_prediction || "Neutral"; // Use "Neutral" if undefined/null/empty
-        elements.exercise.innerText = exerciseName.replace(/([A-Z])/g, ' $1').trim();
-        elements.reps.innerText = data.rep_counter; // Use rep_counter
-        elements.feedback.innerText = data.form_status;
-        
-        // Define skeleton color based on feedback status
-        let skeletonColor = 'white'; 
-
-        if (data.form_status.includes("ERROR")) {
-            elements.feedback.className = "text-xl font-medium text-red-400 mt-2";
-            skeletonColor = '#FF4136'; // RED
-        } else if (data.form_status.includes("WARNING")) {
-            elements.feedback.className = "text-xl font-medium text-yellow-400 mt-2";
-            skeletonColor = '#FFDC00'; // YELLOW
-        } else if (data.form_status === "CORRECT FORM") {
-            elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
-            skeletonColor = '#0074D9'; // BLUE (Can change to green if preferred: '#2ECC40')
-        } else {
-            // For "START EXERCISE", "Neutral", etc.
-            elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
-            skeletonColor = 'white'; // Default
-        }
-        
+        // 1. Ensure canvas size matches video
         if (elements.video.videoWidth > 0) {
-            // Ensure canvas size matches video size for accurate overlay
             elements.canvas.width = elements.video.videoWidth;
             elements.canvas.height = elements.video.videoHeight;
-            
-            drawSkeleton(data.landmarks, elements.canvasCtx, elements.canvas, skeletonColor); 
         }
+
+        // 2. Clear the canvas GLOBALLY once per frame
+        elements.canvasCtx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
+
+        const people = data.people || [];
+
+        // 3. Handle Empty State
+        if (people.length === 0) {
+             elements.exercise.innerText = "Neutral";
+             elements.reps.innerText = "0";
+             elements.feedback.innerText = "NO USER";
+             elements.feedback.className = "text-xl font-medium text-gray-400 mt-2";
+             elements.multiUserInd.classList.add('hidden');
+             return;
+        }
+
+        // 4. Indicate Multi-User Mode
+        if (people.length > 1) {
+            elements.multiUserInd.classList.remove('hidden');
+        } else {
+            elements.multiUserInd.classList.add('hidden');
+        }
+
+        // 5. Update Sidebar with "Primary" User (First one detected)
+        const primaryPerson = people[0];
+        elements.exercise.innerText = (primaryPerson.stable_prediction || "Neutral").replace(/([A-Z])/g, ' $1').trim();
+        elements.reps.innerText = primaryPerson.rep_counter;
+        elements.feedback.innerText = primaryPerson.form_status;
+
+        // Set feedback color based on primary user
+        if (primaryPerson.form_status.includes("ERROR")) {
+            elements.feedback.className = "text-xl font-medium text-red-400 mt-2";
+        } else if (primaryPerson.form_status.includes("WARNING")) {
+            elements.feedback.className = "text-xl font-medium text-yellow-400 mt-2";
+        } else {
+            elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
+        }
+
+        // 6. Loop and Draw EVERYONE
+        people.forEach(person => {
+            let color = 'white';
+            if (person.form_status.includes("ERROR")) color = '#FF4136'; // Red
+            else if (person.form_status.includes("WARNING")) color = '#FFDC00'; // Yellow
+            else if (person.form_status === "CORRECT FORM") color = '#0074D9'; // Blue
+            
+            // Draw Skeleton
+            drawSkeleton(person.landmarks, elements.canvasCtx, elements.canvas, color);
+            
+            // Draw Floating Text (ID + Reps)
+            drawFloatingStats(elements.canvasCtx, elements.canvas, person.landmarks, person.track_id, person.rep_counter, person.form_status, color);
+        });
     }
     
     socket.on('response', (data) => {
         const elementMap = {
             'camera1': {
                 exercise: exerciseElement1, reps: repsElement1, feedback: feedbackElement1,
-                video: video1, canvas: canvas1, canvasCtx: canvasCtx1
+                video: video1, canvas: canvas1, canvasCtx: canvasCtx1, multiUserInd: multiUserInd1
             },
             'camera2': {
                 exercise: exerciseElement2, reps: repsElement2, feedback: feedbackElement2,
-                video: video2, canvas: canvas2, canvasCtx: canvasCtx2
+                video: video2, canvas: canvas2, canvasCtx: canvasCtx2, multiUserInd: multiUserInd2
             }
         };
 
@@ -373,38 +422,23 @@
         }
     });
 
-    // --- AUDIO FEEDBACK LISTENER (P1-4) ---
     socket.on('form_error', function(data) {
-        console.log(`Audio alert for ${data.camera_id}: ${data.message}`);
-        if (speechSynthesis.speaking) {
-            console.log("Speech synthesis is busy. Skipping new alert.");
-            return;
-        }
+        if (speechSynthesis.speaking) return;
         const utterance = new SpeechSynthesisUtterance(data.message);
         speechSynthesis.speak(utterance);
     });
 
-    // --- TRAINER SAFETY ALERT LISTENER (P2-2) ---
     socket.on('trainer_alert', function(data) {
-    console.log('--- TRAINER ALERT RECEIVED ---');
-    console.log(`Camera: ${data.camera_id}`);
-    console.log(`Message: ${data.message}`);
-        
-        // Use SweetAlert2 for a prominent, non-blocking notification in the bottom-left
         Swal.fire({
-            title: `TRAINER SAFETY ALERT (${data.camera_id})`,
+            title: `TRAINER ALERT (${data.camera_id})`,
             text: data.message,
             icon: 'error',
             toast: true, 
             position: 'bottom-end',
-            showConfirmButton: false, // Don't require a button click to dismiss
+            showConfirmButton: false,
             timer: 5000,
             timerProgressBar: true,
-            showCloseButton: true, // Allow manual closing
-            customClass: {
-                // Optional: Customize the appearance with a specific CSS class
-                popup: 'swal2-safety-alert' 
-            }
+            showCloseButton: true
         });
     });
 
