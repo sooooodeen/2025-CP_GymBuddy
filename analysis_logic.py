@@ -1,54 +1,166 @@
 import numpy as np
-import mediapipe as mp
 import time
-import tensorflow as tf 
+import math
 from collections import deque, Counter
 
-# --- 1. GEOMETRY HELPERS (For Angle Calculation) ---
-def calculate_angle(a, b, c):
-    """3D Angle: Used for complex motion analysis."""
-    a = np.array([a.x, a.y, a.z])
-    b = np.array([b.x, b.y, b.z])
-    c = np.array([c.x, c.y, c.z])
+# --- 1. GEOMETRY & NORMALIZATION (Matches feature_engineering.py) ---
+
+def normalize_pose_robust(landmarks):
+    """
+    Normalizes landmarks based on torso length (Hip Center to Shoulder Center).
+    Matches the logic used in your training data preparation.
+    """
+    try:
+        # Convert list of objects/dicts to numpy array [x, y, z]
+        lms = []
+        for lm in landmarks:
+            # Handle both MediaPipe objects (lm.x) and dicts (lm['x'])
+            if isinstance(lm, dict):
+                lms.append([lm['x'], lm['y'], lm.get('z', 0.0)])
+            else:
+                lms.append([lm.x, lm.y, lm.z])
+        
+        landmarks_np = np.array(lms)
+
+        # Indices: Left Hip=23, Right Hip=24, Left Shoulder=11, Right Shoulder=12
+        left_hip = landmarks_np[23]
+        right_hip = landmarks_np[24]
+        hip_center = (left_hip + right_hip) / 2.0
+
+        left_shoulder = landmarks_np[11]
+        right_shoulder = landmarks_np[12]
+        shoulder_center = (left_shoulder + right_shoulder) / 2.0
+
+        torso_length = np.linalg.norm(hip_center - shoulder_center) + 1e-6
+        
+        # Prevent division by zero if person is not fully visible
+        if torso_length < 1e-5: return None
+
+        # Normalize: Center hips at (0,0,0) and scale by torso length
+        normalized_landmarks = (landmarks_np - hip_center) / torso_length
+        return normalized_landmarks
+    except Exception as e:
+        print(f"Normalization Error: {e}")
+        return None
+
+def calculate_angle_3d(a, b, c):
+    """Calculates 3D angle between points a, b, c (center at b)."""
+    a = np.array(a); b = np.array(b); c = np.array(c)
+    ba = a - b
+    bc = c - b
+    
+    norm_ba = np.linalg.norm(ba)
+    norm_bc = np.linalg.norm(bc)
+    
+    if norm_ba == 0 or norm_bc == 0: return 0.0
+    
+    dot_product = np.dot(ba, bc)
+    cosine_angle = dot_product / (norm_ba * norm_bc)
+    angle = np.arccos(np.clip(cosine_angle, -1.0, 1.0))
+    return np.degrees(angle)
+
+def calculate_angle_2d(a, b, c):
+    """2D Angle helper for the Rule-Based Form Checker."""
+    a = np.array(a[:2]); b = np.array(b[:2]); c = np.array(c[:2])
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = np.abs(radians * 180.0 / np.pi)
     if angle > 180.0: angle = 360 - angle
     return angle
 
-def calculate_angle_2d(a, b, c):
-    """2D Angle: Used for standard form checks."""
-    a = np.array(a); b = np.array(b); c = np.array(c)
-    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
-    angle = np.abs(radians*180.0/np.pi)
-    if angle > 180.0: angle = 360 - angle
-    return angle
+# --- 2. FEATURE ENGINEERING (The Fix for 47 Inputs) ---
 
-# --- 2. FEATURE EXTRACTORS ---
-def get_raw_landmarks(landmarks):
-    """Returns 132 inputs: (x, y, z, vis) * 33 points."""
-    row = []
-    for lm in landmarks:
-        row.extend([lm.x, lm.y, lm.z, lm.visibility])
-    return np.array(row, dtype=np.float32)
+def extract_engineered_features(landmarks):
+    """
+    Extracts the 42 features from feature_engineering.py + 5 pads = 47 features.
+    """
+    norm_lms = normalize_pose_robust(landmarks)
+    if norm_lms is None: return None
 
-def get_angle_features(landmarks):
-    """Returns 8 inputs: Specific joint angles."""
-    try:
-        # MediaPipe indices: 11=L.Shoulder, 13=L.Elbow, 15=L.Wrist, etc.
-        return np.array([
-            calculate_angle(landmarks[11], landmarks[13], landmarks[15]),  # Left arm
-            calculate_angle(landmarks[12], landmarks[14], landmarks[16]),  # Right arm
-            calculate_angle(landmarks[13], landmarks[11], landmarks[23]),  # Left shoulder
-            calculate_angle(landmarks[14], landmarks[12], landmarks[24]),  # Right shoulder
-            calculate_angle(landmarks[11], landmarks[23], landmarks[25]),  # Left torso
-            calculate_angle(landmarks[12], landmarks[24], landmarks[26]),  # Right torso
-            calculate_angle(landmarks[23], landmarks[25], landmarks[27]),  # Left leg
-            calculate_angle(landmarks[24], landmarks[26], landmarks[28])   # Right leg
-        ], dtype=np.float32)
-    except:
-        return np.zeros(8, dtype=np.float32) # Fallback
+    # Helper to get coord by index
+    def lm(i): return norm_lms[i]
 
-# --- 3. ADAPTIVE ANALYZER CLASS ---
+    # --- 1. ANGLES (20 Features) ---
+    # Indices: 0=Nose, 7=L.Ear, 8=R.Ear, 11=L.Shoulder, 12=R.Shoulder, 
+    # 13=L.Elbow, 14=R.Elbow, 15=L.Wrist, 16=R.Wrist, 
+    # 23=L.Hip, 24=R.Hip, 25=L.Knee, 26=R.Knee, 27=L.Ankle, 28=R.Ankle
+    
+    angles = [
+        # Torso & Neck
+        calculate_angle_3d(lm(11), lm(23), lm(25)), # angle_torso_side_left
+        calculate_angle_3d(lm(12), lm(24), lm(26)), # angle_torso_side_right
+        calculate_angle_3d(lm(11), lm(24), lm(12)), # angle_torso_front
+        calculate_angle_3d(lm(0), lm(7), lm(8)),    # angle_neck
+        calculate_angle_3d(lm(23), lm(11), lm(12)), # angle_spine_hip_shoulder_left
+        calculate_angle_3d(lm(24), lm(12), lm(11)), # angle_spine_hip_shoulder_right
+        
+        # Arms
+        calculate_angle_3d(lm(11), lm(13), lm(15)), # angle_left_elbow
+        calculate_angle_3d(lm(12), lm(14), lm(16)), # angle_right_elbow
+        calculate_angle_3d(lm(23), lm(11), lm(13)), # angle_left_shoulder_abduction
+        calculate_angle_3d(lm(24), lm(12), lm(14)), # angle_right_shoulder_abduction
+        calculate_angle_3d(lm(13), lm(15), lm(19)), # angle_left_wrist (19=Index)
+        calculate_angle_3d(lm(14), lm(16), lm(20)), # angle_right_wrist (20=Index)
+
+        # Legs & Hips
+        calculate_angle_3d(lm(11), lm(23), lm(25)), # angle_left_hip
+        calculate_angle_3d(lm(12), lm(24), lm(26)), # angle_right_hip
+        calculate_angle_3d(lm(23), lm(25), lm(27)), # angle_left_knee
+        calculate_angle_3d(lm(24), lm(26), lm(28)), # angle_right_knee
+        calculate_angle_3d(lm(25), lm(27), lm(29)), # angle_left_ankle (29=Heel)
+        calculate_angle_3d(lm(26), lm(28), lm(30)), # angle_right_ankle (30=Heel)
+        
+        # Twist
+        calculate_angle_3d(lm(12), lm(23), lm(24)), # angle_shoulder_hip_twist_left
+        calculate_angle_3d(lm(11), lm(24), lm(23))  # angle_shoulder_hip_twist_right
+    ]
+
+    # --- 2. DISTANCES (22 Features) ---
+    def dist(i, j): return np.linalg.norm(lm(i) - lm(j))
+    
+    # Hip Center is origin (0,0,0) in normalized space
+    hip_center = np.array([0.0, 0.0, 0.0]) 
+
+    distances = [
+        dist(11, 12), # dist_shoulders
+        dist(23, 24), # dist_hips
+        dist(15, 25), # dist_left_wrist_knee
+        dist(16, 26), # dist_right_wrist_knee
+        dist(13, 23), # dist_left_elbow_hip
+        dist(14, 24), # dist_right_elbow_hip
+        dist(27, 15), # dist_left_ankle_wrist
+        dist(28, 16), # dist_right_ankle_wrist
+        np.linalg.norm(lm(0) - hip_center), # dist_nose_hip
+        
+        # Y-Distances (Vertical)
+        abs(lm(15)[1] - lm(11)[1]), # dist_y_l_wrist_shoulder
+        abs(lm(16)[1] - lm(12)[1]), # dist_y_r_wrist_shoulder
+        abs(lm(23)[1] - lm(25)[1]), # dist_y_l_hip_knee
+        abs(lm(24)[1] - lm(26)[1]), # dist_y_r_hip_knee
+        abs(lm(11)[1] - lm(23)[1]), # dist_y_l_shoulder_hip
+        abs(lm(12)[1] - lm(24)[1]), # dist_y_r_shoulder_hip
+        abs(lm(27)[1] - lm(29)[1]), # dist_y_l_ankle_heel
+        abs(lm(28)[1] - lm(30)[1]), # dist_y_r_ankle_heel
+
+        # Z-Distances (Depth)
+        abs(lm(15)[2] - lm(23)[2]), # dist_z_l_wrist_hip
+        abs(lm(16)[2] - lm(24)[2]), # dist_z_r_wrist_hip
+        abs(lm(11)[2] - lm(23)[2]), # dist_z_l_shoulder_hip
+        abs(lm(12)[2] - lm(24)[2]), # dist_z_r_shoulder_hip
+        abs(lm(0)[2] - hip_center[2]) # dist_z_nose_hip
+    ]
+
+    # Combine all features (Total 42)
+    features = np.array(angles + distances, dtype=np.float32)
+    
+    # --- PADDING TO MATCH MODEL INPUT (47) ---
+    # The logs showed [1, 90, 47]. We have 42 features. We add 5 zeros.
+    if len(features) == 42:
+        features = np.pad(features, (0, 5), 'constant')
+        
+    return features
+
+# --- 3. ANALYZER CLASS ---
+
 class ExerciseAnalyzer:
     def __init__(self, sequence_length=90, conf_threshold=0.50, stability_frames=5, reset_timeout=5.0):
         self.rep_counter = 0
@@ -60,11 +172,10 @@ class ExerciseAnalyzer:
         self.RESET_TIMEOUT = reset_timeout
         self.debug_angles = {} 
         
-        # State for Auto-Configuration
+        # Auto-Configuration State
         self.model_configured = False
-        self.use_sequence = True
-        self.use_angles = False # False = Raw Landmarks, True = Angles
         self.expected_seq_len = sequence_length
+        self.input_size = 0
         
         # Buffers
         self.angle_sequence_buffer = deque(maxlen=sequence_length)
@@ -84,46 +195,26 @@ class ExerciseAnalyzer:
         self.PREDICTION_INTERVAL = 3
 
     def _auto_configure_model(self, input_details):
-        """
-        Automatically detects if model needs Landmarks vs Angles
-        and Sequence vs Single-Frame.
-        """
-        shape = input_details[0]['shape'] # e.g., [1, 90, 132]
-        input_size = shape[-1] # Last dimension (features)
+        """Detects input shape and configures extractor."""
+        shape = input_details[0]['shape']
+        self.input_size = shape[-1]
         
-        print(f"--- [DEBUG] Model Configuration Detected ---")
+        print(f"\n--- [DEBUG] MODEL CONFIGURATION ---")
         print(f"Input Shape: {shape}")
+        print(f"Expected Features: {self.input_size}")
         
-        # Detect Feature Type
-        if input_size == 132:
-            self.use_angles = False
-            print("Feature Mode: RAW LANDMARKS (132 inputs)")
-        elif input_size == 8:
-            self.use_angles = True
-            print("Feature Mode: ANGLES (8 inputs)")
-        else:
-            print(f"WARNING: Unknown input size {input_size}. Defaulting to Landmarks.")
-            self.use_angles = False
-
-        # Detect Sequence vs Single
-        if len(shape) == 3 and shape[1] > 1:
-            self.use_sequence = True
+        if len(shape) == 3:
             self.expected_seq_len = shape[1]
-            # Resize buffer to match model requirement exactly
             self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
-            print(f"Model Mode: LSTM Sequence ({self.expected_seq_len} frames)")
-        else:
-            self.use_sequence = False
-            print("Model Mode: Single Frame (Dense)")
-            
+            print(f"Sequence Length Set To: {self.expected_seq_len}")
+        
         self.model_configured = True
 
     def predict_with_tflite(self, interpreter, input_details, output_details, input_data):
-        """Run inference handling quantization."""
         input_index = input_details[0]['index']
         input_dtype = input_details[0]['dtype']
         
-        # Quantize Input if needed (Float -> Int8/Uint8)
+        # Auto-Quantization (Float -> Int)
         if input_dtype != np.float32:
             scale, zero_point = input_details[0]['quantization']
             if scale > 0:
@@ -134,15 +225,14 @@ class ExerciseAnalyzer:
                     input_data = np.clip(input_data, 0, 255)
                 input_data = input_data.astype(input_dtype)
 
-        # Run
         interpreter.set_tensor(input_index, input_data)
         interpreter.invoke()
         
-        # De-quantize Output if needed
         output_index = output_details[0]['index']
         output_data = interpreter.get_tensor(output_index)[0]
-        output_dtype = output_details[0]['dtype']
         
+        # Auto-Dequantization (Int -> Float)
+        output_dtype = output_details[0]['dtype']
         if output_dtype != np.float32:
             scale, zero_point = output_details[0]['quantization']
             if scale > 0:
@@ -153,50 +243,59 @@ class ExerciseAnalyzer:
     def process_frame(self, interpreter, input_details, output_details, label_mapping, landmarks, current_exercise):
         self.frame_count += 1
         
-        # 1. Auto-Configure on first frame
         if not self.model_configured:
             self._auto_configure_model(input_details)
 
-        # 2. Extract Features (Adaptive)
-        if self.use_angles:
-            features = get_angle_features(landmarks)
+        # 1. Extract Features (Adaptive)
+        if self.input_size == 47:
+            # Use the robust Feature Engineering (42 + 5 padding)
+            features = extract_engineered_features(landmarks)
+        elif self.input_size == 132:
+            # Raw Landmarks (Fallback for other models)
+            lms = []
+            for lm in landmarks:
+                x = lm['x'] if isinstance(lm, dict) else lm.x
+                y = lm['y'] if isinstance(lm, dict) else lm.y
+                z = lm.get('z', 0.0) if isinstance(lm, dict) else lm.z
+                v = lm.get('visibility', 0.0) if isinstance(lm, dict) else lm.visibility
+                lms.extend([x, y, z, v])
+            features = np.array(lms, dtype=np.float32)
         else:
-            features = get_raw_landmarks(landmarks)
-            
-        if features is None: return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
+            # Fallback (all zeros) to prevent crash if unknown model
+            features = np.zeros(self.input_size, dtype=np.float32)
 
-        # 3. Manage Buffer / Input
-        input_tensor = None
+        if features is None: 
+            return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
+
+        # 2. Update Buffer
+        self.angle_sequence_buffer.append(features)
         
-        if self.use_sequence:
-            self.angle_sequence_buffer.append(features)
-            # Report status while filling buffer
-            if len(self.angle_sequence_buffer) < self.expected_seq_len:
-                self.form_status = f"ANALYZING... {len(self.angle_sequence_buffer)}/{self.expected_seq_len}"
-            elif len(self.angle_sequence_buffer) == self.expected_seq_len:
-                # Shape: (1, Sequence_Len, Features)
-                input_tensor = np.expand_dims(np.array(self.angle_sequence_buffer), axis=0)
-        else:
-            # Shape: (1, Features)
-            input_tensor = np.expand_dims(features, axis=0)
-
-        # 4. Predict (if we have valid input)
-        if input_tensor is not None and self.frame_count % self.PREDICTION_INTERVAL == 0:
+        # 3. Predict
+        if len(self.angle_sequence_buffer) == self.expected_seq_len and self.frame_count % self.PREDICTION_INTERVAL == 0:
             try:
+                input_tensor = np.expand_dims(np.array(self.angle_sequence_buffer), axis=0)
+                
                 prediction_output = self.predict_with_tflite(
                     interpreter, input_details, output_details, input_tensor.astype(np.float32)
                 )
 
-                # Handle Softmax if needed
+                # Softmax (if outputs are raw logits)
                 if np.max(prediction_output) > 1.0 or np.min(prediction_output) < 0.0:
                      exp_x = np.exp(prediction_output - np.max(prediction_output))
                      prediction_output = exp_x / exp_x.sum()
 
                 predicted_idx = np.argmax(prediction_output)
                 confidence = prediction_output[predicted_idx]
+                
+                # Safe Lookup (Handles string keys in JSON map)
+                safe_idx = int(predicted_idx)
+                # Try int key first, then string key
+                pred_label = label_mapping.get(safe_idx, label_mapping.get(str(safe_idx), "neutral"))
+
+                # Debug Print (Visible in Terminal)
+                # print(f"AI Pred: {pred_label} ({confidence:.2f})")
 
                 if confidence > self.CONF_THRESHOLD:
-                    pred_label = label_mapping.get(int(predicted_idx), "neutral")
                     self.recent_predictions.append(pred_label)
                 else:
                     self.recent_predictions.append("neutral")
@@ -207,16 +306,26 @@ class ExerciseAnalyzer:
                     self.stable_prediction = most_common
 
             except Exception as e:
-                print(f"Prediction Error: {e}")
+                print(f"Inference Error: {e}")
 
-        # 5. Analyze Form (Logic preserved)
+        # 4. Form Analysis
         self.analyze_frame(self.stable_prediction, landmarks)
         
         return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
 
     def analyze_frame(self, exercise_name, landmarks):
-        if not landmarks or exercise_name == "neutral":
-            if exercise_name == "neutral": 
+        if not landmarks: return
+        
+        # Convert to objects for easy dot-notation access in logic below
+        class Point:
+            def __init__(self, obj):
+                self.x = obj['x'] if isinstance(obj, dict) else obj.x
+                self.y = obj['y'] if isinstance(obj, dict) else obj.y
+        
+        lms_obj = [Point(lm) for lm in landmarks]
+
+        if exercise_name == "neutral":
+            if self.previous_exercise != "neutral":
                 self.previous_exercise = "neutral"
                 self.stage = None
             return
@@ -228,214 +337,52 @@ class ExerciseAnalyzer:
         self.form_status = "CORRECT FORM"
         self.status_color = (0, 255, 0)
 
-        # Reset inactive users
-        if time.time() - self.last_rep_time > self.RESET_TIMEOUT and self.stage is not None:
-            self.stage = None
-            self.form_status = "INACTIVE - RESET"
-
         try:
-            prev_rep_counter = self.rep_counter
+            # --- Rule-Based Logic (Extract Points) ---
+            ls = lms_obj[11]; le = lms_obj[13]; lw = lms_obj[15]
+            rs = lms_obj[12]; re = lms_obj[14]; rw = lms_obj[16]
+            lh = lms_obj[23]; lk = lms_obj[25]; la = lms_obj[27]
             
-            # --- EXTRACT COMMON LANDMARKS ONCE ---
-            ls = landmarks[11]; le = landmarks[13]; lw = landmarks[15] # Left: Shoulder, Elbow, Wrist
-            rs = landmarks[12]; re = landmarks[14]; rw = landmarks[16] # Right: Shoulder, Elbow, Wrist
-            lh = landmarks[23]; lk = landmarks[25]; la = landmarks[27] # Left: Hip, Knee, Ankle
-            rh = landmarks[24]; rk = landmarks[26]; ra = landmarks[28] # Right: Hip, Knee, Ankle
-
-            # --- EXERCISE LOGIC BLOCKS ---
-
-            # 1. BICEP CURL
+            # Bicep Curl
             if exercise_name == 'bicepCurl':
-                if lw.visibility > rw.visibility:
-                    elbow_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                    shoulder_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
+                if lw.x < ls.x: # Simple visibility check (left side)
+                    angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 else:
-                    elbow_angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
-                    shoulder_angle = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
+                    angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
                 
+                self.debug_angles = {'Elbow': int(angle)}
+                
+                if angle > 160: self.stage = "down"
+                if angle < 45 and self.stage == 'down':
+                    self.stage = "up"; self.rep_counter += 1
+
+            # Squats
+            elif 'Squat' in exercise_name:
+                knee_angle = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y])
+                self.debug_angles = {'Knee': int(knee_angle)}
+                
+                if knee_angle > 160: self.stage = "up"
+                if knee_angle < 100 and self.stage == 'up': self.stage = "down"
+                if knee_angle > 160 and self.stage == 'down':
+                    self.stage = "up"; self.rep_counter += 1
+
+            # Lateral Raise
+            elif exercise_name == 'lateralRaise':
+                angle = calculate_angle_2d([lms_obj[24].x, lms_obj[24].y], [rs.x, rs.y], [re.x, re.y])
+                self.debug_angles = {'Shoulder': int(angle)}
+                if angle < 30: self.stage = "down"
+                if angle > 80 and self.stage == 'down':
+                    self.stage = "up"; self.rep_counter += 1
+
+            # Presses
+            elif 'Press' in exercise_name:
+                elbow_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 self.debug_angles = {'Elbow': int(elbow_angle)}
-                
-                if elbow_angle > 160: self.stage = "down"
-                if elbow_angle < 45 and self.stage == 'down':
-                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
-                if shoulder_angle > 45:
-                    self.form_status = "ERROR: ELBOWS SWINGING"; self.status_color = (0, 0, 255)
+                if elbow_angle < 80: self.stage = "down"
+                if elbow_angle > 150 and self.stage == "down":
+                    self.stage = "up"; self.rep_counter += 1
 
-            # 2. TRICEP KICKBACK
-            elif exercise_name == 'tricepKickback':
-                if lw.visibility > rw.visibility:
-                    elbow_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                    torso_angle = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                else:
-                    elbow_angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
-                    torso_angle = calculate_angle_2d([rs.x, rs.y], [rh.x, rh.y], [rk.x, rk.y])
-                
-                self.debug_angles = {'Elbow': int(elbow_angle)}
-                
-                if elbow_angle < 90: self.stage = "in"
-                if elbow_angle > 160 and self.stage == 'in':
-                    self.stage = "out"; self.rep_counter += 1; self.last_rep_time = time.time()
-                if torso_angle > 135:
-                    self.form_status = "ERROR: BEND OVER MORE"
-
-            # 3. LATERAL RAISE & REVERSE FLY
-            elif exercise_name in ['lateralRaise', 'dumbbellReverseFly']:
-                if le.visibility > re.visibility:
-                    arm_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
-                else:
-                    arm_angle = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
-                
-                self.debug_angles = {'Shoulder': int(arm_angle)}
-
-                if arm_angle < 30: self.stage = "down"
-                if arm_angle > 80 and self.stage == 'down':
-                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
-                if arm_angle > 100:
-                    self.form_status = "WARNING: DO NOT OVER-RAISE"
-
-            # 4. VERTICAL & INCLINE PRESSES (Shoulder, Push Press, Incline Bench)
-            elif exercise_name in ['shoulderPress', 'dumbbellPushPress', 'inclineBenchPress']:
-                l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
-                avg_elb = (l_elb + r_elb) / 2
-                
-                self.debug_angles = {'Elbow': int(avg_elb)}
-
-                if avg_elb < 80: self.stage = "down"
-                if avg_elb > 150 and self.stage == 'down':
-                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
-
-            # 5. HORIZONTAL PRESS (Svend Press)
-            elif exercise_name == 'dumbbellSvendPress':
-                # Similar to other presses but checking for full extension
-                l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
-                avg_elb = (l_elb + r_elb) / 2
-                
-                self.debug_angles = {'Elbow': int(avg_elb)}
-
-                if avg_elb < 90: self.stage = "in"
-                if avg_elb > 160 and self.stage == 'in':
-                    self.stage = "out"; self.rep_counter += 1; self.last_rep_time = time.time()
-
-            # 6. UPRIGHT ROW
-            elif exercise_name == 'uprightRow':
-                # Elbows flare out and up. Angle at elbow closes.
-                l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
-                avg_elb = (l_elb + r_elb) / 2
-                
-                self.debug_angles = {'Elbow': int(avg_elb)}
-
-                if avg_elb > 140: self.stage = "down"
-                if avg_elb < 75 and self.stage == 'down':
-                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
-
-            # 7. CHEST FLY (Incline)
-            elif exercise_name == 'inclineDumbbellChestFly':
-                # Shoulder angle changes (arms open), Elbow angle stays constant
-                if le.visibility > re.visibility:
-                    sh_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
-                    el_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                else:
-                    sh_angle = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
-                    el_angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
-                
-                self.debug_angles = {'Shoulder': int(sh_angle)}
-
-                if sh_angle > 100: self.stage = "open"
-                if sh_angle < 60 and self.stage == 'open':
-                    self.stage = "closed"; self.rep_counter += 1; self.last_rep_time = time.time()
-                
-                if el_angle < 120:
-                    self.form_status = "WARNING: DON'T BEND ARMS TOO MUCH"
-
-            # 8. SQUATS (Goblet & Sumo)
-            elif exercise_name in ['gobletSquat', 'sumoSquat']:
-                l_knee = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y])
-                r_knee = calculate_angle_2d([rh.x, rh.y], [rk.x, rk.y], [ra.x, ra.y])
-                avg_knee = (l_knee + r_knee) / 2
-                
-                # Torso lean check
-                l_torso = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                
-                self.debug_angles = {'Knee': int(avg_knee)}
-
-                if avg_knee > 160: self.stage = "up"
-                if avg_knee < 100 and self.stage == 'up':
-                    self.stage = "down"
-                if avg_knee > 160 and self.stage == 'down':
-                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
-                
-                if l_torso < 50: 
-                     self.form_status = "ERROR: KEEP CHEST UP"
-                elif self.stage == 'down' and avg_knee > 110:
-                     self.form_status = "WARNING: SQUAT DEEPER"
-
-            # 9. HINGES (RDL & Good Morning)
-            elif exercise_name in ['romanianDeadlift', 'dumbbellGoodMorning']:
-                l_hip = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                r_hip = calculate_angle_2d([rs.x, rs.y], [rh.x, rh.y], [rk.x, rk.y])
-                avg_hip = (l_hip + r_hip) / 2
-                
-                l_knee = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y])
-
-                self.debug_angles = {'Hip': int(avg_hip)}
-
-                if avg_hip > 160: self.stage = "up"
-                if avg_hip < 120 and self.stage == 'up':
-                    self.stage = "down"
-                if avg_hip > 160 and self.stage == 'down':
-                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
-
-                if l_knee < 130:
-                     self.form_status = "ERROR: TOO MUCH KNEE BEND"
-            
-            # 10. BENT OVER ROW
-            elif exercise_name == 'bentOverRow':
-                if lw.visibility > rw.visibility:
-                    el_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                    torso_angle = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                else:
-                    el_angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
-                    torso_angle = calculate_angle_2d([rs.x, rs.y], [rh.x, rh.y], [rk.x, rk.y])
-
-                self.debug_angles = {'Elbow': int(el_angle)}
-
-                if el_angle > 150: self.stage = "down"
-                if el_angle < 75 and self.stage == 'down':
-                    self.stage = "up"; self.rep_counter += 1; self.last_rep_time = time.time()
-                
-                if torso_angle > 150:
-                    self.form_status = "ERROR: BEND OVER MORE"
-
-            # --- Post-Rep Processing ---
-            is_new_rep = (self.rep_counter > prev_rep_counter)
-
-            if is_new_rep:
-                if "ERROR" in self.form_status:
-                    self.new_error_to_log = { 
-                        "rep_number": self.rep_counter, 
-                        "error_type": self.form_status, 
-                        "exercise_name": exercise_name 
-                    }
-                    if self.form_status == self.last_consecutive_error_type:
-                        self.consecutive_error_counter += 1
-                    else:
-                        self.last_consecutive_error_type = self.form_status
-                        self.consecutive_error_counter = 1
-                else: 
-                    self.consecutive_error_counter = 0
-                    self.last_consecutive_error_type = None
-
-                if self.consecutive_error_counter >= 6:
-                    alert_message = f"Repeated Error: {self.last_consecutive_error_type.replace('ERROR: ', '')}"
-                    self.triggered_alert = {'message': alert_message, 'exercise': exercise_name, 'reps': self.rep_counter}
-                    self.consecutive_error_counter = 0
-
-        except Exception as e:
-            print(f"Error in analyze_frame: {e}")
-            self.form_status = "ERROR: ANALYSIS FAILED"
+        except Exception:
             pass
 
     def get_triggered_alert(self):
