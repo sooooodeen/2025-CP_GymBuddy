@@ -4,7 +4,7 @@ import time
 import tensorflow as tf 
 from collections import deque, Counter
 
-# --- 3D ANGLE FUNCTION (Kept for potential future use) ---
+# --- 3D ANGLE FUNCTION (Kept for consistency) ---
 def calculate_angle(a, b, c):
     """Calculates the angle between three 3D landmark points."""
     a = np.array([a.x, a.y, a.z])
@@ -30,11 +30,11 @@ def calculate_angle_2d(a, b, c):
         angle = 360 - angle
     return angle
 
-# --- FEATURE EXTRACTION (UPDATED FOR MODEL COMPATIBILITY) ---
+# --- FEATURE EXTRACTION (UPDATED: Raw Landmarks for AI Model) ---
 def extract_angle_features_for_model(landmarks):
     """
-    UPDATED: Extracts RAW LANDMARKS (x, y, z, visibility) to match
-    the trained model's input requirement (132 features).
+    Extracts flattened 132 raw values (x, y, z, visibility) to match
+    the trained model's input requirement.
     """
     try:
         row = []
@@ -42,18 +42,16 @@ def extract_angle_features_for_model(landmarks):
             # Extract x, y, z, and visibility for every landmark
             row.extend([lm.x, lm.y, lm.z, lm.visibility])
         
-        # Return as a numpy array
-        return np.array(row)
-        
+        # Return as a float32 numpy array
+        return np.array(row, dtype=np.float32)
     except Exception as e:
         print(f"Error extracting features: {e}")
         return None
 
 
-# --- The New Advanced Exercise Analysis Class ---
+# --- Advanced Exercise Analysis Class ---
 class ExerciseAnalyzer:
-    # CHANGED: Lowered conf_threshold from 0.80 to 0.50
-    def __init__(self, sequence_length=90, conf_threshold=0.50, stability_frames=10, reset_timeout=5.0):
+    def __init__(self, sequence_length=90, conf_threshold=0.50, stability_frames=5, reset_timeout=5.0):
         self.rep_counter = 0
         self.stage = None
         self.form_status = "START EXERCISE"
@@ -62,29 +60,68 @@ class ExerciseAnalyzer:
         self.last_rep_time = time.time()
         self.RESET_TIMEOUT = reset_timeout
         self.debug_angles = {} 
-        self.angle_sequence_buffer = deque(maxlen=sequence_length)
+        
+        # --- Sequence Buffer ---
         self.SEQUENCE_LENGTH = sequence_length
+        self.angle_sequence_buffer = deque(maxlen=self.SEQUENCE_LENGTH)
+        
+        # --- Prediction Stability ---
         self.CONF_THRESHOLD = conf_threshold
         self.STABILITY_FRAMES = stability_frames
-        self.recent_predictions = deque(maxlen=stability_frames)
-        self.stable_prediction = "neutral" 
+        self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES)
+        self.stable_prediction = "neutral"
         self.frame_count = 0 
         self.PREDICTION_INTERVAL = 3 
+        
+        # --- Error Logging ---
         self.triggered_alert = None
         self.consecutive_error_counter = 0
         self.last_consecutive_error_type = None
         self.new_error_to_log = None    
 
     def predict_with_tflite(self, interpreter, input_details, output_details, feature_sequence):
-        """Runs inference on the TFLite interpreter."""
-        # Expand dims to match (1, 90, 132) or (1, 90, 8) depending on model structure
-        # Standard LSTM usually expects (1, SEQUENCE_LENGTH, FEATURES)
-        input_data = np.expand_dims(feature_sequence, axis=0).astype(np.float32)
+        """
+        Robust Inference: Automatically handles Quantization (Float -> Int8).
+        """
+        input_index = input_details[0]['index']
+        input_dtype = input_details[0]['dtype']
         
-        interpreter.set_tensor(input_details[0]['index'], input_data)
+        # 1. Prepare Input Data (Add Batch Dimension)
+        # Expected Shape: (1, 90, 132)
+        input_data = np.expand_dims(feature_sequence, axis=0)
+
+        # 2. CHECK FOR QUANTIZATION (The Fix)
+        if input_dtype != np.float32:
+            # If the model expects integers (int8/uint8), we must quantize our floats
+            scale, zero_point = input_details[0]['quantization']
+            
+            if scale > 0:
+                # Formula: q = r / S + Z
+                input_data = (input_data / scale) + zero_point
+                # Clip to ensure valid range for int8 (-128, 127) or uint8 (0, 255)
+                if input_dtype == np.int8:
+                    input_data = np.clip(input_data, -128, 127)
+                else:
+                    input_data = np.clip(input_data, 0, 255)
+                
+                input_data = input_data.astype(input_dtype)
+
+        # 3. Run Inference
+        interpreter.set_tensor(input_index, input_data)
         interpreter.invoke()
-        output = interpreter.get_tensor(output_details[0]['index'])
-        return output[0]
+        
+        # 4. Process Output
+        output_index = output_details[0]['index']
+        output_data = interpreter.get_tensor(output_index)[0]
+        
+        # De-quantize output if necessary (Int8 -> Float)
+        output_dtype = output_details[0]['dtype']
+        if output_dtype != np.float32:
+            scale, zero_point = output_details[0]['quantization']
+            if scale > 0:
+                output_data = (output_data.astype(np.float32) - zero_point) * scale
+
+        return output_data
     
     def get_triggered_alert(self):
         alert_to_send = self.triggered_alert
@@ -115,14 +152,20 @@ class ExerciseAnalyzer:
                     interpreter, input_details, output_details, np.array(self.angle_sequence_buffer)
                 )
 
-                predicted_label_index = np.argmax(prediction_output)
-                confidence = prediction_output[predicted_label_index]
+                predicted_idx = np.argmax(prediction_output)
+                confidence = prediction_output[predicted_idx]
                 
-                # Optional: Print debug info to console to verify confidence
-                # print(f"Pred: {predicted_label_index}, Conf: {confidence:.2f}")
+                # Optional: Softmax if output is not normalized
+                if np.sum(prediction_output) > 1.1: 
+                    exp_x = np.exp(prediction_output - np.max(prediction_output))
+                    prediction_output = exp_x / exp_x.sum()
+                    confidence = prediction_output[predicted_idx]
+
+                # Debug print (view in your terminal to verify it's working)
+                # print(f"Pred: {predicted_idx}, Conf: {confidence:.2f}")
 
                 if confidence > self.CONF_THRESHOLD:
-                    predicted_label = label_mapping.get(int(predicted_label_index), "Unknown")
+                    predicted_label = label_mapping.get(int(predicted_idx), "Unknown")
                     self.recent_predictions.append(predicted_label)
                 else:
                     self.recent_predictions.append("neutral")
@@ -131,11 +174,13 @@ class ExerciseAnalyzer:
                 prediction_counts = Counter(self.recent_predictions)
                 most_common, count = prediction_counts.most_common(1)[0]
                 
-                if count >= self.STABILITY_FRAMES:
+                if count >= (self.STABILITY_FRAMES - 2):
                     if self.stable_prediction != most_common:
                         self.stable_prediction = most_common
-                        self.angle_sequence_buffer.clear() # Clear buffer on switch (optional)
+                        # Optional: clear buffer on switch if needed, usually better to keep rolling
+                        # self.angle_sequence_buffer.clear() 
                         self.recent_predictions.clear()
+            
             except Exception as e:
                 print(f"Prediction Error: {e}")
             
@@ -176,7 +221,7 @@ class ExerciseAnalyzer:
             lh = landmarks[23]; lk = landmarks[25]; la = landmarks[27] # Left: Hip, Knee, Ankle
             rh = landmarks[24]; rk = landmarks[26]; ra = landmarks[28] # Right: Hip, Knee, Ankle
 
-            # --- EXERCISE LOGIC BLOCKS ---
+            # --- EXERCISE LOGIC BLOCKS (PRESERVED FROM YOUR ORIGINAL CODE) ---
 
             # 1. BICEP CURL
             if exercise_name == 'bicepCurl':
@@ -241,7 +286,6 @@ class ExerciseAnalyzer:
 
             # 5. HORIZONTAL PRESS (Svend Press)
             elif exercise_name == 'dumbbellSvendPress':
-                # Similar to other presses but checking for full extension
                 l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
                 avg_elb = (l_elb + r_elb) / 2
@@ -254,7 +298,6 @@ class ExerciseAnalyzer:
 
             # 6. UPRIGHT ROW
             elif exercise_name == 'uprightRow':
-                # Elbows flare out and up. Angle at elbow closes.
                 l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
                 avg_elb = (l_elb + r_elb) / 2
@@ -267,7 +310,6 @@ class ExerciseAnalyzer:
 
             # 7. CHEST FLY (Incline)
             elif exercise_name == 'inclineDumbbellChestFly':
-                # Shoulder angle changes (arms open), Elbow angle stays constant
                 if le.visibility > re.visibility:
                     sh_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
                     el_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
@@ -290,7 +332,6 @@ class ExerciseAnalyzer:
                 r_knee = calculate_angle_2d([rh.x, rh.y], [rk.x, rk.y], [ra.x, ra.y])
                 avg_knee = (l_knee + r_knee) / 2
                 
-                # Torso lean check
                 l_torso = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 
                 self.debug_angles = {'Knee': int(avg_knee)}
