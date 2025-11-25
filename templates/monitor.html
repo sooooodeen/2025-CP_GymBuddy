@@ -222,7 +222,8 @@
     
     // --- PART 2: AI INTEGRATION LOGIC ---
     const socket = io();
-    const FPS = 10;
+    // FIX: Reduced FPS to prevent backend overload on local machine
+    const FPS = 4; 
     
     const video1 = document.getElementById('camera1');
     const canvas1 = document.getElementById('canvas1');
