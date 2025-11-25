@@ -4,7 +4,7 @@ import time
 import tensorflow as tf 
 from collections import deque, Counter
 
-# --- 3D ANGLE FUNCTION (For Model Prediction) ---
+# --- 3D ANGLE FUNCTION (Kept for potential future use) ---
 def calculate_angle(a, b, c):
     """Calculates the angle between three 3D landmark points."""
     a = np.array([a.x, a.y, a.z])
@@ -30,20 +30,21 @@ def calculate_angle_2d(a, b, c):
         angle = 360 - angle
     return angle
 
-# --- FEATURE EXTRACTION (For Model Prediction) ---
+# --- FEATURE EXTRACTION (UPDATED FOR MODEL COMPATIBILITY) ---
 def extract_angle_features_for_model(landmarks):
-    """Extracts 8 key angles using raw indices."""
+    """
+    UPDATED: Extracts RAW LANDMARKS (x, y, z, visibility) to match
+    the trained model's input requirement (132 features).
+    """
     try:
-        return np.array([
-            calculate_angle(landmarks[11], landmarks[13], landmarks[15]),  # Left arm
-            calculate_angle(landmarks[12], landmarks[14], landmarks[16]),  # Right arm
-            calculate_angle(landmarks[13], landmarks[11], landmarks[23]),  # Left shoulder
-            calculate_angle(landmarks[14], landmarks[12], landmarks[24]),  # Right shoulder
-            calculate_angle(landmarks[11], landmarks[23], landmarks[25]),  # Left torso
-            calculate_angle(landmarks[12], landmarks[24], landmarks[26]),  # Right torso
-            calculate_angle(landmarks[23], landmarks[25], landmarks[27]),  # Left leg
-            calculate_angle(landmarks[24], landmarks[26], landmarks[28])   # Right leg
-        ])
+        row = []
+        for lm in landmarks:
+            # Extract x, y, z, and visibility for every landmark
+            row.extend([lm.x, lm.y, lm.z, lm.visibility])
+        
+        # Return as a numpy array
+        return np.array(row)
+        
     except Exception as e:
         print(f"Error extracting features: {e}")
         return None
@@ -51,7 +52,8 @@ def extract_angle_features_for_model(landmarks):
 
 # --- The New Advanced Exercise Analysis Class ---
 class ExerciseAnalyzer:
-    def __init__(self, sequence_length=90, conf_threshold=0.80, stability_frames=10, reset_timeout=5.0):
+    # CHANGED: Lowered conf_threshold from 0.80 to 0.50
+    def __init__(self, sequence_length=90, conf_threshold=0.50, stability_frames=10, reset_timeout=5.0):
         self.rep_counter = 0
         self.stage = None
         self.form_status = "START EXERCISE"
@@ -75,7 +77,10 @@ class ExerciseAnalyzer:
 
     def predict_with_tflite(self, interpreter, input_details, output_details, feature_sequence):
         """Runs inference on the TFLite interpreter."""
+        # Expand dims to match (1, 90, 132) or (1, 90, 8) depending on model structure
+        # Standard LSTM usually expects (1, SEQUENCE_LENGTH, FEATURES)
         input_data = np.expand_dims(feature_sequence, axis=0).astype(np.float32)
+        
         interpreter.set_tensor(input_details[0]['index'], input_data)
         interpreter.invoke()
         output = interpreter.get_tensor(output_details[0]['index'])
@@ -105,28 +110,34 @@ class ExerciseAnalyzer:
         
         # 3. Model Prediction
         if len(self.angle_sequence_buffer) == self.SEQUENCE_LENGTH and self.frame_count % self.PREDICTION_INTERVAL == 0:
-            prediction_output = self.predict_with_tflite(
-                interpreter, input_details, output_details, np.array(self.angle_sequence_buffer)
-            )
+            try:
+                prediction_output = self.predict_with_tflite(
+                    interpreter, input_details, output_details, np.array(self.angle_sequence_buffer)
+                )
 
-            predicted_label_index = np.argmax(prediction_output)
-            confidence = prediction_output[predicted_label_index]
-            
-            if confidence > self.CONF_THRESHOLD:
-                predicted_label = label_mapping.get(int(predicted_label_index), "Unknown")
-                self.recent_predictions.append(predicted_label)
-            else:
-                self.recent_predictions.append("neutral")
+                predicted_label_index = np.argmax(prediction_output)
+                confidence = prediction_output[predicted_label_index]
+                
+                # Optional: Print debug info to console to verify confidence
+                # print(f"Pred: {predicted_label_index}, Conf: {confidence:.2f}")
 
-            # Stability Check
-            prediction_counts = Counter(self.recent_predictions)
-            most_common, count = prediction_counts.most_common(1)[0]
-            
-            if count >= self.STABILITY_FRAMES:
-                if self.stable_prediction != most_common:
-                    self.stable_prediction = most_common
-                    self.angle_sequence_buffer.clear()
-                    self.recent_predictions.clear()
+                if confidence > self.CONF_THRESHOLD:
+                    predicted_label = label_mapping.get(int(predicted_label_index), "Unknown")
+                    self.recent_predictions.append(predicted_label)
+                else:
+                    self.recent_predictions.append("neutral")
+
+                # Stability Check
+                prediction_counts = Counter(self.recent_predictions)
+                most_common, count = prediction_counts.most_common(1)[0]
+                
+                if count >= self.STABILITY_FRAMES:
+                    if self.stable_prediction != most_common:
+                        self.stable_prediction = most_common
+                        self.angle_sequence_buffer.clear() # Clear buffer on switch (optional)
+                        self.recent_predictions.clear()
+            except Exception as e:
+                print(f"Prediction Error: {e}")
             
         # 4. Run Rule-Based Form Analysis
         self.analyze_frame(self.stable_prediction, landmarks)
