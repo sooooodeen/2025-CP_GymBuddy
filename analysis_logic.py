@@ -4,52 +4,51 @@ import time
 import tensorflow as tf 
 from collections import deque, Counter
 
-# --- 3D ANGLE FUNCTION (Kept for consistency) ---
+# --- 1. GEOMETRY HELPERS (For Angle Calculation) ---
 def calculate_angle(a, b, c):
-    """Calculates the angle between three 3D landmark points."""
+    """3D Angle: Used for complex motion analysis."""
     a = np.array([a.x, a.y, a.z])
     b = np.array([b.x, b.y, b.z])
     c = np.array([c.x, c.y, c.z])
-    
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = np.abs(radians * 180.0 / np.pi)
-    
-    if angle > 180.0:
-        angle = 360 - angle
+    if angle > 180.0: angle = 360 - angle
     return angle
 
-# --- 2D ANGLE FUNCTION (For Form Checking) ---
 def calculate_angle_2d(a, b, c):
-    """This 2D version is for the form checker, which uses 2D coordinate arrays."""
-    a = np.array(a)
-    b = np.array(b)
-    c = np.array(c)
+    """2D Angle: Used for standard form checks."""
+    a = np.array(a); b = np.array(b); c = np.array(c)
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = np.abs(radians*180.0/np.pi)
-    if angle > 180.0:
-        angle = 360 - angle
+    if angle > 180.0: angle = 360 - angle
     return angle
 
-# --- FEATURE EXTRACTION (UPDATED: Raw Landmarks for AI Model) ---
-def extract_angle_features_for_model(landmarks):
-    """
-    Extracts flattened 132 raw values (x, y, z, visibility) to match
-    the trained model's input requirement.
-    """
+# --- 2. FEATURE EXTRACTORS ---
+def get_raw_landmarks(landmarks):
+    """Returns 132 inputs: (x, y, z, vis) * 33 points."""
+    row = []
+    for lm in landmarks:
+        row.extend([lm.x, lm.y, lm.z, lm.visibility])
+    return np.array(row, dtype=np.float32)
+
+def get_angle_features(landmarks):
+    """Returns 8 inputs: Specific joint angles."""
     try:
-        row = []
-        for lm in landmarks:
-            # Extract x, y, z, and visibility for every landmark
-            row.extend([lm.x, lm.y, lm.z, lm.visibility])
-        
-        # Return as a float32 numpy array
-        return np.array(row, dtype=np.float32)
-    except Exception as e:
-        print(f"Error extracting features: {e}")
-        return None
+        # MediaPipe indices: 11=L.Shoulder, 13=L.Elbow, 15=L.Wrist, etc.
+        return np.array([
+            calculate_angle(landmarks[11], landmarks[13], landmarks[15]),  # Left arm
+            calculate_angle(landmarks[12], landmarks[14], landmarks[16]),  # Right arm
+            calculate_angle(landmarks[13], landmarks[11], landmarks[23]),  # Left shoulder
+            calculate_angle(landmarks[14], landmarks[12], landmarks[24]),  # Right shoulder
+            calculate_angle(landmarks[11], landmarks[23], landmarks[25]),  # Left torso
+            calculate_angle(landmarks[12], landmarks[24], landmarks[26]),  # Right torso
+            calculate_angle(landmarks[23], landmarks[25], landmarks[27]),  # Left leg
+            calculate_angle(landmarks[24], landmarks[26], landmarks[28])   # Right leg
+        ], dtype=np.float32)
+    except:
+        return np.zeros(8, dtype=np.float32) # Fallback
 
-
-# --- Advanced Exercise Analysis Class ---
+# --- 3. ADAPTIVE ANALYZER CLASS ---
 class ExerciseAnalyzer:
     def __init__(self, sequence_length=90, conf_threshold=0.50, stability_frames=5, reset_timeout=5.0):
         self.rep_counter = 0
@@ -61,149 +60,171 @@ class ExerciseAnalyzer:
         self.RESET_TIMEOUT = reset_timeout
         self.debug_angles = {} 
         
-        # --- Sequence Buffer ---
-        self.SEQUENCE_LENGTH = sequence_length
-        self.angle_sequence_buffer = deque(maxlen=self.SEQUENCE_LENGTH)
+        # State for Auto-Configuration
+        self.model_configured = False
+        self.use_sequence = True
+        self.use_angles = False # False = Raw Landmarks, True = Angles
+        self.expected_seq_len = sequence_length
         
-        # --- Prediction Stability ---
+        # Buffers
+        self.angle_sequence_buffer = deque(maxlen=sequence_length)
+        
+        # Prediction Smoothing
         self.CONF_THRESHOLD = conf_threshold
         self.STABILITY_FRAMES = stability_frames
         self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES)
         self.stable_prediction = "neutral"
-        self.frame_count = 0 
-        self.PREDICTION_INTERVAL = 3 
         
-        # --- Error Logging ---
+        # Error Logging
         self.triggered_alert = None
         self.consecutive_error_counter = 0
         self.last_consecutive_error_type = None
-        self.new_error_to_log = None    
+        self.new_error_to_log = None
+        self.frame_count = 0
+        self.PREDICTION_INTERVAL = 3
 
-    def predict_with_tflite(self, interpreter, input_details, output_details, feature_sequence):
+    def _auto_configure_model(self, input_details):
         """
-        Robust Inference: Automatically handles Quantization (Float -> Int8).
+        Automatically detects if model needs Landmarks vs Angles
+        and Sequence vs Single-Frame.
         """
+        shape = input_details[0]['shape'] # e.g., [1, 90, 132]
+        input_size = shape[-1] # Last dimension (features)
+        
+        print(f"--- [DEBUG] Model Configuration Detected ---")
+        print(f"Input Shape: {shape}")
+        
+        # Detect Feature Type
+        if input_size == 132:
+            self.use_angles = False
+            print("Feature Mode: RAW LANDMARKS (132 inputs)")
+        elif input_size == 8:
+            self.use_angles = True
+            print("Feature Mode: ANGLES (8 inputs)")
+        else:
+            print(f"WARNING: Unknown input size {input_size}. Defaulting to Landmarks.")
+            self.use_angles = False
+
+        # Detect Sequence vs Single
+        if len(shape) == 3 and shape[1] > 1:
+            self.use_sequence = True
+            self.expected_seq_len = shape[1]
+            # Resize buffer to match model requirement exactly
+            self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
+            print(f"Model Mode: LSTM Sequence ({self.expected_seq_len} frames)")
+        else:
+            self.use_sequence = False
+            print("Model Mode: Single Frame (Dense)")
+            
+        self.model_configured = True
+
+    def predict_with_tflite(self, interpreter, input_details, output_details, input_data):
+        """Run inference handling quantization."""
         input_index = input_details[0]['index']
         input_dtype = input_details[0]['dtype']
         
-        # 1. Prepare Input Data (Add Batch Dimension)
-        # Expected Shape: (1, 90, 132)
-        input_data = np.expand_dims(feature_sequence, axis=0)
-
-        # 2. CHECK FOR QUANTIZATION (The Fix)
+        # Quantize Input if needed (Float -> Int8/Uint8)
         if input_dtype != np.float32:
-            # If the model expects integers (int8/uint8), we must quantize our floats
             scale, zero_point = input_details[0]['quantization']
-            
             if scale > 0:
-                # Formula: q = r / S + Z
                 input_data = (input_data / scale) + zero_point
-                # Clip to ensure valid range for int8 (-128, 127) or uint8 (0, 255)
                 if input_dtype == np.int8:
                     input_data = np.clip(input_data, -128, 127)
                 else:
                     input_data = np.clip(input_data, 0, 255)
-                
                 input_data = input_data.astype(input_dtype)
 
-        # 3. Run Inference
+        # Run
         interpreter.set_tensor(input_index, input_data)
         interpreter.invoke()
         
-        # 4. Process Output
+        # De-quantize Output if needed
         output_index = output_details[0]['index']
         output_data = interpreter.get_tensor(output_index)[0]
-        
-        # De-quantize output if necessary (Int8 -> Float)
         output_dtype = output_details[0]['dtype']
+        
         if output_dtype != np.float32:
             scale, zero_point = output_details[0]['quantization']
             if scale > 0:
                 output_data = (output_data.astype(np.float32) - zero_point) * scale
-
+                
         return output_data
-    
-    def get_triggered_alert(self):
-        alert_to_send = self.triggered_alert
-        self.triggered_alert = None 
-        return alert_to_send
-    
-    def get_new_error_log(self):
-        log_entry = self.new_error_to_log
-        self.new_error_to_log = None 
-        return log_entry
-    
+
     def process_frame(self, interpreter, input_details, output_details, label_mapping, landmarks, current_exercise):
         self.frame_count += 1
         
-        # 1. Feature Extraction
-        features = extract_angle_features_for_model(landmarks)
-        if features is None:
-            self.form_status = "NO PERSON DETECTED"
-            return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
+        # 1. Auto-Configure on first frame
+        if not self.model_configured:
+            self._auto_configure_model(input_details)
 
-        # 2. Update Buffer
-        self.angle_sequence_buffer.append(features)
+        # 2. Extract Features (Adaptive)
+        if self.use_angles:
+            features = get_angle_features(landmarks)
+        else:
+            features = get_raw_landmarks(landmarks)
+            
+        if features is None: return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
+
+        # 3. Manage Buffer / Input
+        input_tensor = None
         
-        # 3. Model Prediction
-        if len(self.angle_sequence_buffer) == self.SEQUENCE_LENGTH and self.frame_count % self.PREDICTION_INTERVAL == 0:
+        if self.use_sequence:
+            self.angle_sequence_buffer.append(features)
+            # Report status while filling buffer
+            if len(self.angle_sequence_buffer) < self.expected_seq_len:
+                self.form_status = f"ANALYZING... {len(self.angle_sequence_buffer)}/{self.expected_seq_len}"
+            elif len(self.angle_sequence_buffer) == self.expected_seq_len:
+                # Shape: (1, Sequence_Len, Features)
+                input_tensor = np.expand_dims(np.array(self.angle_sequence_buffer), axis=0)
+        else:
+            # Shape: (1, Features)
+            input_tensor = np.expand_dims(features, axis=0)
+
+        # 4. Predict (if we have valid input)
+        if input_tensor is not None and self.frame_count % self.PREDICTION_INTERVAL == 0:
             try:
                 prediction_output = self.predict_with_tflite(
-                    interpreter, input_details, output_details, np.array(self.angle_sequence_buffer)
+                    interpreter, input_details, output_details, input_tensor.astype(np.float32)
                 )
+
+                # Handle Softmax if needed
+                if np.max(prediction_output) > 1.0 or np.min(prediction_output) < 0.0:
+                     exp_x = np.exp(prediction_output - np.max(prediction_output))
+                     prediction_output = exp_x / exp_x.sum()
 
                 predicted_idx = np.argmax(prediction_output)
                 confidence = prediction_output[predicted_idx]
-                
-                # Optional: Softmax if output is not normalized
-                if np.sum(prediction_output) > 1.1: 
-                    exp_x = np.exp(prediction_output - np.max(prediction_output))
-                    prediction_output = exp_x / exp_x.sum()
-                    confidence = prediction_output[predicted_idx]
-
-                # Debug print (view in your terminal to verify it's working)
-                # print(f"Pred: {predicted_idx}, Conf: {confidence:.2f}")
 
                 if confidence > self.CONF_THRESHOLD:
-                    predicted_label = label_mapping.get(int(predicted_idx), "Unknown")
-                    self.recent_predictions.append(predicted_label)
+                    pred_label = label_mapping.get(int(predicted_idx), "neutral")
+                    self.recent_predictions.append(pred_label)
                 else:
                     self.recent_predictions.append("neutral")
 
-                # Stability Check
-                prediction_counts = Counter(self.recent_predictions)
-                most_common, count = prediction_counts.most_common(1)[0]
-                
+                # Stability Voting
+                most_common, count = Counter(self.recent_predictions).most_common(1)[0]
                 if count >= (self.STABILITY_FRAMES - 2):
-                    if self.stable_prediction != most_common:
-                        self.stable_prediction = most_common
-                        # Optional: clear buffer on switch if needed, usually better to keep rolling
-                        # self.angle_sequence_buffer.clear() 
-                        self.recent_predictions.clear()
-            
+                    self.stable_prediction = most_common
+
             except Exception as e:
                 print(f"Prediction Error: {e}")
-            
-        # 4. Run Rule-Based Form Analysis
-        self.analyze_frame(self.stable_prediction, landmarks)
 
+        # 5. Analyze Form (Logic preserved)
+        self.analyze_frame(self.stable_prediction, landmarks)
+        
         return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
 
     def analyze_frame(self, exercise_name, landmarks):
-        if landmarks is None or exercise_name == "neutral":
-            if exercise_name == "neutral":
+        if not landmarks or exercise_name == "neutral":
+            if exercise_name == "neutral": 
                 self.previous_exercise = "neutral"
                 self.stage = None
-            self.debug_angles.clear()
             return
 
-        # Reset if exercise changes
         if exercise_name != self.previous_exercise:
-            self.rep_counter = 0
-            self.stage = None
-            self.previous_exercise = exercise_name
-            self.last_rep_time = time.time()
-
+            self.rep_counter = 0; self.stage = None; self.previous_exercise = exercise_name
+        
+        self.last_rep_time = time.time()
         self.form_status = "CORRECT FORM"
         self.status_color = (0, 255, 0)
 
@@ -211,7 +232,7 @@ class ExerciseAnalyzer:
         if time.time() - self.last_rep_time > self.RESET_TIMEOUT and self.stage is not None:
             self.stage = None
             self.form_status = "INACTIVE - RESET"
-        
+
         try:
             prev_rep_counter = self.rep_counter
             
@@ -221,7 +242,7 @@ class ExerciseAnalyzer:
             lh = landmarks[23]; lk = landmarks[25]; la = landmarks[27] # Left: Hip, Knee, Ankle
             rh = landmarks[24]; rk = landmarks[26]; ra = landmarks[28] # Right: Hip, Knee, Ankle
 
-            # --- EXERCISE LOGIC BLOCKS (PRESERVED FROM YOUR ORIGINAL CODE) ---
+            # --- EXERCISE LOGIC BLOCKS ---
 
             # 1. BICEP CURL
             if exercise_name == 'bicepCurl':
@@ -286,6 +307,7 @@ class ExerciseAnalyzer:
 
             # 5. HORIZONTAL PRESS (Svend Press)
             elif exercise_name == 'dumbbellSvendPress':
+                # Similar to other presses but checking for full extension
                 l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
                 avg_elb = (l_elb + r_elb) / 2
@@ -298,6 +320,7 @@ class ExerciseAnalyzer:
 
             # 6. UPRIGHT ROW
             elif exercise_name == 'uprightRow':
+                # Elbows flare out and up. Angle at elbow closes.
                 l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
                 avg_elb = (l_elb + r_elb) / 2
@@ -310,6 +333,7 @@ class ExerciseAnalyzer:
 
             # 7. CHEST FLY (Incline)
             elif exercise_name == 'inclineDumbbellChestFly':
+                # Shoulder angle changes (arms open), Elbow angle stays constant
                 if le.visibility > re.visibility:
                     sh_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
                     el_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
@@ -332,6 +356,7 @@ class ExerciseAnalyzer:
                 r_knee = calculate_angle_2d([rh.x, rh.y], [rk.x, rk.y], [ra.x, ra.y])
                 avg_knee = (l_knee + r_knee) / 2
                 
+                # Torso lean check
                 l_torso = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 
                 self.debug_angles = {'Knee': int(avg_knee)}
@@ -412,14 +437,12 @@ class ExerciseAnalyzer:
             print(f"Error in analyze_frame: {e}")
             self.form_status = "ERROR: ANALYSIS FAILED"
             pass
-    
-    def reset_session(self):
-        self.rep_counter = 0
-        self.stage = None
-        self.consecutive_error_counter = 0
-        self.last_consecutive_error_type = None
-        self.triggered_alert = None
-        self.new_error_to_log = None
 
-    def get_status(self):
-        return self.rep_counter, self.form_status, self.status_color, self.debug_angles
+    def get_triggered_alert(self):
+        alert = self.triggered_alert; self.triggered_alert = None; return alert
+
+    def get_new_error_log(self):
+        log = self.new_error_to_log; self.new_error_to_log = None; return log
+
+    def reset_session(self):
+        self.rep_counter = 0; self.stage = None; self.angle_sequence_buffer.clear()
