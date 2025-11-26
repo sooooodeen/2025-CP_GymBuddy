@@ -14,7 +14,6 @@ def normalize_pose_robust(landmarks):
         lms = []
         for lm in landmarks:
             if isinstance(lm, dict):
-                # We keep Z for feature calculation, but we won't use it for scaling normalization
                 lms.append([float(lm['x']), float(lm['y']), float(lm.get('z', 0.0))])
             else:
                 lms.append([float(lm.x), float(lm.y), float(lm.z)])
@@ -114,7 +113,8 @@ def extract_engineered_features(landmarks):
 # --- 3. ANALYZER CLASS ---
 
 class ExerciseAnalyzer:
-    def __init__(self, sequence_length=90, conf_threshold=0.60, stability_frames=15, reset_timeout=5.0):
+    # UPDATED DEFAULT CONFIDENCE THRESHOLD TO 0.85 TO REDUCE RANDOM GUESSES
+    def __init__(self, sequence_length=90, conf_threshold=0.85, stability_frames=15, reset_timeout=5.0):
         self.rep_counter = 0
         self.stage = None
         self.form_status = "START EXERCISE"
@@ -168,7 +168,33 @@ class ExerciseAnalyzer:
         return interpreter.get_tensor(output_details[0]['index'])[0]
 
     def _apply_logic_override(self, ai_prediction, landmarks):
-        # Disabled manual overrides to rely on the trained model
+        """
+        Filters out 'impossible' exercises based on geometry.
+        This fixes the issue where Standing = Tricep Kickback / Bench Press.
+        """
+        if not landmarks: return ai_prediction
+        
+        # Helper to get coords
+        def get_coords(i): 
+            lm = landmarks[i]
+            return (lm['x'], lm['y']) if isinstance(lm, dict) else (lm.x, lm.y)
+        
+        s_x, s_y = get_coords(11) # Shoulder
+        h_x, h_y = get_coords(23) # Hip
+        k_x, k_y = get_coords(25) # Knee
+        
+        # Calculate Torso/Hip Angle (Verticality)
+        hip_angle = calculate_angle_2d([s_x, s_y], [h_x, h_y], [k_x, k_y])
+
+        # FIX 1: STOP TRICEP KICKBACK WHEN STANDING
+        # If hip angle is > 150 (standing straight), force it to Neutral.
+        if ai_prediction == 'tricepKickback' and hip_angle > 150:
+            return "neutral" 
+
+        # FIX 2: STOP INCLINE BENCH WHEN STANDING
+        if ai_prediction == 'inclineBenchPress' and hip_angle > 165:
+            return "neutral"
+
         return ai_prediction 
 
     def process_frame(self, interpreter, input_details, output_details, label_mapping, landmarks, current_exercise, scaler=None):
@@ -179,13 +205,11 @@ class ExerciseAnalyzer:
         # 1. Extract Features
         if self.input_size == 47: 
             features = extract_engineered_features(landmarks)
-            # --- SCALER INTEGRATION FIX ---
             if features is not None and scaler is not None:
                 try:
                     features = scaler.transform(features.reshape(1, -1)).flatten()
                 except Exception as e:
                     print(f"Scaler Error: {e}")
-            # ------------------------------
         else: 
             features = np.zeros(self.input_size, dtype=np.float32)
 
@@ -208,6 +232,7 @@ class ExerciseAnalyzer:
                 conf = prediction[idx]
                 raw_label = str(label_mapping.get(idx, label_mapping.get(str(idx), "neutral")))
                 
+                # --- APPLY THE LOGIC FIX HERE ---
                 final_label = self._apply_logic_override(raw_label, landmarks)
                 
                 # 3. Stability Filter
@@ -220,8 +245,14 @@ class ExerciseAnalyzer:
                     if self.stable_prediction == most_common:
                         self.stable_counter += 1
                     else:
+                        # --- FIX THE REP CARRY-OVER BUG HERE ---
+                        if most_common != "neutral" and most_common != self.stable_prediction:
+                             self.rep_counter = 0 
+                             self.stage = None
+                        
                         if most_common == "neutral":
                             self.stage = None  
+                            
                         self.stable_prediction = most_common
                         self.stable_counter = 0 
 
@@ -247,10 +278,10 @@ class ExerciseAnalyzer:
         
         lms = [Point(lm) for lm in landmarks]
         
-        # --- DEBOUNCE TIMER (Fixes "Machine Gun" Reps) ---
+        # --- DEBOUNCE TIMER (Fixes Machine Gun Reps) ---
         MIN_REP_DURATION = 0.8 
         current_time = time.time()
-        # -------------------------------------------------
+        # -----------------------------------------------
 
         self.form_status = "CORRECT FORM"
         self.status_color = (0, 255, 0)
@@ -338,7 +369,7 @@ class ExerciseAnalyzer:
 
             # 7. Incline Bench Press
             elif exercise_name == 'inclineBenchPress':
-                # --- GUARDRAIL: IGNORE IF STANDING ---
+                # Double check guardrail in case it slipped through
                 hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 if hip_ang > 165: 
                     self.form_status = "Stand Still / Neutral"
@@ -403,7 +434,6 @@ class ExerciseAnalyzer:
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "out"; self.rep_counter += 1; self.last_rep_time = current_time
                 
-                # --- RELAXED ERROR THRESHOLD (Was 135) ---
                 if torso_ang > 160: self.form_status = "ERROR: BEND OVER"
 
             # 15. Upright Row
