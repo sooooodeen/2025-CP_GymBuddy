@@ -191,14 +191,26 @@ class ExerciseAnalyzer:
         #     return 'bicepCurl'
         # ... (other overrides disabled) ...
 
-    def process_frame(self, interpreter, input_details, output_details, label_mapping, landmarks, current_exercise):
+    def process_frame(self, interpreter, input_details, output_details, label_mapping, landmarks, current_exercise, scaler=None):
         self.frame_count += 1
         
         if not self.model_configured: self._auto_configure_model(input_details)
 
         # 1. Extract Features
-        if self.input_size == 47: features = extract_engineered_features(landmarks)
-        else: features = np.zeros(self.input_size, dtype=np.float32)
+        if self.input_size == 47: 
+            features = extract_engineered_features(landmarks)
+            
+            # --- FIX: Apply Scaling if scaler is provided ---
+            if features is not None and scaler is not None:
+                try:
+                    # Reshape to (1, -1) because scaler expects 2D array
+                    features = scaler.transform(features.reshape(1, -1)).flatten()
+                except Exception as e:
+                    print(f"Scaling Error: {e}")
+            # ------------------------------------------------
+            
+        else: 
+            features = np.zeros(self.input_size, dtype=np.float32)
 
         if features is None: 
             return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
