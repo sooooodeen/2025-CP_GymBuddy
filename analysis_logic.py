@@ -6,7 +6,7 @@ from collections import deque, Counter
 # --- 1. GEOMETRY & NORMALIZATION ---
 
 def normalize_pose_robust(landmarks):
-    """Normalizes landmarks based on torso length. Matches training logic."""
+    """Normalizes landmarks based on torso length."""
     try:
         lms = []
         for lm in landmarks:
@@ -17,7 +17,6 @@ def normalize_pose_robust(landmarks):
         
         landmarks_np = np.array(lms, dtype=np.float32)
 
-        # Indices: 23=L.Hip, 24=R.Hip, 11=L.Shoulder, 12=R.Shoulder
         left_hip = landmarks_np[23]
         right_hip = landmarks_np[24]
         hip_center = (left_hip + right_hip) / 2.0
@@ -121,7 +120,6 @@ class ExerciseAnalyzer:
         self.input_size = 0
         self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
         
-        # Stability Settings
         self.CONF_THRESHOLD = conf_threshold
         self.STABILITY_FRAMES = int(stability_frames) 
         self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES)
@@ -160,10 +158,9 @@ class ExerciseAnalyzer:
         return interpreter.get_tensor(output_details[0]['index'])[0]
 
     def _apply_logic_override(self, ai_prediction, landmarks):
-        """Corrects AI mistakes using basic geometry (Logic Guardrails)."""
+        """Corrects AI mistakes using basic geometry."""
         if not landmarks: return ai_prediction
         
-        # Get coords
         def get_c(i): 
             lm = landmarks[i]
             return (lm['x'], lm['y']) if isinstance(lm, dict) else (lm.x, lm.y)
@@ -173,25 +170,22 @@ class ExerciseAnalyzer:
         k_x, k_y = get_c(25) # L Knee
         
         # 1. Calculate Hip Angle (Standing vs Bent)
-        # Simple 2D check: Shoulder-Hip-Knee
         hip_angle = calculate_angle_2d([s_x, s_y], [h_x, h_y], [k_x, k_y])
         
-        # 2. GUARDRAIL: Bent Over Row vs Bicep Curl
-        # If AI says "Row" but you are standing straight (>150 deg), it's probably a Curl.
+        # GUARDRAIL 1: Bent Over Row vs Bicep Curl
         if ai_prediction == 'bentOverRow' and hip_angle > 150:
             return 'bicepCurl'
 
-        # 3. GUARDRAIL: Reverse Fly vs Curl/Press
-        # Flys have wide hands. Curls/Presses have narrow hands (near shoulders).
+        # GUARDRAIL 2: Reverse Fly vs Curl/Press
         if ai_prediction in ['dumbbellReverseFly', 'lateralRaise']:
             l_hand_x, _ = get_c(15)
             r_hand_x, _ = get_c(16)
             l_should_x, _ = get_c(11)
             r_should_x, _ = get_c(12)
             
-            # Check horizontal distance from shoulder
+            # If hands are narrow (close to shoulder width), it's not a fly
             if abs(l_hand_x - l_should_x) < 0.15 and abs(r_hand_x - r_should_x) < 0.15:
-                return 'bicepCurl' # Hands are tight to body -> Curl
+                return 'bicepCurl'
 
         return ai_prediction
 
@@ -226,7 +220,6 @@ class ExerciseAnalyzer:
                 # 3. Apply Logic Guardrails
                 final_label = self._apply_logic_override(raw_label, landmarks)
                 
-                # 4. Stability Filter
                 if conf > self.CONF_THRESHOLD: self.recent_predictions.append(final_label)
                 else: self.recent_predictions.append("neutral")
 
@@ -243,8 +236,7 @@ class ExerciseAnalyzer:
 
             except Exception as e: print(f"Inference Error: {e}")
 
-        # 5. Only Analyze if Stable
-        # Prevents "random workout" flickering
+        # 4. Analyze Form if Stable
         if self.stable_counter > 10 and self.stable_prediction != "neutral":
              self.analyze_frame(self.stable_prediction, landmarks)
         elif self.stable_prediction != "neutral":
@@ -268,6 +260,9 @@ class ExerciseAnalyzer:
         self.status_color = (0, 255, 0)
 
         try:
+            # Define prev_rep_counter HERE to fix the crash
+            prev_rep_counter = self.rep_counter
+
             ls, rs = lms[11], lms[12]; le, re = lms[13], lms[14]
             lw, rw = lms[15], lms[16]; lh, rh = lms[23], lms[24]
             lk, rk = lms[25], lms[26]; la, ra = lms[27], lms[28]
@@ -278,7 +273,6 @@ class ExerciseAnalyzer:
                 hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 self.debug_angles = {'Elbow': int(elb_ang), 'Hip': int(hip_ang)}
                 
-                # STRICT CHECK: If standing up, do NOT count row reps
                 if hip_ang > 150: 
                     self.form_status = "ERROR: BEND OVER TO START"
                 else:
