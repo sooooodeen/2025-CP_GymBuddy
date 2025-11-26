@@ -6,11 +6,15 @@ from collections import deque, Counter
 # --- 1. GEOMETRY & NORMALIZATION ---
 
 def normalize_pose_robust(landmarks):
-    """Normalizes landmarks based on torso length. Matches training logic."""
+    """
+    Normalizes landmarks based on torso length.
+    UPDATED: Uses 2D (X, Y) distance for scaling to avoid Z-axis noise instability.
+    """
     try:
         lms = []
         for lm in landmarks:
             if isinstance(lm, dict):
+                # We keep Z for feature calculation, but we won't use it for scaling normalization
                 lms.append([float(lm['x']), float(lm['y']), float(lm.get('z', 0.0))])
             else:
                 lms.append([float(lm.x), float(lm.y), float(lm.z)])
@@ -18,19 +22,25 @@ def normalize_pose_robust(landmarks):
         landmarks_np = np.array(lms, dtype=np.float32)
 
         # Indices: 23=L.Hip, 24=R.Hip, 11=L.Shoulder, 12=R.Shoulder
-        left_hip = landmarks_np[23]
-        right_hip = landmarks_np[24]
-        hip_center = (left_hip + right_hip) / 2.0
+        # We use only X and Y ([:2]) for the center calculations to determine scale
+        left_hip = landmarks_np[23][:2]
+        right_hip = landmarks_np[24][:2]
+        hip_center_2d = (left_hip + right_hip) / 2.0
 
-        left_shoulder = landmarks_np[11]
-        right_shoulder = landmarks_np[12]
-        shoulder_center = (left_shoulder + right_shoulder) / 2.0
+        left_shoulder = landmarks_np[11][:2]
+        right_shoulder = landmarks_np[12][:2]
+        shoulder_center_2d = (left_shoulder + right_shoulder) / 2.0
 
-        torso_length = np.linalg.norm(hip_center - shoulder_center) + 1e-6
+        # Calculate torso length based on 2D projection (More stable on webcam)
+        torso_length = np.linalg.norm(hip_center_2d - shoulder_center_2d) + 1e-6
         
         if torso_length < 1e-5: return None
 
-        normalized_landmarks = (landmarks_np - hip_center) / torso_length
+        # Normalize the 3D landmarks relative to the hip center
+        # We still need the 3D hip center for the subtraction
+        hip_center_3d = (landmarks_np[23] + landmarks_np[24]) / 2.0
+        normalized_landmarks = (landmarks_np - hip_center_3d) / torso_length
+        
         return normalized_landmarks
     except Exception as e:
         print(f"Norm Error: {e}")
@@ -160,40 +170,26 @@ class ExerciseAnalyzer:
         return interpreter.get_tensor(output_details[0]['index'])[0]
 
     def _apply_logic_override(self, ai_prediction, landmarks):
-        """Corrects AI mistakes using basic geometry (Logic Guardrails)."""
-        if not landmarks: return ai_prediction
-        
-        # Get coords
-        def get_c(i): 
-            lm = landmarks[i]
-            return (lm['x'], lm['y']) if isinstance(lm, dict) else (lm.x, lm.y)
+        """
+        Corrects AI mistakes using basic geometry.
+        UPDATED: Disabled specific aggressive overrides that were conflicting with the 97% model.
+        """
+        # --- DISABLED GUARDRAILS FOR DEBUGGING AND ACCURACY ---
+        # The logic below was forcing "Bicep Curl" when the user was doing a "Bent Over Row"
+        # because of camera angles. We trust the AI model now.
+        return ai_prediction 
 
-        s_x, s_y = get_c(11) # L Shoulder
-        h_x, h_y = get_c(23) # L Hip
-        k_x, k_y = get_c(25) # L Knee
-        
-        # 1. Calculate Hip Angle (Standing vs Bent)
-        # Simple 2D check: Shoulder-Hip-Knee
-        hip_angle = calculate_angle_2d([s_x, s_y], [h_x, h_y], [k_x, k_y])
-        
-        # 2. GUARDRAIL: Bent Over Row vs Bicep Curl
-        # If AI says "Row" but you are standing straight (>150 deg), it's probably a Curl.
-        if ai_prediction == 'bentOverRow' and hip_angle > 150:
-            return 'bicepCurl'
-
-        # 3. GUARDRAIL: Reverse Fly vs Curl/Press
-        # Flys have wide hands. Curls/Presses have narrow hands (near shoulders).
-        if ai_prediction in ['dumbbellReverseFly', 'lateralRaise']:
-            l_hand_x, _ = get_c(15)
-            r_hand_x, _ = get_c(16)
-            l_should_x, _ = get_c(11)
-            r_should_x, _ = get_c(12)
-            
-            # Check horizontal distance from shoulder
-            if abs(l_hand_x - l_should_x) < 0.15 and abs(r_hand_x - r_should_x) < 0.15:
-                return 'bicepCurl' # Hands are tight to body -> Curl
-
-        return ai_prediction
+        # if not landmarks: return ai_prediction
+        # def get_c(i): 
+        #     lm = landmarks[i]
+        #     return (lm['x'], lm['y']) if isinstance(lm, dict) else (lm.x, lm.y)
+        # s_x, s_y = get_c(11) # L Shoulder
+        # h_x, h_y = get_c(23) # L Hip
+        # k_x, k_y = get_c(25) # L Knee
+        # hip_angle = calculate_angle_2d([s_x, s_y], [h_x, h_y], [k_x, k_y])
+        # if ai_prediction == 'bentOverRow' and hip_angle > 150:
+        #     return 'bicepCurl'
+        # ... (other overrides disabled) ...
 
     def process_frame(self, interpreter, input_details, output_details, label_mapping, landmarks, current_exercise):
         self.frame_count += 1
@@ -216,14 +212,14 @@ class ExerciseAnalyzer:
                 prediction = self.predict_with_tflite(interpreter, input_details, output_details, input_tensor.astype(np.float32))
                 
                 if np.max(prediction) > 1.0:
-                     prediction = np.exp(prediction - np.max(prediction))
-                     prediction = prediction / prediction.sum()
+                      prediction = np.exp(prediction - np.max(prediction))
+                      prediction = prediction / prediction.sum()
 
                 idx = int(np.argmax(prediction))
                 conf = prediction[idx]
                 raw_label = str(label_mapping.get(idx, label_mapping.get(str(idx), "neutral")))
                 
-                # 3. Apply Logic Guardrails
+                # 3. Apply Logic Guardrails (Currently Disabled/Passthrough)
                 final_label = self._apply_logic_override(raw_label, landmarks)
                 
                 # 4. Stability Filter
@@ -236,10 +232,12 @@ class ExerciseAnalyzer:
                     if self.stable_prediction == most_common:
                         self.stable_counter += 1
                     else:
+                        # NEUTRAL RESET LOGIC
+                        if most_common == "neutral":
+                            self.stage = None  # Reset exercise stage
+                            
                         self.stable_prediction = most_common
                         self.stable_counter = 0 
-                        self.stage = None
-                        self.rep_counter = 0
 
             except Exception as e: print(f"Inference Error: {e}")
 
@@ -267,10 +265,9 @@ class ExerciseAnalyzer:
         self.form_status = "CORRECT FORM"
         self.status_color = (0, 255, 0)
 
-        try:
-            # CRITICAL FIX: Initialize prev_rep_counter BEFORE logic
-            prev_rep_counter = self.rep_counter
+        prev_rep_counter = self.rep_counter
 
+        try:
             ls, rs = lms[11], lms[12]; le, re = lms[13], lms[14]
             lw, rw = lms[15], lms[16]; lh, rh = lms[23], lms[24]
             lk, rk = lms[25], lms[26]; la, ra = lms[27], lms[28]
@@ -281,7 +278,6 @@ class ExerciseAnalyzer:
                 hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 self.debug_angles = {'Elbow': int(elb_ang), 'Hip': int(hip_ang)}
                 
-                # STRICT CHECK: If standing up, do NOT count row reps
                 if hip_ang > 150: 
                     self.form_status = "ERROR: BEND OVER TO START"
                 else:

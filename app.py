@@ -46,7 +46,6 @@ bcrypt = Bcrypt(app)
 migrate = Migrate(app, db)
 socketio = SocketIO(app, async_mode='eventlet') 
 
-
 # --- Database Model Definitions ---
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
 app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
@@ -945,6 +944,9 @@ def handle_end_session(data):
             analyzer.reset_session()
 
 def process_frame_task(sid, data, user_info):
+    # START TIME for FPS calculation
+    start_time = time.time()
+    
     global interpreter, label_mapping, input_details, output_details, clients, yolo_model, YOLO_CONF_THRESHOLD, pose_extractor, YOLO_TO_MP
     
     gym_id = clients.get(sid, {}).get('gym_id')
@@ -957,17 +959,10 @@ def process_frame_task(sid, data, user_info):
         
     try:
         image_data = base64.b64decode(data['image_data'].split(',')[1])
-        
-        # --- FIX: Discard alpha channel to fix green tint ---
         image = Image.open(io.BytesIO(image_data)).convert('RGB')
-        
-        # Convert to numpy array (RGB)
         frame_rgb = np.array(image)
         frame_rgb.flags.writeable = False
-        
-        # 'frame' variable for potential BGR use, though we mostly use RGB now
         frame = frame_rgb 
-        
     except Exception as e:
         print(f"Error decoding image: {e}")
         if client_camera_state: client_camera_state['is_processing'] = False
@@ -996,7 +991,6 @@ def process_frame_task(sid, data, user_info):
                 analyzer = client_camera_state['analyzers'][track_id]
 
                 # --- Fallback Skeleton (YOLO) ---
-                # Initialize with z=0.0 to be safe
                 final_landmarks_for_ui = [{'x': 0.0, 'y': 0.0, 'z': 0.0, 'visibility': 0.0} for _ in range(33)]
                 
                 if keypoints is not None and keypoints.conf is not None:
@@ -1066,6 +1060,10 @@ def process_frame_task(sid, data, user_info):
                             landmarks=final_landmarks_for_ui, 
                             current_exercise=analyzer.stable_prediction
                         )
+
+                        # DEBUG PRINT FOR LATENCY & ACCURACY
+                        # Use this to verify the raw AI output before stability filter
+                        print(f"[P{track_id}] Raw AI: {analyzer.recent_predictions[-1] if analyzer.recent_predictions else 'N/A'} | Stable: {prediction}")
                         
                         person_response.update({
                             'rep_counter': rep_count,
@@ -1125,6 +1123,10 @@ def process_frame_task(sid, data, user_info):
     }
 
     socketio.emit('response', emit_data, room=sid)
+
+    # END PROCESSING TIME
+    process_time = (time.time() - start_time) * 1000
+    print(f"[DEBUG] Processing took: {process_time:.2f}ms")
 
     if client_camera_state: client_camera_state['is_processing'] = False
 
