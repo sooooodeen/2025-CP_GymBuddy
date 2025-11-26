@@ -15,7 +15,7 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
-from scipy.interpolate import interp1d
+import joblib 
 
 # --- CONFIGURATION ---
 SEQUENCE_LENGTH = 90
@@ -23,86 +23,137 @@ RAW_DATA_CSV = 'exercise_sequences_augmented.csv'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LABEL_MAPPING_FILE = os.path.join(SCRIPT_DIR, 'label_mapping.json')
 MODEL_FILE = os.path.join(SCRIPT_DIR, 'exercise_classifier_bilstm.h5')
+SCALER_FILE = os.path.join(SCRIPT_DIR, 'scaler.pkl') # NEW: Save the scaler
 CONFUSION_MATRIX_FILE = os.path.join(SCRIPT_DIR, 'confusion_matrix.png')
 PADDING_VALUE = -10.0 
 
-# --- 1. FEATURE ENGINEERING ---
-def calculate_angle(landmarks, p1_name, p2_name, p3_name):
-    """Calculates the angle between three landmarks."""
-    p1 = landmarks[[f'{p1_name}_x', f'{p1_name}_y', f'{p1_name}_z']].values
-    p2 = landmarks[[f'{p2_name}_x', f'{p2_name}_y', f'{p2_name}_z']].values
-    p3 = landmarks[[f'{p3_name}_x', f'{p3_name}_y', f'{p3_name}_z']].values
-    
-    v1 = p1 - p2
-    v2 = p3 - p2
-    
-    dot = np.einsum('ij,ij->i', v1, v2)
-    mag1 = np.linalg.norm(v1, axis=1)
-    mag2 = np.linalg.norm(v2, axis=1)
-    
-    mask = (mag1 != 0) & (mag2 != 0)
-    cos_angle = np.zeros(len(dot))
-    
-    if cos_angle.size > 0:
-        cos_angle[mask] = dot[mask] / (mag1[mask] * mag2[mask])
-    
-    angle_deg = np.degrees(np.arccos(np.clip(cos_angle, -1.0, 1.0)))
-    return angle_deg
+# --- 1. ROBUST NORMALIZATION & FEATURE EXTRACTION ---
 
-def create_features(df):
-    print("Calculating features...")
-    features_df = pd.DataFrame()
-    features_df['sequence_id'] = df['sequence_id']
-    features_df['timestamp_ms'] = df['timestamp_ms']
+# Standard MediaPipe Body Landmark Mapping
+MP_LANDMARKS = [
+    'nose', 'left_eye_inner', 'left_eye', 'left_eye_outer', 'right_eye_inner', 'right_eye', 'right_eye_outer',
+    'left_ear', 'right_ear', 'mouth_left', 'mouth_right',
+    'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow', 'left_wrist', 'right_wrist',
+    'left_pinky', 'right_pinky', 'left_index', 'right_index', 'left_thumb', 'right_thumb',
+    'left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle',
+    'left_heel', 'right_heel', 'left_foot_index', 'right_foot_index'
+]
 
-    # Define Angles
-    angle_definitions = {
-        'left_elbow': ('left_shoulder', 'left_elbow', 'left_wrist'),
-        'right_elbow': ('right_shoulder', 'right_elbow', 'right_wrist'),
-        'left_shoulder': ('left_elbow', 'left_shoulder', 'left_hip'),
-        'right_shoulder': ('right_elbow', 'right_shoulder', 'right_hip'),
-        'left_hip': ('left_shoulder', 'left_hip', 'left_knee'),
-        'right_hip': ('right_shoulder', 'right_hip', 'right_knee'),
-        'left_upper_arm': ('left_hip', 'left_shoulder', 'left_elbow'),
-        'right_upper_arm': ('right_hip', 'right_shoulder', 'right_elbow'),
-        'torso_avg': ('left_shoulder', 'left_hip', 'left_knee'), 
-        'knee_avg': ('left_hip', 'left_knee', 'left_ankle'), 
-    }
+def get_landmark_array(row):
+    """Converts a CSV row into a (33, 3) numpy array."""
+    landmarks = []
+    for name in MP_LANDMARKS:
+        # Handle cases where Z might be missing in CSV by defaulting to 0
+        x = row.get(f'{name}_x', 0.0)
+        y = row.get(f'{name}_y', 0.0)
+        z = row.get(f'{name}_z', 0.0)
+        landmarks.append([x, y, z])
+    return np.array(landmarks, dtype=np.float32)
+
+def normalize_pose_robust(landmarks_np):
+    """
+    Matches the Web App Logic:
+    Normalizes based on 2D Torso Length to avoid Z-axis noise.
+    """
+    # Indices: 23=L.Hip, 24=R.Hip, 11=L.Shoulder, 12=R.Shoulder
+    try:
+        left_hip = landmarks_np[23][:2]
+        right_hip = landmarks_np[24][:2]
+        hip_center_2d = (left_hip + right_hip) / 2.0
+
+        left_shoulder = landmarks_np[11][:2]
+        right_shoulder = landmarks_np[12][:2]
+        shoulder_center_2d = (left_shoulder + right_shoulder) / 2.0
+
+        # Scale based on X/Y only
+        torso_length = np.linalg.norm(hip_center_2d - shoulder_center_2d) + 1e-6
+        
+        # Center based on 3D Hip
+        hip_center_3d = (landmarks_np[23] + landmarks_np[24]) / 2.0
+        normalized_landmarks = (landmarks_np - hip_center_3d) / torso_length
+        return normalized_landmarks
+    except:
+        return np.zeros_like(landmarks_np)
+
+def calculate_angle_3d(a, b, c):
+    a = np.array(a); b = np.array(b); c = np.array(c)
+    ba = a - b; bc = c - b
+    norm_ba = np.linalg.norm(ba); norm_bc = np.linalg.norm(bc)
+    if norm_ba == 0 or norm_bc == 0: return 0.0
+    dot_product = np.dot(ba, bc)
+    cosine_angle = dot_product / (norm_ba * norm_bc)
+    angle = np.degrees(np.arccos(np.clip(cosine_angle, -1.0, 1.0)))
+    return angle
+
+def extract_features_exact_match(row):
+    """
+    Generates the EXACT 47 features used in analysis_logic.py
+    """
+    # 1. Get Raw
+    raw_lms = get_landmark_array(row)
     
-    # 1. Calculate Angles
-    for name, (p1, p2, p3) in angle_definitions.items():
-        if name == 'torso_avg':
-            l = calculate_angle(df, 'left_shoulder', 'left_hip', 'left_knee')
-            r = calculate_angle(df, 'right_shoulder', 'right_hip', 'right_knee')
-            features_df[name] = (l + r) / 2
-        elif name == 'knee_avg':
-            l = calculate_angle(df, 'left_hip', 'left_knee', 'left_ankle')
-            r = calculate_angle(df, 'right_hip', 'right_knee', 'right_ankle')
-            features_df[name] = (l + r) / 2
-        else:
-            features_df[name] = calculate_angle(df, p1, p2, p3)
+    # 2. Normalize (Robust 2D)
+    norm_lms = normalize_pose_robust(raw_lms)
+    
+    def lm(i): return norm_lms[i]
+    def dist(i, j): return np.linalg.norm(lm(i) - lm(j))
+    hip_center = np.array([0.0, 0.0, 0.0])
 
-    # 2. Calculate Extra Features
-    features_df['stance_width'] = np.abs(df['left_ankle_x'] - df['right_ankle_x'])
-    features_df['left_wrist_shoulder_x_diff'] = df['left_wrist_x'] - df['left_shoulder_x']
-    features_df['right_wrist_shoulder_x_diff'] = df['right_wrist_x'] - df['right_shoulder_x']
-    features_df['left_wrist_elbow_y_diff'] = df['left_wrist_y'] - df['left_elbow_y']
-    features_df['right_wrist_elbow_y_diff'] = df['right_wrist_y'] - df['right_elbow_y']
+    # --- 20 ANGLES ---
+    angles = [
+        calculate_angle_3d(lm(11), lm(23), lm(25)), calculate_angle_3d(lm(12), lm(24), lm(26)),
+        calculate_angle_3d(lm(11), lm(24), lm(12)), calculate_angle_3d(lm(0), lm(7), lm(8)),
+        calculate_angle_3d(lm(23), lm(11), lm(12)), calculate_angle_3d(lm(24), lm(12), lm(11)),
+        calculate_angle_3d(lm(11), lm(13), lm(15)), calculate_angle_3d(lm(12), lm(14), lm(16)),
+        calculate_angle_3d(lm(23), lm(11), lm(13)), calculate_angle_3d(lm(24), lm(12), lm(14)),
+        calculate_angle_3d(lm(13), lm(15), lm(19)), calculate_angle_3d(lm(14), lm(16), lm(20)),
+        calculate_angle_3d(lm(11), lm(23), lm(25)), calculate_angle_3d(lm(12), lm(24), lm(26)),
+        calculate_angle_3d(lm(23), lm(25), lm(27)), calculate_angle_3d(lm(24), lm(26), lm(28)),
+        calculate_angle_3d(lm(25), lm(27), lm(29)), calculate_angle_3d(lm(26), lm(28), lm(30)),
+        calculate_angle_3d(lm(12), lm(23), lm(24)), calculate_angle_3d(lm(11), lm(24), lm(23))
+    ]
 
-    # 3. Calculate Velocity (d_angle / dt)
-    print("Calculating velocities...")
-    angle_cols = list(angle_definitions.keys())
-    grouped = features_df.groupby('sequence_id')
-    dt = grouped['timestamp_ms'].diff().fillna(0) / 1000.0
-    dt = dt.replace(0, 0.033) # Prevent divide by zero (assume 30fps)
+    # --- 22 DISTANCES ---
+    distances = [
+        dist(11, 12), dist(23, 24), dist(15, 25), dist(16, 26),
+        dist(13, 23), dist(14, 24), dist(27, 15), dist(28, 16),
+        np.linalg.norm(lm(0) - hip_center),
+        abs(lm(15)[1] - lm(11)[1]), abs(lm(16)[1] - lm(12)[1]),
+        abs(lm(23)[1] - lm(25)[1]), abs(lm(24)[1] - lm(26)[1]),
+        abs(lm(11)[1] - lm(23)[1]), abs(lm(12)[1] - lm(24)[1]),
+        abs(lm(27)[1] - lm(29)[1]), abs(lm(28)[1] - lm(30)[1]),
+        abs(lm(15)[2] - lm(23)[2]), abs(lm(16)[2] - lm(24)[2]),
+        abs(lm(11)[2] - lm(23)[2]), abs(lm(12)[2] - lm(24)[2]),
+        abs(lm(0)[2] - hip_center[2])
+    ]
+    
+    # Combine (Total 42)
+    feats = np.array(angles + distances, dtype=np.float32)
+    
+    # Pad to 47 (matches web app padding)
+    feats = np.concatenate([feats, np.zeros(5, dtype=np.float32)])
+    
+    return feats
 
-    for name in angle_cols:
-        d_angle = grouped[name].diff().fillna(0)
-        features_df[f'{name}_vel'] = d_angle / dt
-
-    # Collect valid feature names
-    feature_names = [c for c in features_df.columns if c not in ['sequence_id', 'timestamp_ms']]
-    return features_df, feature_names
+def create_dataset_from_csv(df):
+    """Transforms raw CSV data into sequences of features."""
+    print("Extracting features (This may take a moment)...")
+    
+    sequences = []
+    labels = []
+    
+    # Process sequence by sequence
+    for seq_id, group in df.groupby('sequence_id'):
+        seq_features = []
+        for _, row in group.iterrows():
+            f = extract_features_exact_match(row)
+            seq_features.append(f)
+        
+        if len(seq_features) > 0:
+            sequences.append(np.array(seq_features))
+            labels.append(group['class'].iloc[0])
+            
+    return sequences, labels
 
 # --- 2. AUGMENTATION ---
 def jitter(sequence, sigma=0.03):
@@ -119,57 +170,56 @@ def augment_data(X_list, y_list, num_augmentations=2):
     return X_aug, y_aug
 
 # --- 3. MAIN ---
-def plot_confusion_matrix(y_true, y_pred, classes):
-    cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(12, 10))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=classes, yticklabels=classes)
-    plt.title('Confusion Matrix')
-    plt.ylabel('Actual')
-    plt.xlabel('Predicted')
-    plt.tight_layout()
-    plt.savefig(CONFUSION_MATRIX_FILE)
-    print(f"Matrix saved to {CONFUSION_MATRIX_FILE}")
-
 def main():
     print(f"Loading data from {RAW_DATA_CSV}...")
     if not os.path.exists(RAW_DATA_CSV):
-        print("Data file not found. Please run augment_data.py first.")
+        print("Data file not found.")
         return
 
     df = pd.read_csv(RAW_DATA_CSV)
     
-    # Create features
-    features_df, feature_names = create_features(df)
-    features_df['class'] = df['class']
+    # 1. Extract Features aligned with Web App
+    sequences, labels_raw = create_dataset_from_csv(df)
     
-    # Scale features
-    print(f"Scaling {len(feature_names)} features...")
+    # 2. Flatten for Scaling
+    # We need to scale all frames together
+    all_frames = np.vstack(sequences)
+    
+    print(f"Fitting Scaler on {len(all_frames)} frames...")
     scaler = StandardScaler()
-    features_df[feature_names] = scaler.fit_transform(features_df[feature_names])
+    all_frames_scaled = scaler.fit_transform(all_frames)
+    
+    # SAVE SCALER (CRITICAL STEP)
+    joblib.dump(scaler, SCALER_FILE)
+    print(f"✅ Scaler saved to {SCALER_FILE}")
 
-    # Encode Labels
+    # Reshape back to sequences
+    X = []
+    curr_idx = 0
+    for seq in sequences:
+        seq_len = len(seq)
+        X.append(all_frames_scaled[curr_idx : curr_idx + seq_len])
+        curr_idx += seq_len
+    
+    # 3. Encode Labels
     le = LabelEncoder()
-    labels_encoded = le.fit_transform(features_df['class'])
+    y = le.fit_transform(labels_raw)
+    
+    # Save Label Mapping
     label_mapping = {i: str(c) for i, c in enumerate(le.classes_)}
     with open(LABEL_MAPPING_FILE, 'w') as f: json.dump(label_mapping, f)
+    print("✅ Label mapping saved.")
 
-    # Group into sequences
-    sequences = []
-    labels = []
-    for _, group in features_df.groupby('sequence_id'):
-        sequences.append(group[feature_names].values)
-        labels.append(labels_encoded[group.index[0]])
-
-    # Split
+    # 4. Split
     X_train, X_test, y_train, y_test = train_test_split(
-        sequences, labels, test_size=0.2, stratify=labels, random_state=42
+        X, y, test_size=0.2, stratify=y, random_state=42
     )
 
-    # Augment Train only
+    # 5. Augment (Train only)
     print(f"Augmenting {len(X_train)} training sequences...")
     X_train, y_train = augment_data(X_train, y_train)
 
-    # Pad
+    # 6. Pad
     X_train = pad_sequences(X_train, maxlen=SEQUENCE_LENGTH, padding='post', dtype='float32', value=PADDING_VALUE)
     X_test = pad_sequences(X_test, maxlen=SEQUENCE_LENGTH, padding='post', dtype='float32', value=PADDING_VALUE)
     
@@ -181,7 +231,9 @@ def main():
     weight_dict = dict(enumerate(weights))
 
     # --- MODEL ---
-    input_layer = Input(shape=(SEQUENCE_LENGTH, len(feature_names)))
+    input_shape = (SEQUENCE_LENGTH, 47) # 47 Features
+    
+    input_layer = Input(shape=input_shape)
     masked = Masking(mask_value=PADDING_VALUE)(input_layer)
     
     x = Bidirectional(LSTM(64, return_sequences=True, kernel_regularizer=l2(0.001)))(masked)
@@ -192,7 +244,6 @@ def main():
     x = BatchNormalization()(x)
     x = Dropout(0.4)(x)
     
-    # Attention
     att = Attention()([x, x])
     pooled = GlobalAveragePooling1D()(att)
     
@@ -222,7 +273,19 @@ def main():
     print(f"\nTest Accuracy: {acc*100:.2f}%")
     
     model.save(MODEL_FILE)
-    print(f"Model saved to {MODEL_FILE}")
+    print(f"✅ Model saved to {MODEL_FILE}")
+
+    # Confusion Matrix
+    y_pred = model.predict(X_test)
+    y_pred_classes = np.argmax(y_pred, axis=1)
+    y_true = np.argmax(y_test_cat, axis=1)
+    
+    cm = confusion_matrix(y_true, y_pred_classes)
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_)
+    plt.title('Confusion Matrix')
+    plt.savefig(CONFUSION_MATRIX_FILE)
+    print("✅ Confusion matrix saved.")
 
 if __name__ == '__main__':
     main()

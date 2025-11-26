@@ -13,6 +13,7 @@ import io
 import eventlet
 import re
 import mediapipe as mp 
+import joblib  # <--- NEW: Required to load the scaler
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
@@ -115,6 +116,7 @@ STABILITY_FRAMES = 10
 TRAINING_ARTIFACTS_DIR = 'training'
 
 interpreter = None 
+scaler = None  # <--- NEW: Global variable for scaler
 input_details = None
 output_details = None
 label_mapping = {}
@@ -151,29 +153,37 @@ pose_extractor = mp_pose.Pose(
 # -----------------------------------------------
 
 def load_model_and_labels():
-    global interpreter, label_mapping, input_details, output_details
+    global interpreter, label_mapping, input_details, output_details, scaler
     try:
         TFLITE_MODEL_FILENAME = os.path.join(TRAINING_ARTIFACTS_DIR, 'exercise_classifier_quant.tflite')
         LABEL_MAPPING_FILENAME = os.path.join(TRAINING_ARTIFACTS_DIR, 'label_mapping.json')
+        SCALER_FILENAME = os.path.join(TRAINING_ARTIFACTS_DIR, 'scaler.pkl') # <--- NEW
         
         if os.path.exists(TFLITE_MODEL_FILENAME):
             interpreter = tf.lite.Interpreter(model_path=TFLITE_MODEL_FILENAME)
             interpreter.allocate_tensors()
             input_details = interpreter.get_input_details()
             output_details = interpreter.get_output_details()
-            print("TFLite Interpreter loaded successfully.")
+            print("✅ TFLite Interpreter loaded successfully.")
         else:
-            print(f"Error: TFLite model file not found at {TFLITE_MODEL_FILENAME}")
+            print(f"❌ Error: TFLite model file not found at {TFLITE_MODEL_FILENAME}")
 
         if os.path.exists(LABEL_MAPPING_FILENAME):
             with open(LABEL_MAPPING_FILENAME, 'r') as f:
                 label_mapping = {int(k): v for k, v in json.load(f).items()}
-            print("Label mapping loaded successfully.")
+            print("✅ Label mapping loaded successfully.")
         else:
-            print(f"Error: Label mapping file not found.")
+            print(f"❌ Error: Label mapping file not found.")
+
+        # LOAD SCALER
+        if os.path.exists(SCALER_FILENAME):
+            scaler = joblib.load(SCALER_FILENAME)
+            print("✅ Scaler loaded successfully.")
+        else:
+            print(f"❌ Error: Scaler file not found at {SCALER_FILENAME}. Model will fail to predict correctly!")
             
     except Exception as e:
-        print(f"Error loading model or labels: {e}") 
+        print(f"❌ Error loading model/scaler/labels: {e}") 
 
 load_model_and_labels()
 
@@ -947,7 +957,7 @@ def process_frame_task(sid, data, user_info):
     # START TIME for FPS calculation
     start_time = time.time()
     
-    global interpreter, label_mapping, input_details, output_details, clients, yolo_model, YOLO_CONF_THRESHOLD, pose_extractor, YOLO_TO_MP
+    global interpreter, label_mapping, input_details, output_details, clients, yolo_model, YOLO_CONF_THRESHOLD, pose_extractor, YOLO_TO_MP, scaler
     
     gym_id = clients.get(sid, {}).get('gym_id')
 
@@ -1050,7 +1060,7 @@ def process_frame_task(sid, data, user_info):
                 }
 
                 # --- 4. Analysis ---
-                if interpreter:
+                if interpreter and scaler: # <--- CHANGED: Ensure scaler is present
                     try:
                         rep_count, form, prediction, angles = analyzer.process_frame(
                             interpreter=interpreter,
@@ -1058,11 +1068,11 @@ def process_frame_task(sid, data, user_info):
                             output_details=output_details,
                             label_mapping=label_mapping,
                             landmarks=final_landmarks_for_ui, 
-                            current_exercise=analyzer.stable_prediction
+                            current_exercise=analyzer.stable_prediction,
+                            scaler=scaler # <--- CHANGED: Pass the scaler to the analyzer
                         )
 
                         # DEBUG PRINT FOR LATENCY & ACCURACY
-                        # Use this to verify the raw AI output before stability filter
                         print(f"[P{track_id}] Raw AI: {analyzer.recent_predictions[-1] if analyzer.recent_predictions else 'N/A'} | Stable: {prediction}")
                         
                         person_response.update({
