@@ -113,8 +113,8 @@ def extract_engineered_features(landmarks):
 # --- 3. ANALYZER CLASS ---
 
 class ExerciseAnalyzer:
-    # UPDATED DEFAULT CONFIDENCE THRESHOLD TO 0.85 TO REDUCE RANDOM GUESSES
-    def __init__(self, sequence_length=90, conf_threshold=0.85, stability_frames=15, reset_timeout=5.0):
+    # Set threshold to 0.60 (Balanced)
+    def __init__(self, sequence_length=90, conf_threshold=0.60, stability_frames=15, reset_timeout=5.0):
         self.rep_counter = 0
         self.stage = None
         self.form_status = "START EXERCISE"
@@ -170,11 +170,9 @@ class ExerciseAnalyzer:
     def _apply_logic_override(self, ai_prediction, landmarks):
         """
         Filters out 'impossible' exercises based on geometry.
-        This fixes the issue where Standing = Tricep Kickback / Bench Press.
         """
         if not landmarks: return ai_prediction
         
-        # Helper to get coords
         def get_coords(i): 
             lm = landmarks[i]
             return (lm['x'], lm['y']) if isinstance(lm, dict) else (lm.x, lm.y)
@@ -186,14 +184,31 @@ class ExerciseAnalyzer:
         # Calculate Torso/Hip Angle (Verticality)
         hip_angle = calculate_angle_2d([s_x, s_y], [h_x, h_y], [k_x, k_y])
 
-        # FIX 1: STOP TRICEP KICKBACK WHEN STANDING
-        # If hip angle is > 150 (standing straight), force it to Neutral.
+        # --- RULE 1: TRICEP KICKBACK ---
+        # Stop Tricep Kickback if Standing Straight
         if ai_prediction == 'tricepKickback' and hip_angle > 150:
             return "neutral" 
 
-        # FIX 2: STOP INCLINE BENCH WHEN STANDING
+        # --- RULE 2: INCLINE BENCH ---
+        # Stop Incline Bench if Standing Straight
         if ai_prediction == 'inclineBenchPress' and hip_angle > 165:
             return "neutral"
+
+        # --- RULE 3: SUMO SQUAT (Fix for Bicep Curl Confusion) ---
+        if ai_prediction == 'sumoSquat':
+            # Calculate Feet Width (Ankles) vs Shoulder Width
+            l_ankle = get_coords(27)[0]
+            r_ankle = get_coords(28)[0]
+            l_shldr = get_coords(11)[0]
+            r_shldr = get_coords(12)[0]
+
+            ankle_width = abs(l_ankle - r_ankle)
+            shoulder_width = abs(l_shldr - r_shldr)
+
+            # If feet are narrower than 1.2x shoulder width, it's NOT a sumo squat.
+            # Bicep curls are usually 1.0x width. Sumo is usually 1.5x+ width.
+            if ankle_width < (shoulder_width * 1.2):
+                return "neutral" # Force neutral to clear the bad prediction
 
         return ai_prediction 
 
@@ -232,7 +247,7 @@ class ExerciseAnalyzer:
                 conf = prediction[idx]
                 raw_label = str(label_mapping.get(idx, label_mapping.get(str(idx), "neutral")))
                 
-                # --- APPLY THE LOGIC FIX HERE ---
+                # Apply Geometry Guardrails
                 final_label = self._apply_logic_override(raw_label, landmarks)
                 
                 # 3. Stability Filter
@@ -245,7 +260,7 @@ class ExerciseAnalyzer:
                     if self.stable_prediction == most_common:
                         self.stable_counter += 1
                     else:
-                        # --- FIX THE REP CARRY-OVER BUG HERE ---
+                        # Reset Reps on Exercise Switch
                         if most_common != "neutral" and most_common != self.stable_prediction:
                              self.rep_counter = 0 
                              self.stage = None
@@ -278,10 +293,8 @@ class ExerciseAnalyzer:
         
         lms = [Point(lm) for lm in landmarks]
         
-        # --- DEBOUNCE TIMER (Fixes Machine Gun Reps) ---
         MIN_REP_DURATION = 0.8 
         current_time = time.time()
-        # -----------------------------------------------
 
         self.form_status = "CORRECT FORM"
         self.status_color = (0, 255, 0)
@@ -369,7 +382,6 @@ class ExerciseAnalyzer:
 
             # 7. Incline Bench Press
             elif exercise_name == 'inclineBenchPress':
-                # Double check guardrail in case it slipped through
                 hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 if hip_ang > 165: 
                     self.form_status = "Stand Still / Neutral"
