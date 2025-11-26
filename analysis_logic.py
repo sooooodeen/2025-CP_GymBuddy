@@ -268,6 +268,9 @@ class ExerciseAnalyzer:
         self.status_color = (0, 255, 0)
 
         try:
+            # CRITICAL FIX: Initialize prev_rep_counter BEFORE logic
+            prev_rep_counter = self.rep_counter
+
             ls, rs = lms[11], lms[12]; le, re = lms[13], lms[14]
             lw, rw = lms[15], lms[16]; lh, rh = lms[23], lms[24]
             lk, rk = lms[25], lms[26]; la, ra = lms[27], lms[28]

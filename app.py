@@ -957,21 +957,27 @@ def process_frame_task(sid, data, user_info):
         
     try:
         image_data = base64.b64decode(data['image_data'].split(',')[1])
-        image = Image.open(io.BytesIO(image_data))
-        frame = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame_rgb.flags.writeable = False 
+        
+        # --- FIX: Discard alpha channel to fix green tint ---
+        image = Image.open(io.BytesIO(image_data)).convert('RGB')
+        
+        # Convert to numpy array (RGB)
+        frame_rgb = np.array(image)
+        frame_rgb.flags.writeable = False
+        
+        # 'frame' variable for potential BGR use, though we mostly use RGB now
+        frame = frame_rgb 
+        
     except Exception as e:
         print(f"Error decoding image: {e}")
         if client_camera_state: client_camera_state['is_processing'] = False
         return
 
-    # --- 1. YOLOv8 Tracking (Find people and IDs only) ---
+    # --- 1. YOLOv8 Tracking ---
     results = yolo_model.track(frame_rgb, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True)
     current_frame_data = [] 
     
     if results[0].boxes is not None:
-        # Check if IDs are available
         if results[0].boxes.id is not None:
             track_ids = results[0].boxes.id.int().cpu().tolist()
             boxes = results[0].boxes.xyxy.cpu().numpy()
@@ -989,8 +995,9 @@ def process_frame_task(sid, data, user_info):
                 
                 analyzer = client_camera_state['analyzers'][track_id]
 
-                # --- Prepare Fallback Skeleton (YOLO) ---
-                final_landmarks_for_ui = [{'x': 0.0, 'y': 0.0, 'visibility': 0.0} for _ in range(33)]
+                # --- Fallback Skeleton (YOLO) ---
+                # Initialize with z=0.0 to be safe
+                final_landmarks_for_ui = [{'x': 0.0, 'y': 0.0, 'z': 0.0, 'visibility': 0.0} for _ in range(33)]
                 
                 if keypoints is not None and keypoints.conf is not None:
                     xy = keypoints.xy[i].cpu().numpy()
@@ -1000,13 +1007,14 @@ def process_frame_task(sid, data, user_info):
                             final_landmarks_for_ui[mp_idx] = {
                                 'x': float(xy[yolo_idx][0]) / frame.shape[1],
                                 'y': float(xy[yolo_idx][1]) / frame.shape[0],
+                                'z': 0.0, # YOLO has no Z
                                 'visibility': float(conf[yolo_idx])
                             }
 
-                # --- 2. Try MediaPipe (High Quality Upgrade) ---
+                # --- 2. Try MediaPipe ---
                 x1, y1, x2, y2 = map(int, boxes[i])
-                
                 h, w, _ = frame.shape
+                
                 pad_x = int((x2 - x1) * 0.1)
                 pad_y = int((y2 - y1) * 0.1)
                 x1 = max(0, x1 - pad_x)
@@ -1014,11 +1022,10 @@ def process_frame_task(sid, data, user_info):
                 x2 = min(w, x2 + pad_x)
                 y2 = min(h, y2 + pad_y)
 
-                # --- CRITICAL FIX HERE: Force contiguous memory ---
+                # --- Force Contiguous Memory ---
                 person_crop = np.ascontiguousarray(frame_rgb[y1:y2, x1:x2])
                 
                 if person_crop.size > 0:
-                    # Now this call will succeed because memory is contiguous
                     mp_results = pose_extractor.process(person_crop)
                     
                     if mp_results.pose_landmarks:
@@ -1027,12 +1034,14 @@ def process_frame_task(sid, data, user_info):
                         for idx, lm in enumerate(mp_results.pose_landmarks.landmark):
                             px = lm.x * crop_w
                             py = lm.y * crop_h
+                            
                             global_px = px + x1
                             global_py = py + y1
                             
                             final_landmarks_for_ui[idx] = {
                                 'x': global_px / w,
                                 'y': global_py / h,
+                                'z': lm.z, # Capture Z from MediaPipe!
                                 'visibility': lm.visibility
                             }
 
