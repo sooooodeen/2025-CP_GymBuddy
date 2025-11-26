@@ -6,10 +6,7 @@ from collections import deque, Counter
 # --- 1. GEOMETRY & NORMALIZATION ---
 
 def normalize_pose_robust(landmarks):
-    """
-    Normalizes landmarks based on torso length. 
-    Matches feature_engineering.py logic.
-    """
+    """Normalizes landmarks based on torso length."""
     try:
         lms = []
         for lm in landmarks:
@@ -39,12 +36,9 @@ def normalize_pose_robust(landmarks):
         return None
 
 def calculate_angle_3d(a, b, c):
-    """Calculates 3D angle."""
     a = np.array(a); b = np.array(b); c = np.array(c)
-    ba = a - b
-    bc = c - b
-    norm_ba = np.linalg.norm(ba)
-    norm_bc = np.linalg.norm(bc)
+    ba = a - b; bc = c - b
+    norm_ba = np.linalg.norm(ba); norm_bc = np.linalg.norm(bc)
     if norm_ba == 0 or norm_bc == 0: return 0.0
     dot_product = np.dot(ba, bc)
     cosine_angle = dot_product / (norm_ba * norm_bc)
@@ -52,7 +46,6 @@ def calculate_angle_3d(a, b, c):
     return np.degrees(angle)
 
 def calculate_angle_2d(a, b, c):
-    """2D Angle helper for Form Checks."""
     a = np.array(a[:2]); b = np.array(b[:2]); c = np.array(c[:2])
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = np.abs(radians * 180.0 / np.pi)
@@ -62,37 +55,26 @@ def calculate_angle_2d(a, b, c):
 # --- 2. FEATURE ENGINEERING ---
 
 def extract_engineered_features(landmarks):
-    """Extracts exactly 47 features (42 calculated + 5 padding)."""
     norm_lms = normalize_pose_robust(landmarks)
     if norm_lms is None: return None
 
     def lm(i): return norm_lms[i]
 
-    # --- Angles (20) ---
+    # Angles (20)
     angles = [
-        calculate_angle_3d(lm(11), lm(23), lm(25)), # L Torso Side
-        calculate_angle_3d(lm(12), lm(24), lm(26)), # R Torso Side
-        calculate_angle_3d(lm(11), lm(24), lm(12)), # Torso Front
-        calculate_angle_3d(lm(0), lm(7), lm(8)),    # Neck
-        calculate_angle_3d(lm(23), lm(11), lm(12)), # Spine L
-        calculate_angle_3d(lm(24), lm(12), lm(11)), # Spine R
-        calculate_angle_3d(lm(11), lm(13), lm(15)), # L Elbow
-        calculate_angle_3d(lm(12), lm(14), lm(16)), # R Elbow
-        calculate_angle_3d(lm(23), lm(11), lm(13)), # L Shoulder Abd
-        calculate_angle_3d(lm(24), lm(12), lm(14)), # R Shoulder Abd
-        calculate_angle_3d(lm(13), lm(15), lm(19)), # L Wrist
-        calculate_angle_3d(lm(14), lm(16), lm(20)), # R Wrist
-        calculate_angle_3d(lm(11), lm(23), lm(25)), # L Hip
-        calculate_angle_3d(lm(12), lm(24), lm(26)), # R Hip
-        calculate_angle_3d(lm(23), lm(25), lm(27)), # L Knee
-        calculate_angle_3d(lm(24), lm(26), lm(28)), # R Knee
-        calculate_angle_3d(lm(25), lm(27), lm(29)), # L Ankle
-        calculate_angle_3d(lm(26), lm(28), lm(30)), # R Ankle
-        calculate_angle_3d(lm(12), lm(23), lm(24)), # Twist L
-        calculate_angle_3d(lm(11), lm(24), lm(23))  # Twist R
+        calculate_angle_3d(lm(11), lm(23), lm(25)), calculate_angle_3d(lm(12), lm(24), lm(26)),
+        calculate_angle_3d(lm(11), lm(24), lm(12)), calculate_angle_3d(lm(0), lm(7), lm(8)),
+        calculate_angle_3d(lm(23), lm(11), lm(12)), calculate_angle_3d(lm(24), lm(12), lm(11)),
+        calculate_angle_3d(lm(11), lm(13), lm(15)), calculate_angle_3d(lm(12), lm(14), lm(16)),
+        calculate_angle_3d(lm(23), lm(11), lm(13)), calculate_angle_3d(lm(24), lm(12), lm(14)),
+        calculate_angle_3d(lm(13), lm(15), lm(19)), calculate_angle_3d(lm(14), lm(16), lm(20)),
+        calculate_angle_3d(lm(11), lm(23), lm(25)), calculate_angle_3d(lm(12), lm(24), lm(26)),
+        calculate_angle_3d(lm(23), lm(25), lm(27)), calculate_angle_3d(lm(24), lm(26), lm(28)),
+        calculate_angle_3d(lm(25), lm(27), lm(29)), calculate_angle_3d(lm(26), lm(28), lm(30)),
+        calculate_angle_3d(lm(12), lm(23), lm(24)), calculate_angle_3d(lm(11), lm(24), lm(23))
     ]
 
-    # --- Distances (22) ---
+    # Distances (22)
     def dist(i, j): return np.linalg.norm(lm(i) - lm(j))
     hip_center = np.array([0.0, 0.0, 0.0]) 
 
@@ -119,7 +101,7 @@ def extract_engineered_features(landmarks):
 # --- 3. ANALYZER CLASS ---
 
 class ExerciseAnalyzer:
-    def __init__(self, sequence_length=90, conf_threshold=0.50, stability_frames=5, reset_timeout=5.0):
+    def __init__(self, sequence_length=90, conf_threshold=0.60, stability_frames=12, reset_timeout=5.0):
         self.rep_counter = 0
         self.stage = None
         self.form_status = "START EXERCISE"
@@ -133,10 +115,13 @@ class ExerciseAnalyzer:
         self.expected_seq_len = int(sequence_length)
         self.input_size = 0
         self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
+        
+        # Increased stability requirement
         self.CONF_THRESHOLD = conf_threshold
-        self.STABILITY_FRAMES = int(stability_frames)
+        self.STABILITY_FRAMES = int(stability_frames) 
         self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES)
         self.stable_prediction = "neutral"
+        
         self.frame_count = 0
         self.PREDICTION_INTERVAL = 3
         
@@ -144,6 +129,7 @@ class ExerciseAnalyzer:
         self.consecutive_error_counter = 0
         self.last_consecutive_error_type = None
         self.new_error_to_log = None
+        self.stable_counter = 0 # Counts how many frames the SAME exercise has been detected
 
     def _auto_configure_model(self, input_details):
         shape = input_details[0]['shape']
@@ -169,11 +155,10 @@ class ExerciseAnalyzer:
         return interpreter.get_tensor(output_details[0]['index'])[0]
 
     def _apply_logic_override(self, ai_prediction, landmarks):
-        """Fixes common model mistakes using 2D geometry."""
         if not landmarks: return ai_prediction
         def get_x(i): return landmarks[i]['x'] if isinstance(landmarks[i], dict) else landmarks[i].x
         
-        # Fix: If predicted Fly/Lateral Raise, but hands are close to shoulders (horizontally) -> It's a Curl/Press
+        # Fix: Force bicepCurl if hands are close to shoulders
         if ai_prediction in ['dumbbellReverseFly', 'lateralRaise', 'inclineDumbbellChestFly']:
             l_width = abs(get_x(15) - get_x(11))
             r_width = abs(get_x(16) - get_x(12))
@@ -205,22 +190,36 @@ class ExerciseAnalyzer:
 
                 idx = int(np.argmax(prediction))
                 conf = prediction[idx]
-                
-                # Safe Label Lookup
                 pred_label = str(label_mapping.get(idx, label_mapping.get(str(idx), "neutral")))
-
-                # Logic Patch
+                
+                # Apply Override Logic
                 final_label = self._apply_logic_override(pred_label, landmarks)
                 
+                # Update Stability Buffer
                 if conf > self.CONF_THRESHOLD: self.recent_predictions.append(final_label)
                 else: self.recent_predictions.append("neutral")
 
                 most_common, count = Counter(self.recent_predictions).most_common(1)[0]
-                if count >= (self.STABILITY_FRAMES - 2): self.stable_prediction = most_common
+                
+                # --- STABILITY CHECK ---
+                # Only switch exercise if we have > 10 frames of consistency
+                if count >= (self.STABILITY_FRAMES - 2):
+                    if self.stable_prediction == most_common:
+                        self.stable_counter += 1
+                    else:
+                        self.stable_prediction = most_common
+                        self.stable_counter = 0 # Reset on switch
+                        self.stage = None # Reset reps on switch
+                        self.rep_counter = 0
 
             except Exception as e: print(f"Inference Error: {e}")
 
-        self.analyze_frame(self.stable_prediction, landmarks)
+        # Only analyze form if we are STABLE on one exercise for ~2 seconds
+        if self.stable_counter > 15 and self.stable_prediction != "neutral":
+             self.analyze_frame(self.stable_prediction, landmarks)
+        else:
+             self.form_status = "Identifying..."
+
         return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
 
     def analyze_frame(self, exercise_name, landmarks):
@@ -232,43 +231,26 @@ class ExerciseAnalyzer:
                 self.y = float(obj['y']) if isinstance(obj, dict) else float(obj.y)
         
         lms = [Point(lm) for lm in landmarks]
-
-        if exercise_name == "neutral":
-            if self.previous_exercise != "neutral":
-                self.previous_exercise = "neutral"; self.stage = None
-            return
-
-        if exercise_name != self.previous_exercise:
-            self.rep_counter = 0; self.stage = None; self.previous_exercise = exercise_name
-        
         self.last_rep_time = time.time()
         self.form_status = "CORRECT FORM"
         self.status_color = (0, 255, 0)
 
         try:
-            # --- Landmark Aliases ---
-            ls, rs = lms[11], lms[12] # Shoulders
-            le, re = lms[13], lms[14] # Elbows
-            lw, rw = lms[15], lms[16] # Wrists
-            lh, rh = lms[23], lms[24] # Hips
-            lk, rk = lms[25], lms[26] # Knees
-            la, ra = lms[27], lms[28] # Ankles
-
-            # --- LOGIC FOR ALL 16 EXERCISES ---
+            ls, rs = lms[11], lms[12] 
+            le, re = lms[13], lms[14] 
+            lw, rw = lms[15], lms[16] 
+            lh, rh = lms[23], lms[24] 
+            lk, rk = lms[25], lms[26] 
+            la, ra = lms[27], lms[28] 
 
             # 0. Bent Over Row
             if exercise_name == 'bentOverRow':
-                # Check Elbow Angle (Pulling vs Extended)
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                # Check Back Angle (Shoulder-Hip-Knee) - Should be bent (~45-90 deg from vertical)
                 hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                
                 self.debug_angles = {'Elbow': int(elb_ang), 'Hip': int(hip_ang)}
-                
                 if elb_ang > 150: self.stage = "down"
                 if elb_ang < 80 and self.stage == 'down':
                     self.stage = "up"; self.rep_counter += 1
-                
                 if hip_ang > 150: self.form_status = "ERROR: BEND OVER MORE"
 
             # 1. Bicep Curl
@@ -290,7 +272,7 @@ class ExerciseAnalyzer:
                 if hip_ang > 160 and self.stage == 'down':
                     self.stage = "up"; self.rep_counter += 1
 
-            # 3. Dumbbell Push Press (Uses legs)
+            # 3. Dumbbell Push Press
             elif exercise_name == 'dumbbellPushPress':
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 self.debug_angles = {'Elbow': int(elb_ang)}
@@ -300,20 +282,15 @@ class ExerciseAnalyzer:
 
             # 4. Dumbbell Reverse Fly
             elif exercise_name == 'dumbbellReverseFly':
-                # Check Angle between Arms (horizontal abduction)
-                # Simplified: check wrist distance
                 dist = abs(lw.x - rw.x)
                 if dist < 0.2: self.stage = "in"
                 if dist > 0.6 and self.stage == 'in':
                     self.stage = "out"; self.rep_counter += 1
-                
-                # Form Check: Elbows shouldn't be too bent (like a row)
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 if elb_ang < 100: self.form_status = "ERROR: ARMS TOO BENT"
 
             # 5. Dumbbell Svend Press
             elif exercise_name == 'dumbbellSvendPress':
-                # Pressing outwards from chest
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 if elb_ang < 70: self.stage = "in"
                 if elb_ang > 160 and self.stage == 'in':
@@ -340,13 +317,11 @@ class ExerciseAnalyzer:
 
             # 8. Incline Dumbbell Chest Fly
             elif exercise_name == 'inclineDumbbellChestFly':
-                # Shoulder Angle (Abduction)
                 sh_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
-                if sh_ang < 45: self.stage = "up" # Hands together above chest
-                if sh_ang > 75 and self.stage == 'up': self.stage = "down" # Hands wide
+                if sh_ang < 45: self.stage = "up"
+                if sh_ang > 75 and self.stage == 'up': self.stage = "down"
                 if sh_ang < 45 and self.stage == 'down':
                     self.stage = "up"; self.rep_counter += 1
-                
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 if elb_ang < 100: self.form_status = "ERROR: ARMS TOO BENT"
 
@@ -380,9 +355,7 @@ class ExerciseAnalyzer:
             # 14. Tricep Kickback
             elif exercise_name == 'tricepKickback':
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                # Torso should be bent
                 torso_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                
                 self.debug_angles = {'Elbow': int(elb_ang)}
                 if elb_ang < 90: self.stage = "in"
                 if elb_ang > 160 and self.stage == "in":
@@ -391,14 +364,11 @@ class ExerciseAnalyzer:
 
             # 15. Upright Row
             elif exercise_name == 'uprightRow':
-                # Elbows flex (angle decreases) as weight comes up
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 self.debug_angles = {'Elbow': int(elb_ang)}
                 if elb_ang > 150: self.stage = "down"
                 if elb_ang < 75 and self.stage == 'down':
                     self.stage = "up"; self.rep_counter += 1
-                
-                # Check if wrists are higher than elbows (Bad form)
                 if lw.y < le.y: self.form_status = "ERROR: ELBOWS HIGHER"
 
             # --- LOGGING ---
