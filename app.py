@@ -12,9 +12,7 @@ from PIL import Image
 import io
 import eventlet
 import re
-# --- NEW IMPORT ---
 import mediapipe as mp 
-# ------------------
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
@@ -126,7 +124,24 @@ label_mapping = {}
 yolo_model = YOLO('yolov8n-pose.pt')
 YOLO_CONF_THRESHOLD = 0.60
 
-# --- NEW: Initialize MediaPipe for LANDMARKS ---
+# Mapping for Fallback (YOLO index -> MediaPipe index)
+YOLO_TO_MP = {
+    0: 0,   # nose
+    5: 11,  # left_shoulder
+    6: 12,  # right_shoulder
+    7: 13,  # left_elbow
+    8: 14,  # right_elbow
+    9: 15,  # left_wrist
+    10: 16, # right_wrist
+    11: 23, # left_hip
+    12: 24, # right_hip
+    13: 25, # left_knee
+    14: 26, # right_knee
+    15: 27, # left_ankle
+    16: 28  # right_ankle
+}
+
+# --- Initialize MediaPipe for LANDMARKS ---
 mp_pose = mp.solutions.pose
 pose_extractor = mp_pose.Pose(
     static_image_mode=True,
@@ -930,7 +945,7 @@ def handle_end_session(data):
             analyzer.reset_session()
 
 def process_frame_task(sid, data, user_info):
-    global interpreter, label_mapping, input_details, output_details, clients, yolo_model, YOLO_CONF_THRESHOLD, pose_extractor
+    global interpreter, label_mapping, input_details, output_details, clients, yolo_model, YOLO_CONF_THRESHOLD, pose_extractor, YOLO_TO_MP
     
     gym_id = clients.get(sid, {}).get('gym_id')
 
@@ -956,10 +971,11 @@ def process_frame_task(sid, data, user_info):
     current_frame_data = [] 
     
     if results[0].boxes is not None:
-        # Check if IDs are available (sometimes detection happens without tracking ID immediately)
+        # Check if IDs are available
         if results[0].boxes.id is not None:
             track_ids = results[0].boxes.id.int().cpu().tolist()
             boxes = results[0].boxes.xyxy.cpu().numpy()
+            keypoints = results[0].keypoints
             
             for i, track_id in enumerate(track_ids):
                 # State Management
@@ -973,11 +989,23 @@ def process_frame_task(sid, data, user_info):
                 
                 analyzer = client_camera_state['analyzers'][track_id]
 
-                # --- 2. Hybrid Logic: Crop & MediaPipe ---
-                # Get bounding box
+                # --- Prepare Fallback Skeleton (YOLO) ---
+                final_landmarks_for_ui = [{'x': 0.0, 'y': 0.0, 'visibility': 0.0} for _ in range(33)]
+                
+                if keypoints is not None and keypoints.conf is not None:
+                    xy = keypoints.xy[i].cpu().numpy()
+                    conf = keypoints.conf[i].cpu().numpy()
+                    for yolo_idx, mp_idx in YOLO_TO_MP.items():
+                        if yolo_idx < len(conf) and conf[yolo_idx] > 0.5:
+                            final_landmarks_for_ui[mp_idx] = {
+                                'x': float(xy[yolo_idx][0]) / frame.shape[1],
+                                'y': float(xy[yolo_idx][1]) / frame.shape[0],
+                                'visibility': float(conf[yolo_idx])
+                            }
+
+                # --- 2. Try MediaPipe (High Quality Upgrade) ---
                 x1, y1, x2, y2 = map(int, boxes[i])
                 
-                # Add padding to ensure full limbs are captured
                 h, w, _ = frame.shape
                 pad_x = int((x2 - x1) * 0.1)
                 pad_y = int((y2 - y1) * 0.1)
@@ -986,115 +1014,99 @@ def process_frame_task(sid, data, user_info):
                 x2 = min(w, x2 + pad_x)
                 y2 = min(h, y2 + pad_y)
 
-                person_crop = frame_rgb[y1:y2, x1:x2]
+                # --- CRITICAL FIX HERE: Force contiguous memory ---
+                person_crop = np.ascontiguousarray(frame_rgb[y1:y2, x1:x2])
                 
-                # If crop is invalid, skip
-                if person_crop.size == 0: continue
+                if person_crop.size > 0:
+                    # Now this call will succeed because memory is contiguous
+                    mp_results = pose_extractor.process(person_crop)
+                    
+                    if mp_results.pose_landmarks:
+                        crop_h, crop_w, _ = person_crop.shape
+                        
+                        for idx, lm in enumerate(mp_results.pose_landmarks.landmark):
+                            px = lm.x * crop_w
+                            py = lm.y * crop_h
+                            global_px = px + x1
+                            global_py = py + y1
+                            
+                            final_landmarks_for_ui[idx] = {
+                                'x': global_px / w,
+                                'y': global_py / h,
+                                'visibility': lm.visibility
+                            }
 
-                # Run MediaPipe on the crop to get 33 detailed landmarks
-                mp_results = pose_extractor.process(person_crop)
-
+                # --- 3. Build Response ---
                 person_response = {
                     'track_id': track_id,
                     'rep_counter': analyzer.rep_counter,
                     'form_status': analyzer.form_status,
                     'stable_prediction': analyzer.stable_prediction,
-                    'landmarks': [],
+                    'landmarks': final_landmarks_for_ui,
                     'debug_angles' : {}
                 }
 
-                if mp_results.pose_landmarks:
-                    # Convert crop-relative landmarks back to full-frame relative landmarks
-                    crop_h, crop_w, _ = person_crop.shape
-                    adjusted_landmarks_for_ui = []
-                    
-                    # We modify the landmark object in-place or create a list for the analyzer
-                    # The analyzer expects objects with .x, .y, .z, .visibility
-                    # MediaPipe landmarks are normalized (0.0 - 1.0)
-                    
-                    for lm in mp_results.pose_landmarks.landmark:
-                        # 1. Denormalize to crop pixels
-                        px = lm.x * crop_w
-                        py = lm.y * crop_h
+                # --- 4. Analysis ---
+                if interpreter:
+                    try:
+                        rep_count, form, prediction, angles = analyzer.process_frame(
+                            interpreter=interpreter,
+                            input_details=input_details,
+                            output_details=output_details,
+                            label_mapping=label_mapping,
+                            landmarks=final_landmarks_for_ui, 
+                            current_exercise=analyzer.stable_prediction
+                        )
                         
-                        # 2. Add offset to get full frame pixels
-                        global_px = px + x1
-                        global_py = py + y1
+                        person_response.update({
+                            'rep_counter': rep_count,
+                            'form_status': form,
+                            'stable_prediction': prediction,
+                            'debug_angles': {k: int(v) for k, v in angles.items()}
+                        })
                         
-                        # 3. Renormalize to full frame (0.0 - 1.0)
-                        lm.x = global_px / w
-                        lm.y = global_py / h
+                        # Logging
+                        log_entry = analyzer.get_new_error_log()
+                        session_id = client_camera_state.get('active_session_id')
                         
-                        # Add to UI list
-                        adjusted_landmarks_for_ui.append({'x': lm.x, 'y': lm.y, 'visibility': lm.visibility})
+                        if session_id and log_entry:
+                            try:
+                                error_type_str = f"[P{track_id}] {log_entry['error_type']}"
+                                new_log = ErrorLog(
+                                    session_id=session_id, 
+                                    exercise_name=log_entry['exercise_name'], 
+                                    rep_number=log_entry['rep_number'], 
+                                    error_type=error_type_str
+                                )
+                                db.session.add(new_log)
+                                db.session.commit()
+                            except Exception as e:
+                                db.session.rollback()
+                                print(f"Error during logging: {e}")
 
-                    person_response['landmarks'] = adjusted_landmarks_for_ui
+                        # Broadcasting
+                        last_form = client_camera_state['last_form_status'].get(track_id)
+                        if "ERROR" in form and form != last_form:
+                            if gym_id:
+                                socketio.emit('form_error', {
+                                    'message': f"Person {track_id}: {form.replace('ERROR: ', '')}",
+                                    'camera_id': camera_id,
+                                    'user_name': f"{user_info.get('firstname', 'Unknown')} {user_info.get('lastname', 'User')}",
+                                    'timestamp': datetime.utcnow().isoformat()
+                                }, room=f'gym_{gym_id}')
+                            client_camera_state['last_form_status'][track_id] = form
+                        elif "ERROR" not in form:
+                            client_camera_state['last_form_status'][track_id] = None
+                        
+                        alert_data = analyzer.get_triggered_alert() 
+                        if alert_data:
+                            alert_data['camera_id'] = camera_id
+                            alert_data['message'] = f"Person {track_id}: {alert_data['message']}"
+                            if gym_id:
+                                socketio.emit('trainer_alert', alert_data, room=f'gym_{gym_id}')
 
-                    # --- 3. Analysis ---
-                    if interpreter:
-                        try:
-                            current_exercise_pred = analyzer.stable_prediction 
-                            
-                            # Pass the FULL 33 landmarks from MediaPipe
-                            rep_count, form, prediction, angles = analyzer.process_frame(
-                                interpreter=interpreter,
-                                input_details=input_details,
-                                output_details=output_details,
-                                label_mapping=label_mapping,
-                                landmarks=mp_results.pose_landmarks.landmark, 
-                                current_exercise=current_exercise_pred
-                            )
-                            
-                            person_response.update({
-                                'rep_counter': rep_count,
-                                'form_status': form,
-                                'stable_prediction': prediction,
-                                'debug_angles': {k: int(v) for k, v in angles.items()}
-                            })
-                            
-                            # --- Logging ---
-                            log_entry = analyzer.get_new_error_log()
-                            session_id = client_camera_state.get('active_session_id')
-                            
-                            if session_id and log_entry:
-                                try:
-                                    error_type_str = f"[P{track_id}] {log_entry['error_type']}"
-                                    new_log = ErrorLog(
-                                        session_id=session_id, 
-                                        exercise_name=log_entry['exercise_name'], 
-                                        rep_number=log_entry['rep_number'], 
-                                        error_type=error_type_str
-                                    )
-                                    db.session.add(new_log)
-                                    db.session.commit()
-                                except Exception as e:
-                                    db.session.rollback()
-                                    print(f"Error during logging: {e}")
-
-                            # --- Form Error Broadcasting ---
-                            last_form = client_camera_state['last_form_status'].get(track_id)
-                            if "ERROR" in form and form != last_form:
-                                 if gym_id:
-                                    socketio.emit('form_error', {
-                                        'message': f"Person {track_id}: {form.replace('ERROR: ', '')}",
-                                        'camera_id': camera_id,
-                                        'user_name': f"{user_info.get('firstname', 'Unknown')} {user_info.get('lastname', 'User')}",
-                                        'timestamp': datetime.utcnow().isoformat()
-                                    }, room=f'gym_{gym_id}')
-                                 client_camera_state['last_form_status'][track_id] = form
-                            elif "ERROR" not in form:
-                                 client_camera_state['last_form_status'][track_id] = None
-                            
-                            # --- Trainer Alert Broadcasting ---
-                            alert_data = analyzer.get_triggered_alert() 
-                            if alert_data:
-                                alert_data['camera_id'] = camera_id
-                                alert_data['message'] = f"Person {track_id}: {alert_data['message']}"
-                                if gym_id:
-                                    socketio.emit('trainer_alert', alert_data, room=f'gym_{gym_id}')
-
-                        except Exception as e:
-                            print(f"Error analyzing person {track_id}: {e}")
+                    except Exception as e:
+                        print(f"Error analyzing person {track_id}: {e}")
             
                 current_frame_data.append(person_response)
 
