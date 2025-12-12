@@ -185,11 +185,14 @@ class ExerciseAnalyzer:
             
             # 1. STANDING STRAIGHT CHECK
             # If hip angle > 155, you are standing. 
-            # BANS: Kickbacks, Rows, Good Mornings, Incline Bench
             hip_angle = calculate_angle_2d([s_x, s_y], [h_x, h_y], [k_x, k_y])
             
+            # --- FIX: Removed RDL, Good Morning, and Rows from this list ---
+            # These exercises start standing, so banning them here breaks detection.
             standing_banned_list = [
-                'tricepKickback', 'inclineBenchPress', 'bentOverRow', 'dumbbellGoodMorning', 'romanianDeadlift'
+                'inclineBenchPress', 
+                'inclineDumbbellChestFly'
+                # REMOVED: 'tricepKickback', 'bentOverRow', 'dumbbellGoodMorning', 'romanianDeadlift'
             ]
             
             if hip_angle > 155 and ai_prediction in standing_banned_list:
@@ -221,6 +224,10 @@ class ExerciseAnalyzer:
         
         if not self.model_configured: self._auto_configure_model(input_details)
 
+        # WARNING: Check for Scaler
+        if scaler is None and self.frame_count % 100 == 0:
+            print("[WARNING] No Scaler provided! Predictions may be random.")
+
         # 1. Extract Features
         if self.input_size == 47: 
             features = extract_engineered_features(landmarks)
@@ -247,6 +254,16 @@ class ExerciseAnalyzer:
                       prediction = np.exp(prediction - np.max(prediction))
                       prediction = prediction / prediction.sum()
 
+                # --- DEBUG: Print Top 3 Guesses ---
+                # This helps identify if the model is confident but wrong, or just confused.
+                # Remove this block later for production.
+                # top_3 = prediction.argsort()[-3:][::-1]
+                # print(f"\n[Raw AI] Frame {self.frame_count}")
+                # for t in top_3:
+                #    lbl = label_mapping.get(t, str(t))
+                #    print(f"  {lbl}: {prediction[t]:.2f}")
+                # -----------------------------------
+
                 idx = int(np.argmax(prediction))
                 conf = prediction[idx]
                 raw_label = str(label_mapping.get(idx, label_mapping.get(str(idx), "neutral")))
@@ -260,12 +277,11 @@ class ExerciseAnalyzer:
 
                 most_common, count = Counter(self.recent_predictions).most_common(1)[0]
                 
-                # --- FIXED: Use Simple Majority (50%+) to prevent getting stuck ---
                 if count > (self.STABILITY_FRAMES // 2): 
                     if self.stable_prediction == most_common:
                         self.stable_counter += 1
                     else:
-                        # --- FIXED: Reset Reps on Switch ---
+                        # Reset Reps on Exercise Switch
                         if most_common != "neutral" and most_common != self.stable_prediction:
                              self.rep_counter = 0 
                              self.stage = None
