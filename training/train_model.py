@@ -19,13 +19,16 @@ import joblib
 
 # --- CONFIGURATION ---
 SEQUENCE_LENGTH = 90
-RAW_DATA_CSV = 'exercise_sequences_augmented.csv' 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-LABEL_MAPPING_FILE = os.path.join(SCRIPT_DIR, 'label_mapping.json')
-MODEL_FILE = os.path.join(SCRIPT_DIR, 'exercise_classifier_bilstm.h5')
-SCALER_FILE = os.path.join(SCRIPT_DIR, 'scaler.pkl') # NEW: Save the scaler
-CONFUSION_MATRIX_FILE = os.path.join(SCRIPT_DIR, 'confusion_matrix.png')
 PADDING_VALUE = -10.0 
+
+# Paths setup (Uses the directory where this script is located)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+RAW_DATA_CSV = os.path.join(SCRIPT_DIR, 'exercise_sequences_augmented.csv') 
+LABEL_MAPPING_FILE = os.path.join(SCRIPT_DIR, 'label_mapping.json')
+MODEL_FILE_H5 = os.path.join(SCRIPT_DIR, 'exercise_classifier_bilstm.h5')
+MODEL_FILE_TFLITE = os.path.join(SCRIPT_DIR, 'exercise_classifier_quant.tflite') # TFLite Output
+SCALER_FILE = os.path.join(SCRIPT_DIR, 'scaler.pkl') 
+CONFUSION_MATRIX_FILE = os.path.join(SCRIPT_DIR, 'confusion_matrix.png')
 
 # --- 1. ROBUST NORMALIZATION & FEATURE EXTRACTION ---
 
@@ -173,7 +176,7 @@ def augment_data(X_list, y_list, num_augmentations=2):
 def main():
     print(f"Loading data from {RAW_DATA_CSV}...")
     if not os.path.exists(RAW_DATA_CSV):
-        print("Data file not found.")
+        print(f"ERROR: Data file not found at {RAW_DATA_CSV}")
         return
 
     df = pd.read_csv(RAW_DATA_CSV)
@@ -181,6 +184,10 @@ def main():
     # 1. Extract Features aligned with Web App
     sequences, labels_raw = create_dataset_from_csv(df)
     
+    if not sequences:
+        print("ERROR: No sequences extracted. Check your CSV format.")
+        return
+
     # 2. Flatten for Scaling
     # We need to scale all frames together
     all_frames = np.vstack(sequences)
@@ -272,8 +279,23 @@ def main():
     loss, acc = model.evaluate(X_test, y_test_cat)
     print(f"\nTest Accuracy: {acc*100:.2f}%")
     
-    model.save(MODEL_FILE)
-    print(f"✅ Model saved to {MODEL_FILE}")
+    model.save(MODEL_FILE_H5)
+    print(f"✅ Keras Model saved to {MODEL_FILE_H5}")
+
+    # --- CONVERT TO TFLITE ---
+    print("Converting to TFLite...")
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.target_spec.supported_ops = [
+      tf.lite.OpsSet.TFLITE_BUILTINS, # enable TensorFlow Lite ops.
+      tf.lite.OpsSet.SELECT_TF_OPS # enable TensorFlow ops.
+    ]
+    converter.optimizations = [tf.lite.Optimize.DEFAULT] # Quantization
+    tflite_model = converter.convert()
+
+    with open(MODEL_FILE_TFLITE, 'wb') as f:
+        f.write(tflite_model)
+    print(f"✅ TFLite Model saved to {MODEL_FILE_TFLITE}")
+    # -------------------------
 
     # Confusion Matrix
     y_pred = model.predict(X_test)

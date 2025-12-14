@@ -5,4 +5,6 @@ node_modules/
 raw_videos
 *.mp4
 *.avi
-*.mov
+*.movgit reset --soft HEAD~5
+training/exercise_sequences_landmarks.csv
+training/exercise_sequences_augmented.csv
