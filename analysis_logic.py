@@ -113,7 +113,7 @@ def extract_engineered_features(landmarks):
 # --- 3. ANALYZER CLASS ---
 
 class ExerciseAnalyzer:
-    def __init__(self, sequence_length=90, conf_threshold=0.60, stability_frames=20, reset_timeout=5.0):
+    def __init__(self, sequence_length=90, conf_threshold=0.60, stability_frames=12, reset_timeout=5.0):
         self.rep_counter = 0
         self.stage = None
         self.form_status = "START EXERCISE"
@@ -130,12 +130,14 @@ class ExerciseAnalyzer:
         
         # Stability Settings
         self.CONF_THRESHOLD = conf_threshold
-        self.STABILITY_FRAMES = int(stability_frames) 
+        # CHANGED: Reduced from 20 to 12 for faster locking
+        self.STABILITY_FRAMES = 12 
         self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES)
         self.stable_prediction = "neutral"
         
         self.frame_count = 0
-        self.PREDICTION_INTERVAL = 3
+        # CHANGED: Reduced from 3 to 2 for smoother updates
+        self.PREDICTION_INTERVAL = 2
         self.stable_counter = 0 
         
         self.triggered_alert = None
@@ -192,7 +194,6 @@ class ExerciseAnalyzer:
             standing_banned_list = [
                 'inclineBenchPress', 
                 'inclineDumbbellChestFly'
-                # REMOVED: 'tricepKickback', 'bentOverRow', 'dumbbellGoodMorning', 'romanianDeadlift'
             ]
             
             if hip_angle > 155 and ai_prediction in standing_banned_list:
@@ -254,16 +255,6 @@ class ExerciseAnalyzer:
                       prediction = np.exp(prediction - np.max(prediction))
                       prediction = prediction / prediction.sum()
 
-                # --- DEBUG: Print Top 3 Guesses ---
-                # This helps identify if the model is confident but wrong, or just confused.
-                # Remove this block later for production.
-                # top_3 = prediction.argsort()[-3:][::-1]
-                # print(f"\n[Raw AI] Frame {self.frame_count}")
-                # for t in top_3:
-                #    lbl = label_mapping.get(t, str(t))
-                #    print(f"  {lbl}: {prediction[t]:.2f}")
-                # -----------------------------------
-
                 idx = int(np.argmax(prediction))
                 conf = prediction[idx]
                 raw_label = str(label_mapping.get(idx, label_mapping.get(str(idx), "neutral")))
@@ -277,25 +268,28 @@ class ExerciseAnalyzer:
 
                 most_common, count = Counter(self.recent_predictions).most_common(1)[0]
                 
+                # --- FIXED STABILITY LOGIC ---
                 if count > (self.STABILITY_FRAMES // 2): 
                     if self.stable_prediction == most_common:
                         self.stable_counter += 1
                     else:
-                        # Reset Reps on Exercise Switch
-                        if most_common != "neutral" and most_common != self.stable_prediction:
+                        # Only reset reps if we switch from one EXERCISE to ANOTHER EXERCISE
+                        # Do NOT reset if we just switch to 'neutral' momentarily
+                        if most_common != "neutral" and self.stable_prediction != "neutral":
                              self.rep_counter = 0 
                              self.stage = None
                         
-                        if most_common == "neutral":
-                            self.stage = None  
-                            
+                        # CHANGED: REMOVED "if most_common == 'neutral': self.stage = None"
+                        # This keeps the stage active during brief "neutral" flickers.
+
                         self.stable_prediction = most_common
                         self.stable_counter = 0 
 
             except Exception as e: print(f"Inference Error: {e}")
 
         # 4. Only Analyze if Stable
-        if self.stable_counter > 10 and self.stable_prediction != "neutral":
+        # Reduced threshold slightly (from 10 to 5) to allow analyzing sooner
+        if self.stable_counter > 5 and self.stable_prediction != "neutral":
              self.analyze_frame(self.stable_prediction, landmarks)
         elif self.stable_prediction != "neutral":
              self.form_status = f"Verifying {self.stable_prediction}..."
@@ -480,7 +474,9 @@ class ExerciseAnalyzer:
                 if elb_ang < 75 and self.stage == 'down':
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
-                if lw.y < le.y: self.form_status = "ERROR: ELBOWS HIGHER"
+                
+                # CHANGED: Added buffer (0.05) to be less strict
+                if lw.y < (le.y - 0.05): self.form_status = "ERROR: ELBOWS HIGHER"
 
             # --- LOGGING ---
             if (self.rep_counter > prev_rep_counter):
