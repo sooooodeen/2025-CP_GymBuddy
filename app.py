@@ -13,7 +13,7 @@ import io
 import eventlet
 import re
 import mediapipe as mp 
-import joblib  # <--- NEW: Required to load the scaler
+import joblib
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
@@ -113,10 +113,10 @@ class ErrorLog(db.Model):
 SEQUENCE_LENGTH = 90
 CONF_THRESHOLD = 0.30 
 STABILITY_FRAMES = 10
-TRAINING_ARTIFACTS_DIR = 'training'
+TRAINING_ARTIFACTS_DIR = os.path.join(basedir, 'training') # Made robust path
 
 interpreter = None 
-scaler = None  # <--- NEW: Global variable for scaler
+scaler = None 
 input_details = None
 output_details = None
 label_mapping = {}
@@ -157,7 +157,7 @@ def load_model_and_labels():
     try:
         TFLITE_MODEL_FILENAME = os.path.join(TRAINING_ARTIFACTS_DIR, 'exercise_classifier_quant.tflite')
         LABEL_MAPPING_FILENAME = os.path.join(TRAINING_ARTIFACTS_DIR, 'label_mapping.json')
-        SCALER_FILENAME = os.path.join(TRAINING_ARTIFACTS_DIR, 'scaler.pkl') # <--- NEW
+        SCALER_FILENAME = os.path.join(TRAINING_ARTIFACTS_DIR, 'scaler.pkl')
         
         if os.path.exists(TFLITE_MODEL_FILENAME):
             interpreter = tf.lite.Interpreter(model_path=TFLITE_MODEL_FILENAME)
@@ -627,7 +627,7 @@ def admin_dashboard():
         "admin_dashboard.html", 
         assignment=current_assignment, 
         total_errors_today=total_errors_today, 
-        most_common_error_week=most_common_error_week,
+        most_common_error_week=most_common_error_week, 
         total_errors_month=total_errors_month, 
         recent_errors=recent_errors,
         current_month_chart_data=current_month_chart_data,
@@ -979,7 +979,15 @@ def process_frame_task(sid, data, user_info):
         return
 
     # --- 1. YOLOv8 Tracking ---
-    results = yolo_model.track(frame_rgb, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True)
+    # !!! FIX: WRAPPED IN TRY-EXCEPT TO PREVENT CRASH !!!
+    try:
+        results = yolo_model.track(frame_rgb, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True)
+    except Exception as e:
+        print(f"⚠️ YOLO Tracking Error (Skipping Frame): {e}")
+        # Abort processing this frame safely
+        if client_camera_state: client_camera_state['is_processing'] = False
+        return
+
     current_frame_data = [] 
     
     if results[0].boxes is not None:
@@ -1060,7 +1068,7 @@ def process_frame_task(sid, data, user_info):
                 }
 
                 # --- 4. Analysis ---
-                if interpreter and scaler: # <--- CHANGED: Ensure scaler is present
+                if interpreter and scaler: 
                     try:
                         rep_count, form, prediction, angles = analyzer.process_frame(
                             interpreter=interpreter,
@@ -1069,7 +1077,7 @@ def process_frame_task(sid, data, user_info):
                             label_mapping=label_mapping,
                             landmarks=final_landmarks_for_ui, 
                             current_exercise=analyzer.stable_prediction,
-                            scaler=scaler # <--- CHANGED: Pass the scaler to the analyzer
+                            scaler=scaler 
                         )
 
                         # DEBUG PRINT FOR LATENCY & ACCURACY
