@@ -130,7 +130,7 @@ class ExerciseAnalyzer:
         
         # Stability Settings
         self.CONF_THRESHOLD = conf_threshold
-        # FIX: Reduced from 20 to 12 for faster detection (snappier response)
+        # FIX: Reduced from 20 to 12 for faster locking
         self.STABILITY_FRAMES = 12 
         self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES)
         self.stable_prediction = "neutral"
@@ -398,6 +398,7 @@ class ExerciseAnalyzer:
 
             # 7. Incline Bench Press
             elif exercise_name == 'inclineBenchPress':
+                # Guardrail Double Check
                 hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 if hip_ang > 165: 
                     self.form_status = "Stand Still / Neutral"
