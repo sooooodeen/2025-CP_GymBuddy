@@ -130,13 +130,13 @@ class ExerciseAnalyzer:
         
         # Stability Settings
         self.CONF_THRESHOLD = conf_threshold
-        # FIX: Reduced from 20 to 12 for faster locking
+        # CHANGED: Reduced from 20 to 12 for faster locking
         self.STABILITY_FRAMES = 12 
         self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES)
         self.stable_prediction = "neutral"
         
         self.frame_count = 0
-        # FIX: Reduced from 3 to 2 for smoother updates
+        # CHANGED: Reduced from 3 to 2 for smoother updates
         self.PREDICTION_INTERVAL = 2
         self.stable_counter = 0 
         
@@ -268,7 +268,7 @@ class ExerciseAnalyzer:
 
                 most_common, count = Counter(self.recent_predictions).most_common(1)[0]
                 
-                # --- FIXED STABILITY LOGIC (Prevents Rep Resetting) ---
+                # --- FIXED STABILITY LOGIC ---
                 if count > (self.STABILITY_FRAMES // 2): 
                     if self.stable_prediction == most_common:
                         self.stable_counter += 1
@@ -279,8 +279,9 @@ class ExerciseAnalyzer:
                              self.rep_counter = 0 
                              self.stage = None
                         
-                        # IMPORTANT FIX: Removed the line that reset stage on 'neutral'
-                        
+                        # CHANGED: REMOVED "if most_common == 'neutral': self.stage = None"
+                        # This keeps the stage active during brief "neutral" flickers.
+
                         self.stable_prediction = most_common
                         self.stable_counter = 0 
 
@@ -474,7 +475,7 @@ class ExerciseAnalyzer:
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
                 
-                # FIX: Added 0.05 tolerance buffer for less strict form check
+                # CHANGED: Added buffer (0.05) to be less strict
                 if lw.y < (le.y - 0.05): self.form_status = "ERROR: ELBOWS HIGHER"
 
             # --- LOGGING ---
