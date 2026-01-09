@@ -31,6 +31,8 @@ from analysis_logic import ExerciseAnalyzer
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
+
+# Load environment variables
 load_dotenv('config.env')
 
 # --- App and Database Configuration ---
@@ -47,7 +49,7 @@ bcrypt = Bcrypt(app)
 migrate = Migrate(app, db)
 socketio = SocketIO(app, async_mode='eventlet') 
 
-# --- Database Model Definitions ---
+# --- Mail Configuration ---
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
 app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
 app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True').lower() in ('true', '1', 't')
@@ -59,6 +61,8 @@ app.config['SECURITY_EMAIL_SALT'] = 'email-confirm-salt'
 
 mail = Mail(app)
 s = URLSafeTimedSerializer(app.secret_key)
+
+# --- Database Model Definitions ---
 
 class Gym(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -113,7 +117,7 @@ class ErrorLog(db.Model):
 SEQUENCE_LENGTH = 90
 CONF_THRESHOLD = 0.30 
 STABILITY_FRAMES = 10
-TRAINING_ARTIFACTS_DIR = os.path.join(basedir, 'training') # Made robust path
+TRAINING_ARTIFACTS_DIR = os.path.join(basedir, 'training') 
 
 interpreter = None 
 scaler = None 
@@ -150,7 +154,6 @@ pose_extractor = mp_pose.Pose(
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
-# -----------------------------------------------
 
 def load_model_and_labels():
     global interpreter, label_mapping, input_details, output_details, scaler
@@ -605,7 +608,11 @@ def admin_dashboard():
     start_of_week = today - timedelta(days=today.weekday())
     current_assignment = db.session.query(Assignment).join(User).filter(User.gym_id == gym_id).first()
     
-    total_errors_today = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, func.date(ErrorLog.timestamp) == today).scalar() or 0
+    # --- [FIX: Use 24-hour window for "Today" count to avoid timezone issues] ---
+    last_24_hours = datetime.utcnow() - timedelta(hours=24)
+    total_errors_today = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= last_24_hours).scalar() or 0
+    # ----------------------------------------------------------------------------
+    
     most_common_error_week_query = db.session.query(ErrorLog.error_type, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_week).group_by(ErrorLog.error_type).order_by(func.count(ErrorLog.id).desc()).first()
     most_common_error_week = most_common_error_week_query[0].replace('ERROR: ', '') if most_common_error_week_query else "N/A"
     total_errors_month = errors_current_month 
@@ -979,12 +986,10 @@ def process_frame_task(sid, data, user_info):
         return
 
     # --- 1. YOLOv8 Tracking ---
-    # !!! FIX: WRAPPED IN TRY-EXCEPT TO PREVENT CRASH !!!
     try:
         results = yolo_model.track(frame_rgb, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True)
     except Exception as e:
         print(f"⚠️ YOLO Tracking Error (Skipping Frame): {e}")
-        # Abort processing this frame safely
         if client_camera_state: client_camera_state['is_processing'] = False
         return
 
@@ -1090,9 +1095,38 @@ def process_frame_task(sid, data, user_info):
                             'debug_angles': {k: int(v) for k, v in angles.items()}
                         })
                         
-                        # Logging
+                        # Logging Logic
                         log_entry = analyzer.get_new_error_log()
                         session_id = client_camera_state.get('active_session_id')
+                        
+                        # --- [AUTO-CREATE SESSION FIX START] ---
+                        # If an error is detected but no session exists, create one automatically
+                        if log_entry and not session_id:
+                            try:
+                                with app.app_context(): # Ensure app context is active
+                                    # Fallback: If user_id is missing from session, we can't save. 
+                                    # Assuming user is logged in if they are using this feature.
+                                    # If gym_id is missing, default to 1 just to save the data.
+                                    current_user_id = session.get('user_id')
+                                    current_gym_id = gym_id if gym_id else 1 
+                                    
+                                    if current_user_id:
+                                        new_session = WorkoutSession(
+                                            user_id=current_user_id,
+                                            gym_id=current_gym_id
+                                        )
+                                        db.session.add(new_session)
+                                        db.session.commit()
+                                        
+                                        session_id = new_session.id
+                                        client_camera_state['active_session_id'] = session_id
+                                        print(f"✅ Auto-started Session {session_id} for User {current_user_id}")
+                                    else:
+                                        print("❌ Cannot auto-start session: User ID not found in flask session.")
+                            except Exception as e:
+                                db.session.rollback()
+                                print(f"❌ Failed to auto-start session: {e}")
+                        # --- [AUTO-CREATE SESSION FIX END] ---
                         
                         if session_id and log_entry:
                             try:
@@ -1105,6 +1139,7 @@ def process_frame_task(sid, data, user_info):
                                 )
                                 db.session.add(new_log)
                                 db.session.commit()
+                                print(f"📝 Logged Error: {error_type_str}") # Confirmation print
                             except Exception as e:
                                 db.session.rollback()
                                 print(f"Error during logging: {e}")
@@ -1144,7 +1179,8 @@ def process_frame_task(sid, data, user_info):
 
     # END PROCESSING TIME
     process_time = (time.time() - start_time) * 1000
-    print(f"[DEBUG] Processing took: {process_time:.2f}ms")
+    if process_time > 100: # Only print if it's slow
+        print(f"[DEBUG] Processing took: {process_time:.2f}ms")
 
     if client_camera_state: client_camera_state['is_processing'] = False
 

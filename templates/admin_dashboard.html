@@ -3,6 +3,7 @@
 {% block content %}
 <head>
     <title>Dashboard | {{ session.get('user_gym_name', 'Admin') }}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </head>
 
 <div class="bg-[#f1f1f1] p-10 h-full font-Helvetica flex overflow-hidden flex-col gap-6">
@@ -74,7 +75,7 @@
             </div>
             <div class="border border-gray-300 bg-white h-full w-110 rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
                 <h1 class="text-xl font-bold font-Helvetica mb-2">Recent Error Log</h1>
-                <div class="flex flex-col overflow-y-auto gap-2 h-[100%]">
+                <div id="recent-log-container" class="flex flex-col overflow-y-auto gap-2 h-[100%]">
                     {% for log, user in recent_errors %}
                     <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center">
                         <div class="justify-self-start">
@@ -84,7 +85,7 @@
                         <span class="text-sm text-gray-500 time-ago" data-timestamp="{{ log.timestamp.isoformat() }}"></span>
                     </div>
                     {% else %}
-                    <div class="text-center text-gray-500 p-4 h-full flex items-center justify-center">No errors recorded yet.</div>
+                    <div id="no-errors-msg" class="text-center text-gray-500 p-4 h-full flex items-center justify-center">No errors recorded yet.</div>
                     {% endfor %}
                 </div>
             </div>
@@ -100,7 +101,7 @@
                         <h1 class="rounded-full flex justify-center items-center py-1 px-3 bg-gray-200 text-xs w-15 text-gray-500 font-Helvetica font-semibold tracking-wider">Today</h1>
                     </div>
                 </div>
-                <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">{{ total_errors_today }}</h1>
+                <h1 id="total-errors-counter" class="text-3xl h-full w-full flex justify-center items-center font-bold">{{ total_errors_today }}</h1>
             </div>
             <div class="bg-white border border-gray-300 h-full rounded-2xl p-6 flex items-center flex-col">
                 <div class="box-head flex gap-2 w-full items-center">
@@ -126,27 +127,14 @@
                 </div>
                 <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">{{ total_errors_month }}</h1>
             </div>
-             <div class="border border-gray-300 bg-white h-full w-full rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
+            
+            <div class="border border-gray-300 bg-white h-full w-full rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
                 <h1 class="text-xl font-bold font-Helvetica mb-2">Immediate Action Needed</h1>
-                <div class="flex flex-col overflow-y-auto gap-2 max-h-[50vh]">
-                    <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center">
-                        <div class="justify-self-start grid grid-cols-[15%_1fr_15%] w-full gap-2 items-center flex-row">
-                            <div class="flex justify-center items-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F16767" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert-icon lucide-triangle-alert"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-                            </div>
-                            <div class="leading-tight">
-                                <p class="text-[#5a5757] text-xl font-semibold">"Workout Error"</p>
-                                <span class="text-md text-gray-500 time-ago">"Time"</span>
-                            </div>
-                            <div class="w-full flex justify-center items-center">
-                                <button class="rounded-full bg-green-500 h-10 hover:bg-green-400 transition ease-in-out delay-50 w-10 flex justify-center items-center cursor-pointer">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-icon lucide-check"><path d="M20 6 9 17l-5-5"/></svg>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                <div id="immediate-action-container" class="flex flex-col overflow-y-auto gap-2 max-h-[50vh]">
+                    <div id="no-alerts-msg" class="text-center text-gray-500 p-4">No critical alerts currently.</div>
                 </div>
             </div>
+            
             <div class="border border-gray-300 h-full flex flex-col col-span-2 justify-around rounded-2xl bg-white p-6 px-8">
                 <div class="flex flex-col items-start">
                     <h1 class="font-Helvetica text-3xl font-bold">Muscle Group Errors Chart</h1>
@@ -161,6 +149,81 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+     // 1. Initialize Socket.IO
+     const socket = io();
+     const gymId = "{{ session.get('user_gym_id') }}";
+     
+     if (gymId) {
+        console.log("Dashboard connected for Gym ID:", gymId);
+     }
+
+     // --- REAL-TIME LISTENERS ---
+
+     // A. Listen for Form Errors (Updates Counter & Recent Log)
+     socket.on('form_error', function(data) {
+         console.log("Real-time Error:", data);
+
+         // 1. Update Counter
+         const totalCounter = document.getElementById('total-errors-counter');
+         if(totalCounter) {
+             let currentCount = parseInt(totalCounter.innerText) || 0;
+             totalCounter.innerText = currentCount + 1;
+         }
+
+         // 2. Add to Recent Log
+         const recentLogContainer = document.getElementById('recent-log-container');
+         const noErrorsMsg = document.getElementById('no-errors-msg');
+         
+         if(recentLogContainer) {
+             if(noErrorsMsg) noErrorsMsg.remove(); // Remove "No errors" placeholder
+             
+             // Construct HTML row matching your design
+             const newRow = `
+                 <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center animate-pulse transition-all duration-500">
+                     <div class="justify-self-start">
+                         <p class="text-[#5a5757] text-md font-semibold">${data.message}</p>
+                         <p class="text-gray-500 text-sm">${data.user_name}</p>
+                     </div>
+                     <span class="text-sm text-gray-500">Just now</span>
+                 </div>
+             `;
+             recentLogContainer.insertAdjacentHTML('afterbegin', newRow);
+         }
+     });
+
+     // B. Listen for Critical Alerts (Immediate Action Needed)
+     socket.on('trainer_alert', function(data) {
+         console.log("CRITICAL ALERT:", data);
+         
+         const actionContainer = document.getElementById('immediate-action-container');
+         const noAlertsMsg = document.getElementById('no-alerts-msg');
+         
+         if (actionContainer) {
+              if(noAlertsMsg) noAlertsMsg.remove();
+
+              const alertRow = `
+                 <div class="border border-red-200 bg-red-50 w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center mb-2 animate-bounce">
+                     <div class="justify-self-start grid grid-cols-[15%_1fr_15%] w-full gap-2 items-center flex-row">
+                         <div class="flex justify-center items-center">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F16767" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                         </div>
+                         <div class="leading-tight">
+                             <p class="text-[#5a5757] text-xl font-semibold">${data.message}</p>
+                             <span class="text-md text-gray-500">Just now</span>
+                         </div>
+                          <div class="w-full flex justify-center items-center">
+                             <button onclick="this.closest('.border').remove()" class="rounded-full bg-green-500 h-10 hover:bg-green-400 w-10 flex justify-center items-center cursor-pointer text-white shadow-md transition-transform hover:scale-105">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                             </button>
+                         </div>
+                     </div>
+                 </div>
+              `;
+              actionContainer.insertAdjacentHTML('afterbegin', alertRow);
+         }
+     });
+
+     // --- TIME AGO UTILITY ---
      function formatTimeAgo(utcIsoString) {
          const now = new Date();
          const past = new Date(utcIsoString);
@@ -182,72 +245,43 @@ document.addEventListener('DOMContentLoaded', function() {
          timeElements.forEach(el => {
              const timestamp = el.getAttribute('data-timestamp');
              if (timestamp) {
-                 el.textContent = formatTimeAgo(timestamp + 'Z');
+                 // Ensure valid ISO format with 'Z' if missing
+                 let isoStr = timestamp.endsWith('Z') ? timestamp : timestamp + 'Z'; 
+                 el.textContent = formatTimeAgo(isoStr);
              }
          });
      }
      updateAllTimestamps();
      setInterval(updateAllTimestamps, 60000);
- });
+});
 
- // Use the dynamic data passed from app.py
- const chartData = JSON.parse('{{ current_month_chart_data | tojson | safe }}');
-
- const ctx = document.getElementById('myBarChart').getContext('2d');
- const colors = {
+// --- CHART INITIALIZATION (Unchanged) ---
+const chartData = JSON.parse('{{ current_month_chart_data | tojson | safe }}');
+const ctx = document.getElementById('myBarChart').getContext('2d');
+const colors = {
      chest: { backgroundColor: 'rgba(255, 99, 132, 0.5)', borderColor: 'rgba(255, 99, 132, 1)' },
      back: { backgroundColor: 'rgba(54, 162, 235, 0.5)', borderColor: 'rgba(54, 162, 235, 1)' },
      legs: { backgroundColor: 'rgba(255, 206, 86, 0.5)', borderColor: 'rgba(255, 206, 86, 1)' },
      arms: { backgroundColor: 'rgba(75, 192, 192, 0.5)', borderColor: 'rgba(75, 192, 192, 1)' }
- };
+};
 
- const myChart = new Chart(ctx, {
+const myChart = new Chart(ctx, {
      type: 'bar',
      data: {
          labels: ['Muscle Groups'], 
          datasets: [
-             {
-                 label: 'Chest',
-                 data: [chartData.chest], 
-                 backgroundColor: colors.chest.backgroundColor,
-                 borderColor: colors.chest.borderColor,
-                 borderWidth: 1
-             },
-             {
-                 label: 'Back',
-                 data: [chartData.back], 
-                 backgroundColor: colors.back.backgroundColor,
-                 borderColor: colors.back.borderColor,
-                 borderWidth: 1
-             },
-             {
-                 label: 'Legs',
-                 data: [chartData.legs], 
-                 backgroundColor: colors.legs.backgroundColor,
-                 borderColor: colors.legs.borderColor,
-                 borderWidth: 1
-             },
-             {
-                 label: 'Arms',
-                 data: [chartData.arms],
-                 backgroundColor: colors.arms.backgroundColor,
-                 borderColor: colors.arms.borderColor,
-                 borderWidth: 1
-             }
+             { label: 'Chest', data: [chartData.chest], backgroundColor: colors.chest.backgroundColor, borderColor: colors.chest.borderColor, borderWidth: 1 },
+             { label: 'Back', data: [chartData.back], backgroundColor: colors.back.backgroundColor, borderColor: colors.back.borderColor, borderWidth: 1 },
+             { label: 'Legs', data: [chartData.legs], backgroundColor: colors.legs.backgroundColor, borderColor: colors.legs.borderColor, borderWidth: 1 },
+             { label: 'Arms', data: [chartData.arms], backgroundColor: colors.arms.backgroundColor, borderColor: colors.arms.borderColor, borderWidth: 1 }
          ]
      },
      options: {
          scales: {
-             y: {
-                 beginAtZero: true,
-             },
-             x:{
-                 ticks: {
-                     font: { size: 14, weight: 'bold' },
-                 }  
-             }
+             y: { beginAtZero: true },
+             x:{ ticks: { font: { size: 14, weight: 'bold' } } }  
          }
      }
- });
+});
 </script>
-{% endblock %}  
+{% endblock %}
