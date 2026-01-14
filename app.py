@@ -26,6 +26,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import ForeignKey, func
 from sqlalchemy.orm import relationship
 from ultralytics import YOLO 
+from datetime import timedelta
 
 from analysis_logic import ExerciseAnalyzer 
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired
@@ -242,6 +243,14 @@ def admin_required(f):
     return decorated_function
 
 # --- Routes ---
+@app.context_processor
+def utility_processor():
+    def to_gmt8(utc_dt):
+        if not utc_dt:
+            return ""
+        # Manually adds 8 hours to the UTC time stored in DB
+        return utc_dt + timedelta(hours=8)
+    return dict(to_gmt8=to_gmt8)
 
 @app.route("/")
 def home():
