@@ -830,72 +830,70 @@ clients = {}
 def handle_connect():
     if 'user_id' not in session:
         print("Warning: Unauthenticated user tried to connect.")
-        return False 
-    
-    gym_id = session.get('user_gym_id')
-    if not gym_id:
-        print(f"Warning: User {session['user_id']} connected without a gym_id.")
         return False
 
-    join_room(f'gym_{gym_id}')
-    clients[request.sid] = { 'gym_id': gym_id }
-    print(f"Client connected: {request.sid}, joined room: gym_{gym_id}")
+    gym_id = session.get('user_gym_id')
+    if not gym_id:
+        print(f"Warning: User {session.get('user_id')} connected without a gym_id.")
+        return False
+
+    room = f'gym_{gym_id}'
+    join_room(room)
+    clients[request.sid] = {'gym_id': gym_id}
+    print(f"Client {request.sid} connected, joined room: {room}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
     sid = request.sid
-    client_data = clients.pop(sid, None) 
-    
+    client_data = clients.pop(sid, None)
+
     if client_data:
         gym_id = client_data.get('gym_id')
         if gym_id:
-            leave_room(f'gym_{gym_id}') 
-            print(f"Client disconnected: {sid}, left room: gym_{gym_id}")
-
-        for camera_id in list(client_data.keys()):
-            if camera_id == 'gym_id': continue 
-            handle_end_session({'camera_id': camera_id, 'sid_for_shutdown': sid}) 
+            room = f'gym_{gym_id}'
+            leave_room(room)
+            print(f"Client {sid} disconnected, left room: {room}")
     else:
-        print(f"Client disconnected: {sid} (no data found)")
-
+        print(f"Client {sid} disconnected (no data found)")
 
 @socketio.on('start_camera')
 def start_camera(data):
     sid = request.sid
     camera_id = data.get('camera_id')
-    if not camera_id: return
-    
+    if not camera_id:
+        return
+
     if sid in clients:
         try:
             clients[sid][camera_id] = {
-                'analyzers': {}, 
+                'analyzers': {},
                 'is_processing': False,
-                'active_session_id': None, 
-                'last_form_status': {} 
+                'active_session_id': None,
+                'last_form_status': {}
             }
-            print(f"✅ Successfully started camera '{camera_id}' for client {sid}") 
+            print(f"✅ Successfully started camera '{camera_id}' for client {sid}")
         except Exception as e:
-            print(f"❌ Error initializing resources for {camera_id}/{sid}: {e}") 
+            print(f"❌ Error initializing resources for {camera_id}/{sid}: {e}")
 
 @socketio.on('stop_camera')
 def stop_camera(data):
     sid = request.sid
     camera_id = data.get('camera_id')
-    if not camera_id: return
-    
-    handle_end_session(data) 
-    
+    if not camera_id:
+        return
+
+    handle_end_session(data)
+
     if sid in clients and camera_id in clients[sid]:
         clients[sid].pop(camera_id, None)
         print(f"Stopped camera '{camera_id}' for client {sid}")
-
 
 @socketio.on('start_session')
 def handle_start_session(data):
     camera_id = data.get('camera_id')
     sid = request.sid
     client_camera_state = clients.get(sid, {}).get(camera_id)
-    
+
     if 'user_id' not in session:
         print(f"Warning: Anonymous user {sid} tried to start session.")
         return
@@ -903,15 +901,15 @@ def handle_start_session(data):
     if client_camera_state:
         for analyzer in client_camera_state['analyzers'].values():
             analyzer.reset_session()
-        
+
         try:
             new_session = WorkoutSession(
                 user_id=session['user_id'],
-                gym_id=session['user_gym_id'] 
+                gym_id=session['user_gym_id']
             )
             db.session.add(new_session)
-            db.session.commit() 
-            
+            db.session.commit()
+
             client_camera_state['active_session_id'] = new_session.id
             print(f"Session {new_session.id} started for user {session['user_id']} in gym {session['user_gym_id']}")
             emit('session_started', {'camera_id': camera_id}, room=sid)
@@ -925,13 +923,14 @@ def handle_start_session(data):
 def handle_end_session(data):
     camera_id = data.get('camera_id')
     sid = data.get('sid_for_shutdown', request.sid)
-    
+
     if sid not in clients:
         print(f"Info: handle_end_session called for disconnected client {sid}")
         return
 
     client_camera_state = clients.get(sid, {}).get(camera_id)
-    if not client_camera_state: return
+    if not client_camera_state:
+        return
 
     session_id = client_camera_state.get('active_session_id')
 
@@ -944,78 +943,77 @@ def handle_end_session(data):
                     total_reps = 0
                     for analyzer in client_camera_state['analyzers'].values():
                         total_reps += analyzer.rep_counter
-                    
+
                     session_to_end.total_reps = total_reps
                     db.session.commit()
                     print(f"Session {session_id} ended for user {session_to_end.user_id}. Total Reps: {total_reps}")
-                    
+
                     if not data.get('sid_for_shutdown'):
                         emit('session_saved', {'camera_id': camera_id, 'reps': total_reps}, room=sid)
         except Exception as e:
             db.session.rollback()
             print(f"Error ending session {session_id} in DB: {e}")
-    
+
     if client_camera_state:
         client_camera_state['active_session_id'] = None
         for analyzer in client_camera_state['analyzers'].values():
             analyzer.reset_session()
 
 def process_frame_task(sid, data, user_info):
-    # START TIME for FPS calculation
     start_time = time.time()
-    
     global interpreter, label_mapping, input_details, output_details, clients, yolo_model, YOLO_CONF_THRESHOLD, pose_extractor, YOLO_TO_MP, scaler
-    
+
     gym_id = clients.get(sid, {}).get('gym_id')
 
     try:
         camera_id = data['camera_id']
         client_camera_state = clients.get(sid, {}).get(camera_id)
-        if not client_camera_state: return 
-    except (KeyError, TypeError): return 
-        
+        if not client_camera_state:
+            return
+    except (KeyError, TypeError):
+        return
+
     try:
         image_data = base64.b64decode(data['image_data'].split(',')[1])
         image = Image.open(io.BytesIO(image_data)).convert('RGB')
         frame_rgb = np.array(image)
         frame_rgb.flags.writeable = False
-        frame = frame_rgb 
+        frame = frame_rgb
     except Exception as e:
         print(f"Error decoding image: {e}")
-        if client_camera_state: client_camera_state['is_processing'] = False
+        if client_camera_state:
+            client_camera_state['is_processing'] = False
         return
 
-    # --- 1. YOLOv8 Tracking ---
+    # --- YOLOv8 Tracking ---
     try:
         results = yolo_model.track(frame_rgb, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True)
     except Exception as e:
         print(f"⚠️ YOLO Tracking Error (Skipping Frame): {e}")
-        if client_camera_state: client_camera_state['is_processing'] = False
+        if client_camera_state:
+            client_camera_state['is_processing'] = False
         return
 
-    current_frame_data = [] 
-    
+    current_frame_data = []
+
     if results[0].boxes is not None:
         if results[0].boxes.id is not None:
             track_ids = results[0].boxes.id.int().cpu().tolist()
             boxes = results[0].boxes.xyxy.cpu().numpy()
             keypoints = results[0].keypoints
-            
+
             for i, track_id in enumerate(track_ids):
-                # State Management
                 if track_id not in client_camera_state['analyzers']:
                     client_camera_state['analyzers'][track_id] = ExerciseAnalyzer(
-                        sequence_length=SEQUENCE_LENGTH, 
-                        conf_threshold=CONF_THRESHOLD, 
+                        sequence_length=SEQUENCE_LENGTH,
+                        conf_threshold=CONF_THRESHOLD,
                         stability_frames=STABILITY_FRAMES
                     )
                     client_camera_state.setdefault('last_form_status', {})[track_id] = None
-                
-                analyzer = client_camera_state['analyzers'][track_id]
 
-                # --- Fallback Skeleton (YOLO) ---
+                analyzer = client_camera_state['analyzers'][track_id]
                 final_landmarks_for_ui = [{'x': 0.0, 'y': 0.0, 'z': 0.0, 'visibility': 0.0} for _ in range(33)]
-                
+
                 if keypoints is not None and keypoints.conf is not None:
                     xy = keypoints.xy[i].cpu().numpy()
                     conf = keypoints.conf[i].cpu().numpy()
@@ -1024,14 +1022,13 @@ def process_frame_task(sid, data, user_info):
                             final_landmarks_for_ui[mp_idx] = {
                                 'x': float(xy[yolo_idx][0]) / frame.shape[1],
                                 'y': float(xy[yolo_idx][1]) / frame.shape[0],
-                                'z': 0.0, # YOLO has no Z
+                                'z': 0.0,
                                 'visibility': float(conf[yolo_idx])
                             }
 
-                # --- 2. Try MediaPipe ---
                 x1, y1, x2, y2 = map(int, boxes[i])
                 h, w, _ = frame.shape
-                
+
                 pad_x = int((x2 - x1) * 0.1)
                 pad_y = int((y2 - y1) * 0.1)
                 x1 = max(0, x1 - pad_x)
@@ -1039,77 +1036,65 @@ def process_frame_task(sid, data, user_info):
                 x2 = min(w, x2 + pad_x)
                 y2 = min(h, y2 + pad_y)
 
-                # --- Force Contiguous Memory ---
                 person_crop = np.ascontiguousarray(frame_rgb[y1:y2, x1:x2])
-                
+
                 if person_crop.size > 0:
                     mp_results = pose_extractor.process(person_crop)
-                    
+
                     if mp_results.pose_landmarks:
                         crop_h, crop_w, _ = person_crop.shape
-                        
+
                         for idx, lm in enumerate(mp_results.pose_landmarks.landmark):
                             px = lm.x * crop_w
                             py = lm.y * crop_h
-                            
+
                             global_px = px + x1
                             global_py = py + y1
-                            
+
                             final_landmarks_for_ui[idx] = {
                                 'x': global_px / w,
                                 'y': global_py / h,
-                                'z': lm.z, # Capture Z from MediaPipe!
+                                'z': lm.z,
                                 'visibility': lm.visibility
                             }
 
-                # --- 3. Build Response ---
                 person_response = {
                     'track_id': track_id,
                     'rep_counter': analyzer.rep_counter,
                     'form_status': analyzer.form_status,
                     'stable_prediction': analyzer.stable_prediction,
                     'landmarks': final_landmarks_for_ui,
-                    'debug_angles' : {}
+                    'debug_angles': {}
                 }
 
-                # --- 4. Analysis ---
-                if interpreter and scaler: 
+                if interpreter and scaler:
                     try:
                         rep_count, form, prediction, angles = analyzer.process_frame(
                             interpreter=interpreter,
                             input_details=input_details,
                             output_details=output_details,
                             label_mapping=label_mapping,
-                            landmarks=final_landmarks_for_ui, 
+                            landmarks=final_landmarks_for_ui,
                             current_exercise=analyzer.stable_prediction,
-                            scaler=scaler 
+                            scaler=scaler
                         )
 
-                        # DEBUG PRINT FOR LATENCY & ACCURACY
-                        print(f"[P{track_id}] Raw AI: {analyzer.recent_predictions[-1] if analyzer.recent_predictions else 'N/A'} | Stable: {prediction}")
-                        
                         person_response.update({
                             'rep_counter': rep_count,
                             'form_status': form,
                             'stable_prediction': prediction,
                             'debug_angles': {k: int(v) for k, v in angles.items()}
                         })
-                        
-                        # Logging Logic
+
                         log_entry = analyzer.get_new_error_log()
                         session_id = client_camera_state.get('active_session_id')
-                        
-                        # --- [AUTO-CREATE SESSION FIX START] ---
-                        # If an error is detected but no session exists, create one automatically
+
                         if log_entry and not session_id:
                             try:
-                                with app.app_context(): # Ensure app context is active
-                                    # Fallback: If user_id is missing from session, we can't save. 
-                                    # Assuming user is logged in if they are using this feature.
-                                    # If gym_id is missing, default to 1 just to save the data.
+                                with app.app_context():
                                     current_user_id = session.get('user_id')
-                                    current_gym_id = gym_id if gym_id else 1 
-                                    
+                                    current_gym_id = gym_id if gym_id else 1
+
                                     if current_user_id:
                                         new_session = WorkoutSession(
                                             user_id=current_user_id,
@@ -1117,7 +1102,7 @@ def process_frame_task(sid, data, user_info):
                                         )
                                         db.session.add(new_session)
                                         db.session.commit()
-                                        
+
                                         session_id = new_session.id
                                         client_camera_state['active_session_id'] = session_id
                                         print(f"✅ Auto-started Session {session_id} for User {current_user_id}")
@@ -1126,90 +1111,91 @@ def process_frame_task(sid, data, user_info):
                             except Exception as e:
                                 db.session.rollback()
                                 print(f"❌ Failed to auto-start session: {e}")
-                        # --- [AUTO-CREATE SESSION FIX END] ---
-                        
+
                         if session_id and log_entry:
                             try:
                                 error_type_str = f"[P{track_id}] {log_entry['error_type']}"
                                 new_log = ErrorLog(
-                                    session_id=session_id, 
-                                    exercise_name=log_entry['exercise_name'], 
-                                    rep_number=log_entry['rep_number'], 
+                                    session_id=session_id,
+                                    exercise_name=log_entry['exercise_name'],
+                                    rep_number=log_entry['rep_number'],
                                     error_type=error_type_str
                                 )
                                 db.session.add(new_log)
                                 db.session.commit()
-                                print(f"📝 Logged Error: {error_type_str}") # Confirmation print
+                                print(f"📝 Logged Error: {error_type_str}")
                             except Exception as e:
                                 db.session.rollback()
                                 print(f"Error during logging: {e}")
 
-                        # Broadcasting
                         last_form = client_camera_state['last_form_status'].get(track_id)
                         if "ERROR" in form and form != last_form:
                             if gym_id:
-                                socketio.emit('form_error', {
-                                    'message': f"Person {track_id}: {form.replace('ERROR: ', '')}",
-                                    'camera_id': camera_id,
-                                    'user_name': f"{user_info.get('firstname', 'Unknown')} {user_info.get('lastname', 'User')}",
-                                    'timestamp': datetime.utcnow().isoformat()
-                                }, room=f'gym_{gym_id}')
-                            client_camera_state['last_form_status'][track_id] = form
+                                with app.app_context():
+                                    socketio.emit('form_error', {
+                                        'message': f"Person {track_id}: {form.replace('ERROR: ', '')}",
+                                        'camera_id': camera_id,
+                                        'user_name': f"{user_info.get('firstname', 'Unknown')} {user_info.get('lastname', 'User')}",
+                                        'timestamp': datetime.utcnow().isoformat()
+                                    }, room=f'gym_{gym_id}')
+                                    print(f"Emitted 'form_error' to room gym_{gym_id}")
+                                client_camera_state['last_form_status'][track_id] = form
                         elif "ERROR" not in form:
                             client_camera_state['last_form_status'][track_id] = None
-                        
-                        alert_data = analyzer.get_triggered_alert() 
+
+                        alert_data = analyzer.get_triggered_alert()
                         if alert_data:
                             alert_data['camera_id'] = camera_id
                             alert_data['message'] = f"Person {track_id}: {alert_data['message']}"
                             if gym_id:
-                                socketio.emit('trainer_alert', alert_data, room=f'gym_{gym_id}')
+                                with app.app_context():
+                                    socketio.emit('trainer_alert', alert_data, room=f'gym_{gym_id}')
+                                    print(f"Emitted 'trainer_alert' to room gym_{gym_id}: {alert_data}")
 
                     except Exception as e:
                         print(f"Error analyzing person {track_id}: {e}")
-            
+
                 current_frame_data.append(person_response)
 
     emit_data = {
         'camera_id': camera_id,
-        'people': current_frame_data 
+        'people': current_frame_data
     }
 
     socketio.emit('response', emit_data, room=sid)
 
-    # END PROCESSING TIME
     process_time = (time.time() - start_time) * 1000
-    if process_time > 100: # Only print if it's slow
+    if process_time > 100:
         print(f"[DEBUG] Processing took: {process_time:.2f}ms")
 
-    if client_camera_state: client_camera_state['is_processing'] = False
-
+    if client_camera_state:
+        client_camera_state['is_processing'] = False
 
 @socketio.on('image')
 def handle_image(data):
-    if interpreter is None: return
+    if interpreter is None:
+        return
     try:
         sid = request.sid
         camera_id = data['camera_id']
-    except (TypeError, KeyError): 
+    except (TypeError, KeyError):
         return
 
     client_camera_state = clients.get(sid, {}).get(camera_id)
     if not client_camera_state:
-        return 
+        return
 
     if client_camera_state.get('is_processing', False):
         return
-        
+
     client_camera_state['is_processing'] = True
-    
+
     user_info = {
         'firstname': session.get('user_firstname', 'Unknown'),
         'lastname': session.get('user_lastname', 'User')
     }
-    
-    socketio.start_background_task(process_frame_task, sid, data, user_info)
 
+    socketio.start_background_task(process_frame_task, sid, data, user_info)
 
 if __name__ == "__main__":
     with app.app_context():
