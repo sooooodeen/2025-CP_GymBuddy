@@ -639,6 +639,9 @@ def admin_dashboard():
         if group and group in current_month_chart_data:
             current_month_chart_data[group] += count
             
+    all_gym_sessions = WorkoutSession.query.filter_by(gym_id=gym_id)\
+        .order_by(WorkoutSession.start_time.desc()).all()
+
     return render_template(
         "admin_dashboard.html", 
         assignment=current_assignment, 
@@ -649,7 +652,8 @@ def admin_dashboard():
         current_month_chart_data=current_month_chart_data,
         error_rate_change=error_rate_change,
         error_rate_color=error_rate_color,
-        error_rate_status=error_rate_status
+        error_rate_status=error_rate_status,
+        sessions=all_gym_sessions
     )
 
 @app.route("/admin/analytics/<int:user_id>")
