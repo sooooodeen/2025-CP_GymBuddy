@@ -617,15 +617,26 @@ def admin_dashboard():
     start_of_week = today - timedelta(days=today.weekday())
     current_assignment = db.session.query(Assignment).join(User).filter(User.gym_id == gym_id).first()
     
-    # --- [FIX: Use 24-hour window for "Today" count to avoid timezone issues] ---
     last_24_hours = datetime.utcnow() - timedelta(hours=24)
     total_errors_today = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= last_24_hours).scalar() or 0
-    # ----------------------------------------------------------------------------
     
     most_common_error_week_query = db.session.query(ErrorLog.error_type, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_week).group_by(ErrorLog.error_type).order_by(func.count(ErrorLog.id).desc()).first()
     most_common_error_week = most_common_error_week_query[0].replace('ERROR: ', '') if most_common_error_week_query else "N/A"
     total_errors_month = errors_current_month 
+    
+    # 1. FETCH RECENT ERROR LOGS
     recent_errors = db.session.query(ErrorLog, User).join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id).join(User, WorkoutSession.user_id == User.id).filter(WorkoutSession.gym_id == gym_id).order_by(ErrorLog.timestamp.desc()).limit(5).all()
+
+    # 2. FETCH IMMEDIATE ACTIONS (CRITICAL ERRORS)
+    # We define "Immediate Action" as "Repeated Errors" (based on your logic)
+    initial_critical_errors = db.session.query(ErrorLog, User)\
+        .join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id)\
+        .join(User, WorkoutSession.user_id == User.id)\
+        .filter(WorkoutSession.gym_id == gym_id)\
+        .filter(ErrorLog.error_type.contains("Repeated Error"))\
+        .order_by(ErrorLog.timestamp.desc())\
+        .limit(5)\
+        .all()
 
     muscle_group_mapping = {
         'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms',
@@ -638,9 +649,6 @@ def admin_dashboard():
         group = muscle_group_mapping.get(exercise)
         if group and group in current_month_chart_data:
             current_month_chart_data[group] += count
-            
-    all_gym_sessions = WorkoutSession.query.filter_by(gym_id=gym_id)\
-        .order_by(WorkoutSession.start_time.desc()).all()
 
     return render_template(
         "admin_dashboard.html", 
@@ -653,7 +661,7 @@ def admin_dashboard():
         error_rate_change=error_rate_change,
         error_rate_color=error_rate_color,
         error_rate_status=error_rate_status,
-        sessions=all_gym_sessions
+        critical_errors=initial_critical_errors # <-- Pass Critical Errors here
     )
 
 @app.route("/admin/analytics/<int:user_id>")

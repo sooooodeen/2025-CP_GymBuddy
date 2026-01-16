@@ -90,7 +90,7 @@
                 </div>
             </div>
         </div>
-        <div class="grid grid-cols-3 grid-rows-[25%_1fr] flex-col w-full gap-5">
+        <div class="grid grid-cols-3 grid-rows-[25%_1fr_auto] flex-col w-full gap-5">
             <div class="bg-white border border-gray-300 h-full rounded-2xl p-6 flex items-center flex-col">
                 <div class="box-head flex gap-2 w-full items-center ">
                     <div class="rounded-full bg-[#F16767] flex justify-center items-center p-3">
@@ -131,7 +131,26 @@
             <div class="border border-gray-300 bg-white h-full w-full rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
                 <h1 class="text-xl font-bold font-Helvetica mb-2">Immediate Action Needed</h1>
                 <div id="immediate-action-container" class="flex flex-col overflow-y-auto gap-2 max-h-[50vh]">
+                    {% for log, user in critical_errors %}
+                    <div class="border border-red-200 bg-red-50 w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center mb-2">
+                         <div class="justify-self-start grid grid-cols-[15%_1fr_15%] w-full gap-2 items-center flex-row">
+                             <div class="flex justify-center items-center">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F16767" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                             </div>
+                             <div class="leading-tight">
+                                 <p class="text-[#5a5757] text-xl font-semibold">{{ log.error_type }}</p>
+                                 <span class="text-md text-gray-500 time-ago" data-timestamp="{{ log.timestamp.isoformat() }}"></span>
+                             </div>
+                              <div class="w-full flex justify-center items-center">
+                                 <button onclick="this.closest('.border').remove()" class="rounded-full bg-green-500 h-10 hover:bg-green-400 w-10 flex justify-center items-center cursor-pointer text-white shadow-md transition-transform hover:scale-105">
+                                     <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                                 </button>
+                              </div>
+                         </div>
+                    </div>
+                    {% else %}
                     <div id="no-alerts-msg" class="text-center text-gray-500 p-4">No critical alerts currently.</div>
+                    {% endfor %}
                 </div>
             </div>
             
@@ -215,7 +234,7 @@ document.addEventListener('DOMContentLoaded', function() {
                              <button onclick="this.closest('.border').remove()" class="rounded-full bg-green-500 h-10 hover:bg-green-400 w-10 flex justify-center items-center cursor-pointer text-white shadow-md transition-transform hover:scale-105">
                                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                              </button>
-                         </div>
+                          </div>
                      </div>
                  </div>
               `;
