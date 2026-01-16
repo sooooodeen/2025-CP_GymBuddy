@@ -583,6 +583,9 @@ def delete_user_account():
 @admin_required
 def admin_dashboard():
     gym_id = session['user_gym_id']
+    # DEBUG PRINT to check if Gym ID matches the user data
+    print(f"DEBUG: Admin Dashboard loading for Gym ID: {gym_id}")
+
     today = datetime.utcnow().date()
     
     start_of_current_month = today.replace(day=1)
@@ -866,10 +869,19 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     sid = request.sid
-    client_data = clients.pop(sid, None)
+    client_data = clients.get(sid)
 
     if client_data:
         gym_id = client_data.get('gym_id')
+        
+        # --- FIXED: Force save all active cameras for this client ---
+        for camera_id in list(client_data.keys()):
+            if camera_id not in ['gym_id']: # Skip the gym_id key
+                print(f"Force closing session for camera {camera_id} due to disconnect")
+                handle_end_session({'camera_id': camera_id, 'sid_for_shutdown': sid})
+        # -------------------------------------------------------------
+
+        clients.pop(sid, None) 
         if gym_id:
             room = f'gym_{gym_id}'
             leave_room(room)
