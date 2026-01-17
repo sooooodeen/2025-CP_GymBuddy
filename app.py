@@ -583,9 +583,6 @@ def delete_user_account():
 @admin_required
 def admin_dashboard():
     gym_id = session['user_gym_id']
-    # DEBUG PRINT to check if Gym ID matches the user data
-    print(f"DEBUG: Admin Dashboard loading for Gym ID: {gym_id}")
-
     today = datetime.utcnow().date()
     
     start_of_current_month = today.replace(day=1)
@@ -631,7 +628,6 @@ def admin_dashboard():
     recent_errors = db.session.query(ErrorLog, User).join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id).join(User, WorkoutSession.user_id == User.id).filter(WorkoutSession.gym_id == gym_id).order_by(ErrorLog.timestamp.desc()).limit(5).all()
 
     # 2. FETCH IMMEDIATE ACTIONS (CRITICAL ERRORS)
-    # We define "Immediate Action" as "Repeated Errors" (based on your logic)
     initial_critical_errors = db.session.query(ErrorLog, User)\
         .join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id)\
         .join(User, WorkoutSession.user_id == User.id)\
@@ -664,7 +660,7 @@ def admin_dashboard():
         error_rate_change=error_rate_change,
         error_rate_color=error_rate_color,
         error_rate_status=error_rate_status,
-        critical_errors=initial_critical_errors # <-- Pass Critical Errors here
+        critical_errors=initial_critical_errors 
     )
 
 @app.route("/admin/analytics/<int:user_id>")
@@ -874,7 +870,7 @@ def handle_disconnect():
     if client_data:
         gym_id = client_data.get('gym_id')
         
-        # --- FIXED: Force save all active cameras for this client ---
+        # --- Force save all active cameras for this client ---
         for camera_id in list(client_data.keys()):
             if camera_id not in ['gym_id']: # Skip the gym_id key
                 print(f"Force closing session for camera {camera_id} due to disconnect")
@@ -992,11 +988,12 @@ def handle_end_session(data):
         for analyzer in client_camera_state['analyzers'].values():
             analyzer.reset_session()
 
-def process_frame_task(sid, data, user_info):
+def process_frame_task(sid, data, session_context):
     start_time = time.time()
     global interpreter, label_mapping, input_details, output_details, clients, yolo_model, YOLO_CONF_THRESHOLD, pose_extractor, YOLO_TO_MP, scaler
 
-    gym_id = clients.get(sid, {}).get('gym_id')
+    # Use the passed gym_id (fallback to clients dict if needed)
+    gym_id = session_context.get('gym_id') or clients.get(sid, {}).get('gym_id')
 
     try:
         camera_id = data['camera_id']
@@ -1119,7 +1116,7 @@ def process_frame_task(sid, data, user_info):
                             'debug_angles': {k: int(v) for k, v in angles.items()}
                         })
 
-                        # === [NEW FIX STARTS HERE] ===
+                        # === [FIXED DATABASE SAVING LOGIC] ===
                         
                         last_form = client_camera_state['last_form_status'].get(track_id)
                         
@@ -1131,11 +1128,12 @@ def process_frame_task(sid, data, user_info):
                         
                         session_id = client_camera_state.get('active_session_id')
 
-                        # A. AUTO-START SESSION if either event happened and no session exists
+                        # A. AUTO-START SESSION
                         if (log_entry or is_new_error) and not session_id:
                             try:
                                 with app.app_context():
-                                    current_user_id = session.get('user_id')
+                                    # USE PASSED CONTEXT, NOT SESSION
+                                    current_user_id = session_context.get('user_id')
                                     current_gym_id = gym_id if gym_id else 1
 
                                     if current_user_id:
@@ -1148,23 +1146,23 @@ def process_frame_task(sid, data, user_info):
 
                                         session_id = new_session.id
                                         client_camera_state['active_session_id'] = session_id
-                                        print(f"✅ Auto-started Session {session_id}")
+                                        print(f"✅ Auto-started Session {session_id} for User {current_user_id}")
+                                    else:
+                                        print("❌ Error: No User ID in session context. Cannot start session.")
                             except Exception as e:
                                 db.session.rollback()
                                 print(f"❌ Failed to auto-start session: {e}")
 
-                        # B. SAVE TO DATABASE (If we have a session)
+                        # B. SAVE TO DATABASE
                         if session_id:
                             error_to_save = None
                             
-                            # Priority 1: Official Analyzer Log (Most Accurate)
                             if log_entry:
                                 error_to_save = {
                                     'exercise': log_entry['exercise_name'],
                                     'reps': log_entry['rep_number'],
                                     'type': f"[P{track_id}] {log_entry['error_type']}"
                                 }
-                            # Priority 2: Instant Error Detection (Ensures Dashboard isn't empty)
                             elif is_new_error:
                                 error_to_save = {
                                     'exercise': prediction if prediction else "Unknown",
@@ -1188,14 +1186,14 @@ def process_frame_task(sid, data, user_info):
                                     db.session.rollback()
                                     print(f"Error saving to DB: {e}")
 
-                        # C. REAL-TIME SOCKET EMISSION (For Popups)
+                        # C. REAL-TIME EMISSION
                         if is_new_error:
                             if gym_id:
                                 with app.app_context():
                                     socketio.emit('form_error', {
                                         'message': f"Person {track_id}: {form.replace('ERROR: ', '')}",
                                         'camera_id': camera_id,
-                                        'user_name': f"{user_info.get('firstname', 'Unknown')} {user_info.get('lastname', 'User')}",
+                                        'user_name': f"{session_context.get('firstname')} {session_context.get('lastname')}",
                                         'timestamp': datetime.utcnow().isoformat()
                                     }, room=f'gym_{gym_id}')
                                     print(f"Emitted 'form_error' to room gym_{gym_id}")
@@ -1211,8 +1209,6 @@ def process_frame_task(sid, data, user_info):
                             if gym_id:
                                 with app.app_context():
                                     socketio.emit('trainer_alert', alert_data, room=f'gym_{gym_id}')
-                        
-                        # === [NEW FIX ENDS HERE] ===
 
                     except Exception as e:
                         print(f"Error analyzing person {track_id}: {e}")
@@ -1232,3 +1228,39 @@ def process_frame_task(sid, data, user_info):
 
     if client_camera_state:
         client_camera_state['is_processing'] = False
+
+@socketio.on('image')
+def handle_image(data):
+    if interpreter is None:
+        return
+    try:
+        sid = request.sid
+        camera_id = data['camera_id']
+    except (TypeError, KeyError):
+        return
+
+    client_camera_state = clients.get(sid, {}).get(camera_id)
+    if not client_camera_state:
+        return
+
+    if client_camera_state.get('is_processing', False):
+        return
+
+    client_camera_state['is_processing'] = True
+
+    # Capture context from the main session
+    session_context = {
+        'user_id': session.get('user_id'),
+        'user_gym_id': session.get('user_gym_id'),
+        'gym_id': session.get('user_gym_id'), # Redundant backup
+        'firstname': session.get('user_firstname', 'Unknown'),
+        'lastname': session.get('user_lastname', 'User')
+    }
+
+    socketio.start_background_task(process_frame_task, sid, data, session_context)
+
+if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()
+    print("Starting Flask-SocketIO server...")
+    socketio.run(app, debug=True, host='0.0.0.0', port=5001)
