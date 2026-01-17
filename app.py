@@ -1119,10 +1119,20 @@ def process_frame_task(sid, data, user_info):
                             'debug_angles': {k: int(v) for k, v in angles.items()}
                         })
 
+                        # === [NEW FIX STARTS HERE] ===
+                        
+                        last_form = client_camera_state['last_form_status'].get(track_id)
+                        
+                        # Check 1: Is this a NEW error (vs the previous frame)?
+                        is_new_error = "ERROR" in form and form != last_form
+                        
+                        # Check 2: Did the analyzer finish a rep and generate a strict log?
                         log_entry = analyzer.get_new_error_log()
+                        
                         session_id = client_camera_state.get('active_session_id')
 
-                        if log_entry and not session_id:
+                        # A. AUTO-START SESSION if either event happened and no session exists
+                        if (log_entry or is_new_error) and not session_id:
                             try:
                                 with app.app_context():
                                     current_user_id = session.get('user_id')
@@ -1138,31 +1148,48 @@ def process_frame_task(sid, data, user_info):
 
                                         session_id = new_session.id
                                         client_camera_state['active_session_id'] = session_id
-                                        print(f"✅ Auto-started Session {session_id} for User {current_user_id}")
-                                    else:
-                                        print("❌ Cannot auto-start session: User ID not found in flask session.")
+                                        print(f"✅ Auto-started Session {session_id}")
                             except Exception as e:
                                 db.session.rollback()
                                 print(f"❌ Failed to auto-start session: {e}")
 
-                        if session_id and log_entry:
-                            try:
-                                error_type_str = f"[P{track_id}] {log_entry['error_type']}"
-                                new_log = ErrorLog(
-                                    session_id=session_id,
-                                    exercise_name=log_entry['exercise_name'],
-                                    rep_number=log_entry['rep_number'],
-                                    error_type=error_type_str
-                                )
-                                db.session.add(new_log)
-                                db.session.commit()
-                                print(f"📝 Logged Error: {error_type_str}")
-                            except Exception as e:
-                                db.session.rollback()
-                                print(f"Error during logging: {e}")
+                        # B. SAVE TO DATABASE (If we have a session)
+                        if session_id:
+                            error_to_save = None
+                            
+                            # Priority 1: Official Analyzer Log (Most Accurate)
+                            if log_entry:
+                                error_to_save = {
+                                    'exercise': log_entry['exercise_name'],
+                                    'reps': log_entry['rep_number'],
+                                    'type': f"[P{track_id}] {log_entry['error_type']}"
+                                }
+                            # Priority 2: Instant Error Detection (Ensures Dashboard isn't empty)
+                            elif is_new_error:
+                                error_to_save = {
+                                    'exercise': prediction if prediction else "Unknown",
+                                    'reps': rep_count,
+                                    'type': f"[P{track_id}] {form.replace('ERROR: ', '')}"
+                                }
 
-                        last_form = client_camera_state['last_form_status'].get(track_id)
-                        if "ERROR" in form and form != last_form:
+                            if error_to_save:
+                                try:
+                                    with app.app_context():
+                                        new_log = ErrorLog(
+                                            session_id=session_id,
+                                            exercise_name=error_to_save['exercise'],
+                                            rep_number=error_to_save['reps'],
+                                            error_type=error_to_save['type']
+                                        )
+                                        db.session.add(new_log)
+                                        db.session.commit()
+                                        print(f"📝 Database Saved: {error_to_save['type']}")
+                                except Exception as e:
+                                    db.session.rollback()
+                                    print(f"Error saving to DB: {e}")
+
+                        # C. REAL-TIME SOCKET EMISSION (For Popups)
+                        if is_new_error:
                             if gym_id:
                                 with app.app_context():
                                     socketio.emit('form_error', {
@@ -1172,10 +1199,11 @@ def process_frame_task(sid, data, user_info):
                                         'timestamp': datetime.utcnow().isoformat()
                                     }, room=f'gym_{gym_id}')
                                     print(f"Emitted 'form_error' to room gym_{gym_id}")
-                                client_camera_state['last_form_status'][track_id] = form
+                            client_camera_state['last_form_status'][track_id] = form
                         elif "ERROR" not in form:
                             client_camera_state['last_form_status'][track_id] = None
 
+                        # D. CRITICAL ALERTS
                         alert_data = analyzer.get_triggered_alert()
                         if alert_data:
                             alert_data['camera_id'] = camera_id
@@ -1183,7 +1211,8 @@ def process_frame_task(sid, data, user_info):
                             if gym_id:
                                 with app.app_context():
                                     socketio.emit('trainer_alert', alert_data, room=f'gym_{gym_id}')
-                                    print(f"Emitted 'trainer_alert' to room gym_{gym_id}: {alert_data}")
+                        
+                        # === [NEW FIX ENDS HERE] ===
 
                     except Exception as e:
                         print(f"Error analyzing person {track_id}: {e}")
@@ -1203,35 +1232,3 @@ def process_frame_task(sid, data, user_info):
 
     if client_camera_state:
         client_camera_state['is_processing'] = False
-
-@socketio.on('image')
-def handle_image(data):
-    if interpreter is None:
-        return
-    try:
-        sid = request.sid
-        camera_id = data['camera_id']
-    except (TypeError, KeyError):
-        return
-
-    client_camera_state = clients.get(sid, {}).get(camera_id)
-    if not client_camera_state:
-        return
-
-    if client_camera_state.get('is_processing', False):
-        return
-
-    client_camera_state['is_processing'] = True
-
-    user_info = {
-        'firstname': session.get('user_firstname', 'Unknown'),
-        'lastname': session.get('user_lastname', 'User')
-    }
-
-    socketio.start_background_task(process_frame_task, sid, data, user_info)
-
-if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-    print("Starting Flask-SocketIO server...")
-    socketio.run(app, debug=True, host='0.0.0.0', port=5001)
