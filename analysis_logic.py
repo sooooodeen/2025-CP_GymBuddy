@@ -8,7 +8,6 @@ from collections import deque, Counter
 def normalize_pose_robust(landmarks):
     """
     Normalizes landmarks based on torso length.
-    Uses 2D (X, Y) distance for scaling to avoid Z-axis noise instability.
     """
     try:
         lms = []
@@ -23,18 +22,18 @@ def normalize_pose_robust(landmarks):
         # Indices: 23=L.Hip, 24=R.Hip, 11=L.Shoulder, 12=R.Shoulder
         left_hip = landmarks_np[23][:2]
         right_hip = landmarks_np[24][:2]
-        hip_center_2d = (left_hip + right_hip) / 2.0
-
+        
         left_shoulder = landmarks_np[11][:2]
         right_shoulder = landmarks_np[12][:2]
         shoulder_center_2d = (left_shoulder + right_shoulder) / 2.0
+        hip_center_2d = (left_hip + right_hip) / 2.0
 
         # Calculate torso length based on 2D projection
         torso_length = np.linalg.norm(hip_center_2d - shoulder_center_2d) + 1e-6
         
         if torso_length < 1e-5: return None
 
-        # Normalize the 3D landmarks relative to the hip center
+        # Normalize relative to hip center
         hip_center_3d = (landmarks_np[23] + landmarks_np[24]) / 2.0
         normalized_landmarks = (landmarks_np - hip_center_3d) / torso_length
         
@@ -130,13 +129,16 @@ class ExerciseAnalyzer:
         
         # Stability Settings
         self.CONF_THRESHOLD = conf_threshold
-        # CHANGED: Reduced from 20 to 12 for faster locking
         self.STABILITY_FRAMES = 12 
         self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES)
         self.stable_prediction = "neutral"
         
+        # --- LOCKING MECHANISM STATE ---
+        self.locked_exercise = None 
+        self.neutral_persistence_counter = 0 
+        # ------------------------------
+
         self.frame_count = 0
-        # CHANGED: Reduced from 3 to 2 for smoother updates
         self.PREDICTION_INTERVAL = 2
         self.stable_counter = 0 
         
@@ -174,48 +176,57 @@ class ExerciseAnalyzer:
         Prevents "impossible" exercises based on geometry.
         """
         if not landmarks: return ai_prediction
+        if ai_prediction == "neutral": return "neutral"
         
         try:
             def get_coords(i): 
                 lm = landmarks[i]
                 return (lm['x'], lm['y']) if isinstance(lm, dict) else (lm.x, lm.y)
             
-            # Key Landmarks
-            s_x, s_y = get_coords(11) # Shoulder
-            h_x, h_y = get_coords(23) # Hip
-            k_x, k_y = get_coords(25) # Knee
+            # --- 1. ORIENTATION CHECK (Vertical vs Horizontal) ---
+            # Compare Shoulder Y average vs Hip Y average
+            s_y = (get_coords(11)[1] + get_coords(12)[1]) / 2
+            h_y = (get_coords(23)[1] + get_coords(24)[1]) / 2
             
-            # 1. STANDING STRAIGHT CHECK
-            # If hip angle > 155, you are standing. 
-            hip_angle = calculate_angle_2d([s_x, s_y], [h_x, h_y], [k_x, k_y])
+            # Use thigh length as a scaler reference
+            thigh_len = math.sqrt((get_coords(23)[0]-get_coords(25)[0])**2 + (get_coords(23)[1]-get_coords(25)[1])**2)
+            y_diff = abs(s_y - h_y)
             
-            # --- FIX: Removed RDL, Good Morning, and Rows from this list ---
-            # These exercises start standing, so banning them here breaks detection.
-            standing_banned_list = [
-                'inclineBenchPress', 
-                'inclineDumbbellChestFly'
+            # If torso height < 80% of thigh length, we are likely Horizontal (Lying down or bent over)
+            is_vertical = y_diff > (thigh_len * 0.8) 
+            
+            # EXERCISES THAT MUST BE VERTICAL (Standing/Sitting)
+            vertical_only = [
+                'squat', 'gobletSquat', 'sumoSquat', 'deadlift', 'romanianDeadlift',
+                'shoulderPress', 'dumbbellPushPress', 'bicepCurl', 'hammerCurl',
+                'lateralRaise', 'uprightRow', 'dumbbellGoodMorning', 'tricepKickback'
             ]
             
-            if hip_angle > 155 and ai_prediction in standing_banned_list:
-                return "neutral"
+            # EXERCISES THAT MUST BE HORIZONTAL (Lying Down)
+            horizontal_only = [
+                'benchPress', 'inclineBenchPress', 'chestFly', 'inclineDumbbellChestFly', 'dumbbellReverseFly'
+            ]
 
-            # 2. STANCE WIDTH CHECK
-            # BANS: Sumo Squat if feet are narrow (unless sideways)
+            # Apply Bans
+            if not is_vertical and ai_prediction in vertical_only:
+                return "neutral" # Can't do a squat lying down
+                
+            if is_vertical and ai_prediction in horizontal_only:
+                return "neutral" # Can't do a bench press standing up
+
+            # --- 2. STANCE WIDTH CHECK (For Sumo Squat vs Goblet) ---
             if ai_prediction == 'sumoSquat':
                 ankle_dist = abs(get_coords(27)[0] - get_coords(28)[0])
                 shoulder_dist = abs(get_coords(11)[0] - get_coords(12)[0])
                 
-                # Check for Side View (Shoulders disappear)
                 is_side_view = shoulder_dist < 0.05 
                 
-                # Only enforce narrow-feet ban if we are facing FRONT
                 if not is_side_view:
-                    # If feet < 1.1x Shoulder width, it's NOT Sumo.
-                    if ankle_dist < (shoulder_dist * 1.1):
-                        return "neutral"
+                    # If feet < 1.0x Shoulder width, it's NOT Sumo.
+                    if ankle_dist < (shoulder_dist * 1.0):
+                        return "neutral" # Or fallback to regular squat
 
         except Exception as e:
-            # If landmarks are missing/partial, default to AI's guess
             pass
 
         return ai_prediction 
@@ -224,10 +235,6 @@ class ExerciseAnalyzer:
         self.frame_count += 1
         
         if not self.model_configured: self._auto_configure_model(input_details)
-
-        # WARNING: Check for Scaler
-        if scaler is None and self.frame_count % 100 == 0:
-            print("[WARNING] No Scaler provided! Predictions may be random.")
 
         # 1. Extract Features
         if self.input_size == 47: 
@@ -259,38 +266,55 @@ class ExerciseAnalyzer:
                 conf = prediction[idx]
                 raw_label = str(label_mapping.get(idx, label_mapping.get(str(idx), "neutral")))
                 
-                # --- APPLY MASTER OVERRIDES ---
+                # Apply Geometry Logic Override (Vertical vs Horizontal)
                 final_label = self._apply_logic_override(raw_label, landmarks)
                 
-                # 3. Stability Filter
+                # --- [EXERCISE LOCKING LOGIC] ---
+                # Once we lock an exercise, reject changes unless it is a sustained "neutral"
+                if self.locked_exercise:
+                    if final_label == "neutral":
+                        self.neutral_persistence_counter += 1
+                        # If neutral for 40 frames (~1.5s), unlock the exercise (Set Finished)
+                        if self.neutral_persistence_counter > 40:
+                            self.locked_exercise = None
+                            self.neutral_persistence_counter = 0
+                            self.rep_counter = 0 # Reset reps on new set
+                            final_label = "neutral"
+                        else:
+                            final_label = self.locked_exercise # Keep locking
+                    else:
+                        self.neutral_persistence_counter = 0
+                        final_label = self.locked_exercise # Force lock to current exercise
+                # --------------------------------
+
                 if conf > self.CONF_THRESHOLD: self.recent_predictions.append(final_label)
                 else: self.recent_predictions.append("neutral")
 
                 most_common, count = Counter(self.recent_predictions).most_common(1)[0]
                 
-                # --- FIXED STABILITY LOGIC ---
                 if count > (self.STABILITY_FRAMES // 2): 
                     if self.stable_prediction == most_common:
                         self.stable_counter += 1
                     else:
-                        # Only reset reps if we switch from one EXERCISE to ANOTHER EXERCISE
-                        # Do NOT reset if we just switch to 'neutral' momentarily
-                        if most_common != "neutral" and self.stable_prediction != "neutral":
-                             self.rep_counter = 0 
-                             self.stage = None
+                        # Only reset if we aren't locked.
+                        if not self.locked_exercise:
+                            if most_common != "neutral" and self.stable_prediction != "neutral":
+                                 self.rep_counter = 0 
+                                 self.stage = None
                         
-                        # CHANGED: REMOVED "if most_common == 'neutral': self.stage = None"
-                        # This keeps the stage active during brief "neutral" flickers.
-
                         self.stable_prediction = most_common
                         self.stable_counter = 0 
 
             except Exception as e: print(f"Inference Error: {e}")
 
-        # 4. Only Analyze if Stable
-        # Reduced threshold slightly (from 10 to 5) to allow analyzing sooner
+        # 3. Analyze
         if self.stable_counter > 5 and self.stable_prediction != "neutral":
+             # Lock the exercise once we start analyzing properly
+             if not self.locked_exercise:
+                 self.locked_exercise = self.stable_prediction
+                 
              self.analyze_frame(self.stable_prediction, landmarks)
+             
         elif self.stable_prediction != "neutral":
              self.form_status = f"Verifying {self.stable_prediction}..."
         else:
@@ -308,10 +332,9 @@ class ExerciseAnalyzer:
         
         lms = [Point(lm) for lm in landmarks]
         
-        # --- DEBOUNCE TIMER (Fixes Machine Gun Reps) ---
-        MIN_REP_DURATION = 0.8 
+        # [TUNING] Decreased debounce slightly to catch faster reps
+        MIN_REP_DURATION = 0.6 
         current_time = time.time()
-        # -----------------------------------------------
 
         self.form_status = "CORRECT FORM"
         self.status_color = (0, 255, 0)
@@ -329,11 +352,12 @@ class ExerciseAnalyzer:
                 hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 self.debug_angles = {'Elbow': int(elb_ang), 'Hip': int(hip_ang)}
                 
-                if hip_ang > 150: 
+                if hip_ang > 160: 
                     self.form_status = "ERROR: BEND OVER TO START"
                 else:
                     if elb_ang > 150: self.stage = "down"
-                    if elb_ang < 80 and self.stage == 'down':
+                    # [TUNING] Relaxed 'up' threshold from 80 to 95
+                    if elb_ang < 95 and self.stage == 'down':
                         if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                             self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
@@ -342,19 +366,23 @@ class ExerciseAnalyzer:
                 angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 sh_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
                 self.debug_angles = {'Elbow': int(angle)}
-                if angle > 160: self.stage = "down"
-                if angle < 45 and self.stage == 'down':
+                
+                # [TUNING] Relaxed "down" from 160 to 145 (arms don't need to be perfectly straight)
+                if angle > 145: self.stage = "down"
+                if angle < 60 and self.stage == 'down':
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
-                if sh_angle > 40: self.form_status = "ERROR: ELBOWS SWINGING"
+                
+                # [TUNING] Relaxed swinging error from 40 to 50
+                if sh_angle > 50: self.form_status = "ERROR: ELBOWS SWINGING"
 
             # 2. Dumbbell Good Morning
             elif exercise_name == 'dumbbellGoodMorning':
                 hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 self.debug_angles = {'Hip': int(hip_ang)}
-                if hip_ang > 160: self.stage = "up"
-                if hip_ang < 110 and self.stage == 'up': self.stage = "down"
-                if hip_ang > 160 and self.stage == 'down':
+                if hip_ang > 155: self.stage = "up"
+                if hip_ang < 120 and self.stage == 'up': self.stage = "down"
+                if hip_ang > 155 and self.stage == 'down':
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
@@ -362,26 +390,30 @@ class ExerciseAnalyzer:
             elif exercise_name == 'dumbbellPushPress':
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 self.debug_angles = {'Elbow': int(elb_ang)}
-                if elb_ang < 70: self.stage = "down"
-                if elb_ang > 160 and self.stage == 'down':
+                
+                # [TUNING] Relaxed thresholds
+                if elb_ang < 85: self.stage = "down"
+                if elb_ang > 150 and self.stage == 'down':
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
             # 4. Dumbbell Reverse Fly
             elif exercise_name == 'dumbbellReverseFly':
                 dist = abs(lw.x - rw.x)
-                if dist < 0.2: self.stage = "in"
-                if dist > 0.6 and self.stage == 'in':
+                if dist < 0.25: self.stage = "in" # Relaxed from 0.2
+                if dist > 0.55 and self.stage == 'in': # Relaxed from 0.6
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "out"; self.rep_counter += 1; self.last_rep_time = current_time
+                
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                if elb_ang < 100: self.form_status = "ERROR: ARMS TOO BENT"
+                if elb_ang < 90: self.form_status = "ERROR: ARMS TOO BENT"
 
             # 5. Dumbbell Svend Press
             elif exercise_name == 'dumbbellSvendPress':
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                if elb_ang < 70: self.stage = "in"
-                if elb_ang > 160 and self.stage == 'in':
+                # [TUNING] Svend press needs tight squeeze but generous extension
+                if elb_ang < 85: self.stage = "in"
+                if elb_ang > 150 and self.stage == 'in':
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "out"; self.rep_counter += 1; self.last_rep_time = current_time
 
@@ -390,66 +422,64 @@ class ExerciseAnalyzer:
                 knee_ang = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y])
                 torso_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 self.debug_angles = {'Knee': int(knee_ang)}
-                if knee_ang > 160: self.stage = "up"
-                if knee_ang < 100 and self.stage == 'up': self.stage = "down"
-                if knee_ang > 160 and self.stage == 'down':
+                
+                # [TUNING] Relaxed stand up threshold to 155 (prev 160)
+                if knee_ang > 155: self.stage = "up"
+                # [TUNING] Relaxed depth to 115 (prev 100) to catch partial squats
+                if knee_ang < 115 and self.stage == 'up': self.stage = "down"
+                if knee_ang > 155 and self.stage == 'down':
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
-                if torso_ang < 60: self.form_status = "ERROR: CHEST UP"
+                if torso_ang < 55: self.form_status = "ERROR: CHEST UP"
 
             # 7. Incline Bench Press
             elif exercise_name == 'inclineBenchPress':
-                # Guardrail Double Check
-                hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                if hip_ang > 165: 
-                    self.form_status = "Stand Still / Neutral"
-                    return 
-
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 self.debug_angles = {'Elbow': int(elb_ang)}
-                if elb_ang < 85: self.stage = "down"
-                if elb_ang > 150 and self.stage == "down":
+                if elb_ang < 90: self.stage = "down" # Relaxed from 85
+                if elb_ang > 145 and self.stage == "down": # Relaxed from 150
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
             # 8. Incline Dumbbell Chest Fly
             elif exercise_name == 'inclineDumbbellChestFly':
                 sh_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
-                if sh_ang < 45: self.stage = "up"
-                if sh_ang > 75 and self.stage == 'up': self.stage = "down"
-                if sh_ang < 45 and self.stage == 'down':
+                if sh_ang < 50: self.stage = "up"
+                if sh_ang > 70 and self.stage == 'up': self.stage = "down"
+                if sh_ang < 50 and self.stage == 'down':
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+                
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                if elb_ang < 100: self.form_status = "ERROR: ARMS TOO BENT"
+                if elb_ang < 95: self.form_status = "ERROR: ARMS TOO BENT"
 
             # 9. Lateral Raise
             elif exercise_name == 'lateralRaise':
                 sh_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
                 self.debug_angles = {'Shoulder': int(sh_ang)}
-                if sh_ang < 30: self.stage = "down"
-                if sh_ang > 80 and self.stage == 'down':
+                if sh_ang < 35: self.stage = "down"
+                if sh_ang > 75 and self.stage == 'down': # Relaxed from 80
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
-                if sh_ang > 100: self.form_status = "WARNING: TOO HIGH"
+                if sh_ang > 110: self.form_status = "WARNING: TOO HIGH"
 
             # 11. Romanian Deadlift
             elif exercise_name == 'romanianDeadlift':
                 hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 knee_ang = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y])
                 self.debug_angles = {'Hip': int(hip_ang)}
-                if hip_ang > 160: self.stage = "up"
-                if hip_ang < 120 and self.stage == 'up': self.stage = "down"
-                if hip_ang > 160 and self.stage == 'down':
+                if hip_ang > 155: self.stage = "up"
+                if hip_ang < 125 and self.stage == 'up': self.stage = "down"
+                if hip_ang > 155 and self.stage == 'down':
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
-                if knee_ang < 140: self.form_status = "ERROR: TOO MUCH KNEE BEND"
+                if knee_ang < 135: self.form_status = "ERROR: TOO MUCH KNEE BEND"
 
             # 12. Shoulder Press
             elif exercise_name == 'shoulderPress':
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                if elb_ang < 70: self.stage = "down"
-                if elb_ang > 150 and self.stage == "down":
+                if elb_ang < 85: self.stage = "down" # Relaxed from 70
+                if elb_ang > 145 and self.stage == "down": # Relaxed from 150
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
@@ -459,23 +489,22 @@ class ExerciseAnalyzer:
                 torso_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
                 self.debug_angles = {'Elbow': int(elb_ang)}
                 
-                if elb_ang < 90: self.stage = "in"
-                if elb_ang > 160 and self.stage == "in":
+                if elb_ang < 95: self.stage = "in"
+                if elb_ang > 155 and self.stage == "in":
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "out"; self.rep_counter += 1; self.last_rep_time = current_time
                 
-                if torso_ang > 160: self.form_status = "ERROR: BEND OVER"
+                if torso_ang > 165: self.form_status = "ERROR: BEND OVER"
 
             # 15. Upright Row
             elif exercise_name == 'uprightRow':
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 self.debug_angles = {'Elbow': int(elb_ang)}
-                if elb_ang > 150: self.stage = "down"
-                if elb_ang < 75 and self.stage == 'down':
+                if elb_ang > 140: self.stage = "down" # Relaxed from 150
+                if elb_ang < 85 and self.stage == 'down': # Relaxed from 75
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION:
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
                 
-                # CHANGED: Added buffer (0.05) to be less strict
                 if lw.y < (le.y - 0.05): self.form_status = "ERROR: ELBOWS HIGHER"
 
             # --- LOGGING ---
@@ -511,4 +540,4 @@ class ExerciseAnalyzer:
         log = self.new_error_to_log; self.new_error_to_log = None; return log
 
     def reset_session(self):
-        self.rep_counter = 0; self.stage = None; self.angle_sequence_buffer.clear()
+        self.rep_counter = 0; self.stage = None; self.angle_sequence_buffer.clear(); self.locked_exercise = None
