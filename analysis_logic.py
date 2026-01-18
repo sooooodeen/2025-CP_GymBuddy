@@ -6,7 +6,9 @@ from collections import deque, Counter
 # --- 1. GEOMETRY & NORMALIZATION ---
 
 def normalize_pose_robust(landmarks):
-    """Normalizes landmarks based on torso length."""
+    """
+    Normalizes landmarks based on torso length.
+    """
     try:
         lms = []
         for lm in landmarks:
@@ -26,9 +28,12 @@ def normalize_pose_robust(landmarks):
         shoulder_center_2d = (left_shoulder + right_shoulder) / 2.0
         hip_center_2d = (left_hip + right_hip) / 2.0
 
+        # Calculate torso length based on 2D projection
         torso_length = np.linalg.norm(hip_center_2d - shoulder_center_2d) + 1e-6
+        
         if torso_length < 1e-5: return None
 
+        # Normalize relative to hip center
         hip_center_3d = (landmarks_np[23] + landmarks_np[24]) / 2.0
         normalized_landmarks = (landmarks_np - hip_center_3d) / torso_length
         
@@ -98,6 +103,7 @@ def extract_engineered_features(landmarks):
 
     features = np.array(angles + distances, dtype=np.float32)
     
+    # Padding to match model input [1, 90, 47]
     if len(features) == 42:
         features = np.concatenate([features, np.zeros(5, dtype=np.float32)])
         
@@ -121,14 +127,16 @@ class ExerciseAnalyzer:
         self.input_size = 0
         self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
         
+        # Stability Settings
         self.CONF_THRESHOLD = conf_threshold
         self.STABILITY_FRAMES = 12 
         self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES)
         self.stable_prediction = "neutral"
         
-        # Locking Mechanism
+        # --- LOCKING MECHANISM STATE ---
         self.locked_exercise = None 
         self.neutral_persistence_counter = 0 
+        # ------------------------------
 
         self.frame_count = 0
         self.PREDICTION_INTERVAL = 2
@@ -143,6 +151,7 @@ class ExerciseAnalyzer:
         shape = input_details[0]['shape']
         self.input_size = int(shape[-1])
         print(f"\n--- [DEBUG] MODEL CONFIG: Input Shape: {shape} ---")
+        
         if len(shape) == 3:
             self.expected_seq_len = int(shape[1])
             self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
@@ -191,10 +200,11 @@ class ExerciseAnalyzer:
             s_y = (get_y(11) + get_y(12)) / 2
             h_y = (get_y(23) + get_y(24)) / 2
             
+            # Use thigh length as reference for scale
             thigh_len = math.sqrt((get_x(23)-get_x(25))**2 + (get_y(23)-get_y(25))**2)
             y_diff = abs(s_y - h_y)
             
-            # If torso is horizontal (small Y diff), ignore everything.
+            # If vertical distance of torso is small (less than 80% of thigh), we are horizontal
             if y_diff < (thigh_len * 0.8):
                 return "neutral"
 
@@ -244,16 +254,17 @@ class ExerciseAnalyzer:
                 if self.locked_exercise:
                     if final_label == "neutral":
                         self.neutral_persistence_counter += 1
+                        # If neutral for 40 frames (~1.5s), unlock the exercise (Set Finished)
                         if self.neutral_persistence_counter > 40:
                             self.locked_exercise = None
                             self.neutral_persistence_counter = 0
-                            self.rep_counter = 0 
+                            self.rep_counter = 0 # Reset reps on new set
                             final_label = "neutral"
                         else:
-                            final_label = self.locked_exercise
+                            final_label = self.locked_exercise # Keep locking
                     else:
                         self.neutral_persistence_counter = 0
-                        final_label = self.locked_exercise
+                        final_label = self.locked_exercise # Force lock to current exercise
                 # ------------------------------
 
                 if conf > self.CONF_THRESHOLD: self.recent_predictions.append(final_label)
@@ -265,6 +276,7 @@ class ExerciseAnalyzer:
                     if self.stable_prediction == most_common:
                         self.stable_counter += 1
                     else:
+                        # Only switch if not locked
                         if not self.locked_exercise:
                             if most_common != "neutral" and self.stable_prediction != "neutral":
                                  self.rep_counter = 0 
@@ -277,6 +289,7 @@ class ExerciseAnalyzer:
 
         # 3. Analyze
         if self.stable_counter > 5 and self.stable_prediction != "neutral":
+             # Lock the exercise once we start analyzing
              if not self.locked_exercise:
                  self.locked_exercise = self.stable_prediction
                  
