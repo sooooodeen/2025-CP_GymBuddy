@@ -156,6 +156,45 @@ pose_extractor = mp_pose.Pose(
     min_tracking_confidence=0.5
 )
 
+# --- [NEW CLASS] LANDMARK SMOOTHER ---
+class LandmarkSmoother:
+    def __init__(self, alpha=0.5):
+        self.alpha = alpha
+        self.prev_landmarks = None
+
+    def smooth(self, current_landmarks):
+        if not current_landmarks: return None
+        if self.prev_landmarks is None:
+            self.prev_landmarks = current_landmarks
+            return current_landmarks
+
+        smoothed = []
+        for i, lm in enumerate(current_landmarks):
+            # EMA Smoothing Formula: (Current * alpha) + (Previous * (1-alpha))
+            # Access logic handles both object (mediapipe) and dictionary formats
+            try:
+                # Previous frame is always stored as dictionary
+                prev = self.prev_landmarks[i] 
+                
+                # Current frame might be dict or object
+                cx = lm['x'] if isinstance(lm, dict) else lm.x
+                cy = lm['y'] if isinstance(lm, dict) else lm.y
+                cz = lm['z'] if isinstance(lm, dict) else getattr(lm, 'z', 0.0)
+                cv = lm['visibility'] if isinstance(lm, dict) else getattr(lm, 'visibility', 0.0)
+
+                px, py = prev['x'], prev['y']
+
+                new_x = (cx * self.alpha) + (px * (1 - self.alpha))
+                new_y = (cy * self.alpha) + (py * (1 - self.alpha))
+                
+                smoothed.append({'x': new_x, 'y': new_y, 'z': cz, 'visibility': cv})
+            except Exception:
+                # Fallback if mismatch
+                smoothed.append(lm if isinstance(lm, dict) else {'x':lm.x, 'y':lm.y, 'z':getattr(lm,'z',0), 'visibility':getattr(lm,'visibility',0)})
+        
+        self.prev_landmarks = smoothed
+        return smoothed
+
 def load_model_and_labels():
     global interpreter, label_mapping, input_details, output_details, scaler
     try:
@@ -859,7 +898,7 @@ def handle_connect():
 
     room = f'gym_{gym_id}'
     join_room(room)
-    clients[request.sid] = {'gym_id': gym_id}
+    clients[request.sid] = {'gym_id': gym_id, 'smoothers': {}} # FIXED: Init smoothers
     print(f"Client {request.sid} connected, joined room: {room}")
 
 @socketio.on('disconnect')
@@ -872,7 +911,7 @@ def handle_disconnect():
         
         # --- Force save all active cameras for this client ---
         for camera_id in list(client_data.keys()):
-            if camera_id not in ['gym_id']: # Skip the gym_id key
+            if camera_id not in ['gym_id', 'smoothers']: 
                 print(f"Force closing session for camera {camera_id} due to disconnect")
                 handle_end_session({'camera_id': camera_id, 'sid_for_shutdown': sid})
         # -------------------------------------------------------------
@@ -900,6 +939,7 @@ def start_camera(data):
                 'active_session_id': None,
                 'last_form_status': {}
             }
+            # Initialize smoother per track if needed (handled in process task)
             print(f"✅ Successfully started camera '{camera_id}' for client {sid}")
         except Exception as e:
             print(f"❌ Error initializing resources for {camera_id}/{sid}: {e}")
@@ -992,7 +1032,6 @@ def process_frame_task(sid, data, session_context):
     start_time = time.time()
     global interpreter, label_mapping, input_details, output_details, clients, yolo_model, YOLO_CONF_THRESHOLD, pose_extractor, YOLO_TO_MP, scaler
 
-    # Use the passed gym_id (fallback to clients dict if needed)
     gym_id = session_context.get('gym_id') or clients.get(sid, {}).get('gym_id')
 
     try:
@@ -1033,6 +1072,7 @@ def process_frame_task(sid, data, session_context):
             keypoints = results[0].keypoints
 
             for i, track_id in enumerate(track_ids):
+                # Init Analyzer
                 if track_id not in client_camera_state['analyzers']:
                     client_camera_state['analyzers'][track_id] = ExerciseAnalyzer(
                         sequence_length=SEQUENCE_LENGTH,
@@ -1040,8 +1080,15 @@ def process_frame_task(sid, data, session_context):
                         stability_frames=STABILITY_FRAMES
                     )
                     client_camera_state.setdefault('last_form_status', {})[track_id] = None
+                
+                # Init Smoother
+                if 'smoothers' not in clients[sid]: clients[sid]['smoothers'] = {}
+                if track_id not in clients[sid]['smoothers']:
+                    clients[sid]['smoothers'][track_id] = LandmarkSmoother(alpha=0.5)
 
                 analyzer = client_camera_state['analyzers'][track_id]
+                smoother = clients[sid]['smoothers'][track_id]
+                
                 final_landmarks_for_ui = [{'x': 0.0, 'y': 0.0, 'z': 0.0, 'visibility': 0.0} for _ in range(33)]
 
                 if keypoints is not None and keypoints.conf is not None:
@@ -1087,13 +1134,17 @@ def process_frame_task(sid, data, session_context):
                                 'z': lm.z,
                                 'visibility': lm.visibility
                             }
+                
+                # --- APPLY SMOOTHING ---
+                smoothed_landmarks = smoother.smooth(final_landmarks_for_ui)
+                # -----------------------
 
                 person_response = {
                     'track_id': track_id,
                     'rep_counter': analyzer.rep_counter,
                     'form_status': analyzer.form_status,
                     'stable_prediction': analyzer.stable_prediction,
-                    'landmarks': final_landmarks_for_ui,
+                    'landmarks': smoothed_landmarks, # Use smoothed for UI
                     'debug_angles': {}
                 }
 
@@ -1104,7 +1155,7 @@ def process_frame_task(sid, data, session_context):
                             input_details=input_details,
                             output_details=output_details,
                             label_mapping=label_mapping,
-                            landmarks=final_landmarks_for_ui,
+                            landmarks=smoothed_landmarks, # Use smoothed for Analysis
                             current_exercise=analyzer.stable_prediction,
                             scaler=scaler
                         )
@@ -1116,14 +1167,11 @@ def process_frame_task(sid, data, session_context):
                             'debug_angles': {k: int(v) for k, v in angles.items()}
                         })
 
-                        # === [FIXED DATABASE SAVING LOGIC] ===
+                        # === DATABASE SAVING LOGIC ===
                         
                         last_form = client_camera_state['last_form_status'].get(track_id)
                         
-                        # Check 1: Is this a NEW error (vs the previous frame)?
                         is_new_error = "ERROR" in form and form != last_form
-                        
-                        # Check 2: Did the analyzer finish a rep and generate a strict log?
                         log_entry = analyzer.get_new_error_log()
                         
                         session_id = client_camera_state.get('active_session_id')
@@ -1132,7 +1180,6 @@ def process_frame_task(sid, data, session_context):
                         if (log_entry or is_new_error) and not session_id:
                             try:
                                 with app.app_context():
-                                    # USE PASSED CONTEXT, NOT SESSION
                                     current_user_id = session_context.get('user_id')
                                     current_gym_id = gym_id if gym_id else 1
 
@@ -1222,10 +1269,6 @@ def process_frame_task(sid, data, session_context):
 
     socketio.emit('response', emit_data, room=sid)
 
-    process_time = (time.time() - start_time) * 1000
-    if process_time > 100:
-        print(f"[DEBUG] Processing took: {process_time:.2f}ms")
-
     if client_camera_state:
         client_camera_state['is_processing'] = False
 
@@ -1252,7 +1295,7 @@ def handle_image(data):
     session_context = {
         'user_id': session.get('user_id'),
         'user_gym_id': session.get('user_gym_id'),
-        'gym_id': session.get('user_gym_id'), # Redundant backup
+        'gym_id': session.get('user_gym_id'), 
         'firstname': session.get('user_firstname', 'Unknown'),
         'lastname': session.get('user_lastname', 'User')
     }
