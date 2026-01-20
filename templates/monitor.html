@@ -207,7 +207,14 @@
     function captureCamera(video, selectedCameraId, feedbackElement, streamRefName) {
         let constraints = {
             audio: false,
-            video: { deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined }
+            video: { 
+                deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined,
+                // --- [FIX] FORCE LOWER RESOLUTION ---
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+                frameRate: { ideal: 30 }
+                // ------------------------------------
+            }
         };
         navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
             video.srcObject = stream;

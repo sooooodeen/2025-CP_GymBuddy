@@ -1084,7 +1084,7 @@ def process_frame_task(sid, data, session_context):
                 # Init Smoother
                 if 'smoothers' not in clients[sid]: clients[sid]['smoothers'] = {}
                 if track_id not in clients[sid]['smoothers']:
-                    clients[sid]['smoothers'][track_id] = LandmarkSmoother(alpha=0.5)
+                    clients[sid]['smoothers'][track_id] = LandmarkSmoother(alpha=0.8)
 
                 analyzer = client_camera_state['analyzers'][track_id]
                 smoother = clients[sid]['smoothers'][track_id]
