@@ -151,14 +151,15 @@ YOLO_TO_MP = {
 mp_pose = mp.solutions.pose
 pose_extractor = mp_pose.Pose(
     static_image_mode=True,
-    model_complexity=1,
+    # [FIX]: Set complexity to 0 for SPEED (Fixes Delay)
+    model_complexity=0, 
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
 
 # --- [NEW CLASS] LANDMARK SMOOTHER ---
 class LandmarkSmoother:
-    def __init__(self, alpha=0.5):
+    def __init__(self, alpha=0.2): # [FIX]: Low alpha = Heavy Smoothing
         self.alpha = alpha
         self.prev_landmarks = None
 
@@ -170,13 +171,9 @@ class LandmarkSmoother:
 
         smoothed = []
         for i, lm in enumerate(current_landmarks):
-            # EMA Smoothing Formula: (Current * alpha) + (Previous * (1-alpha))
-            # Access logic handles both object (mediapipe) and dictionary formats
             try:
-                # Previous frame is always stored as dictionary
                 prev = self.prev_landmarks[i] 
                 
-                # Current frame might be dict or object
                 cx = lm['x'] if isinstance(lm, dict) else lm.x
                 cy = lm['y'] if isinstance(lm, dict) else lm.y
                 cz = lm['z'] if isinstance(lm, dict) else getattr(lm, 'z', 0.0)
@@ -189,7 +186,6 @@ class LandmarkSmoother:
                 
                 smoothed.append({'x': new_x, 'y': new_y, 'z': cz, 'visibility': cv})
             except Exception:
-                # Fallback if mismatch
                 smoothed.append(lm if isinstance(lm, dict) else {'x':lm.x, 'y':lm.y, 'z':getattr(lm,'z',0), 'visibility':getattr(lm,'visibility',0)})
         
         self.prev_landmarks = smoothed
@@ -1084,7 +1080,8 @@ def process_frame_task(sid, data, session_context):
                 # Init Smoother
                 if 'smoothers' not in clients[sid]: clients[sid]['smoothers'] = {}
                 if track_id not in clients[sid]['smoothers']:
-                    clients[sid]['smoothers'][track_id] = LandmarkSmoother(alpha=0.8)
+                    # [FIX]: Alpha 0.2 means "Keep 80% of history", filtering out jitter
+                    clients[sid]['smoothers'][track_id] = LandmarkSmoother(alpha=0.2) 
 
                 analyzer = client_camera_state['analyzers'][track_id]
                 smoother = clients[sid]['smoothers'][track_id]
