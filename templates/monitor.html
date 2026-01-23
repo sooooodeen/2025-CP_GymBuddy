@@ -13,16 +13,9 @@
         </div>
     </div>
     <div class="grid grid-cols-2 font-Helvetica text-xl">
-        <label>
-            Camera 1:
-            <select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-1"></select>
-        </label>
-        <label>
-            Camera 2:
-            <select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-2"></select>
-        </label>
+        <label>Camera 1:<select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-1"></select></label>
+        <label>Camera 2:<select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-2"></select></label>
     </div>
-
     <div class="flex w-full items-center gap-2 h-[100dvh]">
         <div class="w-1/2 h-full relative">
             <video class="w-full h-full bg-gray-200 rounded-lg" id="camera1" autoplay playsinline style="transform: scaleX(-1);"></video>
@@ -49,22 +42,16 @@
             </div>
         </div>
     </div>
-
     <div class="flex justify-center w-full">
         <button id="btn-open-camera" class="flex gap-3 cursor-pointer text-2xl text-white justify-center w-auto bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-6 py-3 rounded-lg items-center text-black font-Helvetica disabled:opacity-50 disabled:cursor-not-allowed">
-            <span id="camera-icon-open"><svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-camera"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg></span>
-            <span id="camera-icon-closed" class="hidden"><svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-camera-off-icon lucide-camera-off"><path d="M14.564 14.558a3 3 0 1 1-4.122-4.121"/><path d="m2 2 20 20"/><path d="M20 20H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 .819-.175"/><path d="M9.695 4.024A2 2 0 0 1 10.004 4h3.993a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v7.344"/></svg></span>
             <span id="button-text">Open Cameras</span>
         </button>
     </div>
-
 <script>
     let devices;
     const camSelect1 = document.getElementById("select-camera-1");
     const camSelect2 = document.getElementById("select-camera-2");
     const openCameraButton = document.getElementById("btn-open-camera");
-    const cameraIconOpen = document.getElementById("camera-icon-open");
-    const cameraIconClosed = document.getElementById("camera-icon-closed");
     const buttonText = document.getElementById("button-text");
     let isCameraOpen = false;
     let intervalId = null;
@@ -76,18 +63,13 @@
     async function listDevices() {
         try {
             devices = await getCameraDevices();
-            if (devices.length === 0) {
-                camSelect1.disabled = true; camSelect2.disabled = true; openCameraButton.disabled = true; openCameraButton.innerText = "No Cameras Found"; return;
-            }
+            if (devices.length === 0) { camSelect1.disabled = true; camSelect2.disabled = true; openCameraButton.disabled = true; openCameraButton.innerText = "No Cameras Found"; return; }
             devices.forEach((device, index) => {
                 camSelect1.appendChild(new Option(device.label || `Camera ${index + 1}`, device.deviceId));
                 camSelect2.appendChild(new Option(device.label || `Camera ${index + 1}`, device.deviceId));
             });
             if (devices.length > 1) camSelect2.selectedIndex = 1;
-        } catch (e) {
-            console.error("Error listing devices:", e);
-            openCameraButton.innerText = "Camera Permission Denied"; openCameraButton.disabled = true;
-        }
+        } catch (e) { openCameraButton.innerText = "Camera Permission Denied"; openCameraButton.disabled = true; }
     }
 
     async function getCameraDevices() {
@@ -97,69 +79,55 @@
         return allDevices.filter(device => device.kind === 'videoinput');
     }
 
-    function stopCameras(videoElement, streamReference) {
-        if (streamReference) streamReference.getTracks().forEach(track => track.stop());
-        videoElement.srcObject = null;
-        const canvas = document.getElementById(videoElement.id === 'camera1' ? 'canvas1' : 'canvas2');
-        const context = canvas.getContext('2d');
-        context.clearRect(0, 0, canvas.width, canvas.height); 
-        document.getElementById(videoElement.id === 'camera1' ? 'results1' : 'results2').style.display = 'none';
-        socket.emit('stop_camera', { camera_id: videoElement.id });
+    function stopCameras() {
+        if (stream1) stream1.getTracks().forEach(track => track.stop());
+        if (stream2) stream2.getTracks().forEach(track => track.stop());
+        document.getElementById('camera1').srcObject = null;
+        document.getElementById('camera2').srcObject = null;
+        document.getElementById('results1').style.display = 'none';
+        document.getElementById('results2').style.display = 'none';
+        socket.emit('stop_camera', { camera_id: 'camera1' });
+        socket.emit('stop_camera', { camera_id: 'camera2' });
     }
 
     openCameraButton.addEventListener("click", function() {
         if (!isCameraOpen) {
+            if (camSelect1.value === camSelect2.value) { alert("Please select two different cameras!"); return; }
             openCameraButton.disabled = true;
-            captureCamera(video1, camSelect1.value, feedbackElement1, 'stream1');
-            captureCamera(video2, camSelect2.value, feedbackElement2, 'stream2');
+            captureCamera(document.getElementById('camera1'), camSelect1.value, 'stream1');
+            captureCamera(document.getElementById('camera2'), camSelect2.value, 'stream2');
             setTimeout(() => { 
                 if (intervalId === null) {
                     socket.emit('start_camera', { camera_id: 'camera1' }); socket.emit('start_camera', { camera_id: 'camera2' });
                     socket.emit('start_session', { camera_id: 'camera1' }); socket.emit('start_session', { camera_id: 'camera2' });
-                    intervalId = setInterval(() => { sendFrame(video1, 'camera1'); sendFrame(video2, 'camera2'); }, 1000 / FPS);
+                    intervalId = setInterval(() => { sendFrame(document.getElementById('camera1'), 'camera1'); sendFrame(document.getElementById('camera2'), 'camera2'); }, 1000 / 12);
                 }
                 document.getElementById('results1').style.display = 'block'; document.getElementById('results2').style.display = 'block';
                 isCameraOpen = true; buttonText.innerText = "Stop Cameras";
-                cameraIconOpen.classList.add('hidden'); cameraIconClosed.classList.remove('hidden');
                 openCameraButton.className = openCameraButton.className.replace('bg-[#F05454] hover:bg-[#f77777]', 'bg-gray-500 hover:bg-gray-600');
                 openCameraButton.disabled = false;
-            }, 500); 
+            }, 1000); 
         } else {
-            clearInterval(intervalId); intervalId = null;
-            stopCameras(video1, stream1); stopCameras(video2, stream2);
+            clearInterval(intervalId); intervalId = null; stopCameras();
             isCameraOpen = false; buttonText.innerText = "Open Cameras";
-            cameraIconOpen.classList.remove('hidden'); cameraIconClosed.classList.add('hidden');
             openCameraButton.className = openCameraButton.className.replace('bg-gray-500 hover:bg-gray-600', 'bg-[#F05454] hover:bg-[#f77777]');
             openCameraButton.disabled = false;
-            feedbackElement1.innerText = "START EXERCISE"; feedbackElement2.innerText = "START EXERCISE";
         }
     });
 
-    function captureCamera(video, selectedCameraId, feedbackElement, streamRefName) {
+    function captureCamera(video, selectedCameraId, streamRefName) {
         let constraints = {
             audio: false,
-            video: { 
-                deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined,
-                // [FIX] Force 640x480 to reduce bandwidth
-                width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }
-            }
+            video: { deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }
         };
         navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
             video.srcObject = stream;
             if (streamRefName === 'stream1') stream1 = stream;
             if (streamRefName === 'stream2') stream2 = stream;
-        }).catch(function(error) {
-            feedbackElement.innerText = "CAMERA ERROR!"; feedbackElement.className = "text-xl font-medium text-red-500 mt-2";
-        });
+        }).catch(function(error) { console.error("Cam error", error); });
     }
     
     const socket = io();
-    const FPS = 12; // [FIX] Higher FPS for smooth UI
-    
-    const video1 = document.getElementById('camera1'); const canvas1 = document.getElementById('canvas1'); const canvasCtx1 = canvas1.getContext('2d');
-    const exerciseElement1 = document.getElementById('exercise1'); const repsElement1 = document.getElementById('reps1'); const feedbackElement1 = document.getElementById('feedback1'); const multiUserInd1 = document.getElementById('multi-user-indicator1');
-    const video2 = document.getElementById('camera2'); const canvas2 = document.getElementById('canvas2'); const canvasCtx2 = canvas2.getContext('2d');
-    const exerciseElement2 = document.getElementById('exercise2'); const repsElement2 = document.getElementById('reps2'); const feedbackElement2 = document.getElementById('feedback2'); const multiUserInd2 = document.getElementById('multi-user-indicator2');
     const POSE_CONNECTIONS = [[0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8], [9, 10], [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19], [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20], [11, 23], [12, 24], [23, 24], [23, 25], [24, 26], [25, 27], [26, 28], [27, 29], [28, 30], [29, 31], [30, 32], [27, 31], [28, 32]];
 
     function drawSkeleton(landmarks, context, canvas, color = 'white') {
@@ -170,15 +138,13 @@
         context.beginPath();
         POSE_CONNECTIONS.forEach(conn => {
             const start = landmarks[conn[0]]; const end = landmarks[conn[1]];
-            if (start && end && start.visibility > 0.3 && end.visibility > 0.3 && start.x !== undefined && start.y !== undefined && end.x !== undefined && end.y !== undefined) { 
+            if (start && end && start.visibility > 0.3 && end.visibility > 0.3) { 
                 context.moveTo(start.x * width, start.y * height); context.lineTo(end.x * width, end.y * height);
             }
         });
         context.stroke();
         landmarks.forEach(lm => {
-            if (lm && lm.visibility > 0.3 && lm.x !== undefined && lm.y !== undefined) {
-                context.beginPath(); context.arc(lm.x * width, lm.y * height, 6, 0, 2 * Math.PI); context.fill();
-            }
+            if (lm && lm.visibility > 0.3) { context.beginPath(); context.arc(lm.x * width, lm.y * height, 6, 0, 2 * Math.PI); context.fill(); }
         });
         context.restore();
     }
@@ -197,8 +163,6 @@
         }
     }
 
-    socket.on('connect', () => console.log('Connected to Python backend!'));
-    
     function sendFrame(videoElement, cameraIdentifier) {
         if (!videoElement.srcObject || videoElement.readyState < 2 || videoElement.videoWidth === 0) return;
         const processWidth = 360; const processHeight = (videoElement.videoHeight / videoElement.videoWidth) * processWidth;
@@ -234,19 +198,14 @@
     
     socket.on('response', (data) => {
         const elementMap = {
-            'camera1': { exercise: exerciseElement1, reps: repsElement1, feedback: feedbackElement1, video: video1, canvas: canvas1, canvasCtx: canvasCtx1, multiUserInd: multiUserInd1 },
-            'camera2': { exercise: exerciseElement2, reps: repsElement2, feedback: feedbackElement2, video: video2, canvas: canvas2, canvasCtx: canvasCtx2, multiUserInd: multiUserInd2 }
+            'camera1': { exercise: document.getElementById('exercise1'), reps: document.getElementById('reps1'), feedback: document.getElementById('feedback1'), video: document.getElementById('camera1'), canvas: document.getElementById('canvas1'), canvasCtx: document.getElementById('canvas1').getContext('2d'), multiUserInd: document.getElementById('multi-user-indicator1') },
+            'camera2': { exercise: document.getElementById('exercise2'), reps: document.getElementById('reps2'), feedback: document.getElementById('feedback2'), video: document.getElementById('camera2'), canvas: document.getElementById('canvas2'), canvasCtx: document.getElementById('canvas2').getContext('2d'), multiUserInd: document.getElementById('multi-user-indicator2') }
         };
         const elements = elementMap[data.camera_id]; if (elements) updateUi(data, elements);
     });
 
-    socket.on('form_error', function(data) {
-        if (speechSynthesis.speaking) return; const utterance = new SpeechSynthesisUtterance(data.message); speechSynthesis.speak(utterance);
-    });
-
-    socket.on('trainer_alert', function(data) {
-        Swal.fire({ title: `TRAINER ALERT (${data.camera_id})`, text: data.message, icon: 'error', toast: true, position: 'bottom-end', showConfirmButton: false, timer: 5000, timerProgressBar: true, showCloseButton: true });
-    });
+    socket.on('form_error', function(data) { if (!speechSynthesis.speaking) speechSynthesis.speak(new SpeechSynthesisUtterance(data.message)); });
+    socket.on('trainer_alert', function(data) { Swal.fire({ title: `TRAINER ALERT (${data.camera_id})`, text: data.message, icon: 'error', toast: true, position: 'bottom-end', showConfirmButton: false, timer: 5000, timerProgressBar: true, showCloseButton: true }); });
 </script>
 </div>
 {% endblock %}
