@@ -940,7 +940,7 @@ def process_frame_task(sid, data, session_context):
             else:
                 del state['ghost_skeletons'][gid]
 
-    emit('response', {'camera_id': cam, 'people': current_data}, room=sid)
+    socketio.emit('response', {'camera_id': cam, 'people': current_data}, room=sid, namespace='/')
     state['is_processing'] = False
 
 @socketio.on('image')
