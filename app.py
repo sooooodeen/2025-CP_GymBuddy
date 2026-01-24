@@ -728,7 +728,9 @@ def handle_connect():
     gym_id = session.get('user_gym_id')
     if not gym_id: return False
     join_room(f'gym_{gym_id}')
-    clients[request.sid] = {'gym_id': gym_id, 'smoothers': {}, 'ghost_skeletons': {}}
+    
+    # FIXED: Clean initialization. Smoothers and ghosts are now in 'start_camera'
+    clients[request.sid] = {'gym_id': gym_id}
     print(f"Client {request.sid} connected.")
 
 @socketio.on('disconnect')
@@ -736,7 +738,7 @@ def handle_disconnect():
     sid = request.sid
     if sid in clients:
         for cam in list(clients[sid].keys()):
-            if cam not in ['gym_id', 'smoothers', 'ghost_skeletons']:
+            if cam not in ['gym_id']: # Only check camera keys
                 handle_end_session({'camera_id': cam, 'sid_for_shutdown': sid})
         leave_room(f"gym_{clients[sid]['gym_id']}")
         del clients[sid]
@@ -746,12 +748,15 @@ def start_camera(data):
     sid = request.sid
     cam = data.get('camera_id')
     if sid in clients and cam:
+        # FIXED: Initialize 'smoothers' and 'ghost_skeletons' inside the CAMERA specific dictionary
         clients[sid][cam] = {
             'analyzers': {},
             'is_processing': False,
             'active_session_id': None,
             'last_form_status': {},
-            'model': YOLO('yolov8n-pose.pt') # Independent Model
+            'model': YOLO('yolov8n-pose.pt'),
+            'smoothers': {},  # Per-camera smoother storage
+            'ghost_skeletons': {} # Per-camera ghost storage
         }
 
 @socketio.on('stop_camera')
@@ -848,11 +853,14 @@ def process_frame_task(sid, data, session_context):
                 state['analyzers'][tid] = ExerciseAnalyzer(SEQUENCE_LENGTH, CONF_THRESHOLD, STABILITY_FRAMES)
                 state['last_form_status'][tid] = None
             
-            if tid not in clients[sid]['smoothers']:
-                clients[sid]['smoothers'][tid] = AdaptiveSmoother(0.1, 0.8)
+            # FIXED: Check the CAMERA SPECIFIC smoother storage
+            if tid not in state['smoothers']:
+                state['smoothers'][tid] = AdaptiveSmoother(0.1, 0.8)
 
             analyzer = state['analyzers'][tid]
-            smoother = clients[sid]['smoothers'][tid]
+            # FIXED: Use the CAMERA SPECIFIC smoother
+            smoother = state['smoothers'][tid]
+            
             lms_ui = [{'x': 0.0, 'y': 0.0, 'z': 0.0, 'visibility': 0.0} for _ in range(33)]
 
             if kpts and kpts.conf is not None:
@@ -864,8 +872,8 @@ def process_frame_task(sid, data, session_context):
 
             smoothed_lms = smoother.smooth(lms_ui)
             
-            # Update Ghost Memory
-            clients[sid]['ghost_skeletons'][tid] = {'lms': smoothed_lms, 'ttl': 8, 'an': analyzer}
+            # FIXED: Update Ghost Memory in STATE, not CLIENT
+            state['ghost_skeletons'][tid] = {'lms': smoothed_lms, 'ttl': 8, 'an': analyzer}
 
             p_resp = {
                 'track_id': tid,
@@ -916,8 +924,8 @@ def process_frame_task(sid, data, session_context):
                 except: pass
             current_data.append(p_resp)
 
-    # Ghost Handling (Anti-Blinking)
-    for gid, ghost in list(clients[sid]['ghost_skeletons'].items()):
+    # FIXED: Ghost Handling using STATE
+    for gid, ghost in list(state['ghost_skeletons'].items()):
         if gid not in active_ids:
             if ghost['ttl'] > 0:
                 ghost['ttl'] -= 1
@@ -926,11 +934,11 @@ def process_frame_task(sid, data, session_context):
                     'rep_counter': ghost['an'].rep_counter,
                     'form_status': ghost['an'].form_status,
                     'stable_prediction': ghost['an'].stable_prediction,
-                    'landmarks': ghost['lms'],
+                    'landmarks': ghost['lms'], # Uses the specific camera's last known position
                     'debug_angles': {}
                 })
             else:
-                del clients[sid]['ghost_skeletons'][gid]
+                del state['ghost_skeletons'][gid]
 
     emit('response', {'camera_id': cam, 'people': current_data}, room=sid)
     state['is_processing'] = False
