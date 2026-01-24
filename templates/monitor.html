@@ -13,126 +13,63 @@
         </div>
     </div>
     <div class="grid grid-cols-2 font-Helvetica text-xl">
-        <label>
-            Camera 1:
-            <select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-1"></select>
-        </label>
-        <label>
-            Camera 2:
-            <select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-2"></select>
-        </label>
+        <label>Camera 1:<select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-1"></select></label>
+        <label>Camera 2:<select class="px-3 rounded-lg border border-gray-400 py-2" id="select-camera-2"></select></label>
     </div>
-
     <div class="flex w-full items-center gap-2 h-[100dvh]">
-        <!-- Camera 1 Container -->
         <div class="w-1/2 h-full relative">
             <video class="w-full h-full bg-gray-200 rounded-lg" id="camera1" autoplay playsinline style="transform: scaleX(-1);"></video>
             <canvas id="canvas1" class="absolute top-0 left-0 w-full h-full"></canvas>
-            
-            <!-- Fixed Results Box (Shows Person 1 data as primary) -->
-            <div id="results1" 
-                 class="absolute top-0 left-0 m-4 bg-gray-900 bg-opacity-75 text-white p-4 rounded-lg text-left shadow-lg" 
-                 style="display: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">
+            <div id="results1" class="absolute top-0 left-0 m-4 bg-gray-900 bg-opacity-75 text-white p-4 rounded-lg text-left shadow-lg" style="display: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">
                 <div class="flex items-center gap-4">
-                    <div>
-                        <p class="text-sm font-semibold text-gray-400">EXERCISE</p>
-                        <p id="exercise1" class="text-3xl font-bold leading-tight">Neutral</p>
-                    </div>
-                    <div class="border-l border-gray-600 pl-4">
-                        <p class="text-sm font-semibold text-gray-400">REPS</p>
-                        <p id="reps1" class="text-3xl font-bold leading-tight">0</p>
-                    </div>
+                    <div><p class="text-sm font-semibold text-gray-400">EXERCISE</p><p id="exercise1" class="text-3xl font-bold leading-tight">Neutral</p></div>
+                    <div class="border-l border-gray-600 pl-4"><p class="text-sm font-semibold text-gray-400">REPS</p><p id="reps1" class="text-3xl font-bold leading-tight">0</p></div>
                 </div>
-                <div class="mt-3 pt-3 border-t border-gray-600">
-                    <p id="feedback1" class="text-xl font-medium text-green-400">START EXERCISE</p>
-                </div>
-                <!-- New Indicator for Multiple People -->
-                <div id="multi-user-indicator1" class="mt-2 text-xs text-yellow-400 hidden">
-                    • Multiple Users Detected
-                </div>
+                <div class="mt-3 pt-3 border-t border-gray-600"><p id="feedback1" class="text-xl font-medium text-green-400">START EXERCISE</p></div>
+                <div id="multi-user-indicator1" class="mt-2 text-xs text-yellow-400 hidden">• Multiple Users Detected</div>
             </div>
         </div>
-
-        <!-- Camera 2 Container -->
         <div class="w-1/2 h-full relative">
             <video class="w-full h-full bg-gray-200 rounded-lg" id="camera2" autoplay playsinline style="transform: scaleX(-1);"></video>
             <canvas id="canvas2" class="absolute top-0 left-0 w-full h-full"></canvas>
-            
-            <div id="results2" 
-                 class="absolute top-0 left-0 m-4 bg-gray-900 bg-opacity-75 text-white p-4 rounded-lg text-left shadow-lg" 
-                 style="display: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">
+            <div id="results2" class="absolute top-0 left-0 m-4 bg-gray-900 bg-opacity-75 text-white p-4 rounded-lg text-left shadow-lg" style="display: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">
                 <div class="flex items-center gap-4">
-                    <div>
-                        <p class="text-sm font-semibold text-gray-400">EXERCISE</p>
-                        <p id="exercise2" class="text-3xl font-bold leading-tight">Neutral</p>
-                    </div>
-                    <div class="border-l border-gray-600 pl-4">
-                        <p class="text-sm font-semibold text-gray-400">REPS</p>
-                        <p id="reps2" class="text-3xl font-bold leading-tight">0</p>
-                    </div>
+                    <div><p class="text-sm font-semibold text-gray-400">EXERCISE</p><p id="exercise2" class="text-3xl font-bold leading-tight">Neutral</p></div>
+                    <div class="border-l border-gray-600 pl-4"><p class="text-sm font-semibold text-gray-400">REPS</p><p id="reps2" class="text-3xl font-bold leading-tight">0</p></div>
                 </div>
-                <div class="mt-3 pt-3 border-t border-gray-600">
-                    <p id="feedback2" class="text-xl font-medium text-green-400">START EXERCISE</p>
-                </div>
-                 <div id="multi-user-indicator2" class="mt-2 text-xs text-yellow-400 hidden">
-                    • Multiple Users Detected
-                </div>
+                <div class="mt-3 pt-3 border-t border-gray-600"><p id="feedback2" class="text-xl font-medium text-green-400">START EXERCISE</p></div>
+                <div id="multi-user-indicator2" class="mt-2 text-xs text-yellow-400 hidden">• Multiple Users Detected</div>
             </div>
         </div>
     </div>
-
     <div class="flex justify-center w-full">
         <button id="btn-open-camera" class="flex gap-3 cursor-pointer text-2xl text-white justify-center w-auto bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-6 py-3 rounded-lg items-center text-black font-Helvetica disabled:opacity-50 disabled:cursor-not-allowed">
-            <span id="camera-icon-open">
-                <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-camera"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg>
-            </span>
-            <span id="camera-icon-closed" class="hidden"> 
-                <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-camera-off-icon lucide-camera-off"><path d="M14.564 14.558a3 3 0 1 1-4.122-4.121"/><path d="m2 2 20 20"/><path d="M20 20H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 .819-.175"/><path d="M9.695 4.024A2 2 0 0 1 10.004 4h3.993a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v7.344"/></svg>
-            </span>
             <span id="button-text">Open Cameras</span>
         </button>
     </div>
-
 <script>
-    // --- PART 1: CAMERA CONTROL LOGIC ---
     let devices;
     const camSelect1 = document.getElementById("select-camera-1");
     const camSelect2 = document.getElementById("select-camera-2");
     const openCameraButton = document.getElementById("btn-open-camera");
-    const cameraIconOpen = document.getElementById("camera-icon-open");
-    const cameraIconClosed = document.getElementById("camera-icon-closed");
     const buttonText = document.getElementById("button-text");
     let isCameraOpen = false;
     let intervalId = null;
     let stream1 = null; 
     let stream2 = null; 
 
-    window.onload = async function() {
-        await listDevices();
-    };
+    window.onload = async function() { await listDevices(); };
 
     async function listDevices() {
         try {
             devices = await getCameraDevices();
-            if (devices.length === 0) {
-                camSelect1.disabled = true;
-                camSelect2.disabled = true;
-                openCameraButton.disabled = true;
-                openCameraButton.innerText = "No Cameras Found";
-                return;
-            }
+            if (devices.length === 0) { camSelect1.disabled = true; camSelect2.disabled = true; openCameraButton.disabled = true; openCameraButton.innerText = "No Cameras Found"; return; }
             devices.forEach((device, index) => {
                 camSelect1.appendChild(new Option(device.label || `Camera ${index + 1}`, device.deviceId));
                 camSelect2.appendChild(new Option(device.label || `Camera ${index + 1}`, device.deviceId));
             });
-            if (devices.length > 1) {
-                camSelect2.selectedIndex = 1;
-            }
-        } catch (e) {
-            console.error("Error listing devices:", e);
-            openCameraButton.innerText = "Camera Permission Denied";
-            openCameraButton.disabled = true;
-        }
+            if (devices.length > 1) camSelect2.selectedIndex = 1;
+        } catch (e) { openCameraButton.innerText = "Camera Permission Denied"; openCameraButton.disabled = true; }
     }
 
     async function getCameraDevices() {
@@ -142,307 +79,133 @@
         return allDevices.filter(device => device.kind === 'videoinput');
     }
 
-    function stopCameras(videoElement, streamReference) {
-        if (streamReference) {
-            streamReference.getTracks().forEach(track => track.stop());
-        }
-        videoElement.srcObject = null;
-        
-        // Clear Canvas
-        const canvas = document.getElementById(videoElement.id === 'camera1' ? 'canvas1' : 'canvas2');
-        const context = canvas.getContext('2d');
-        context.clearRect(0, 0, canvas.width, canvas.height); // Use canvas width/height
-        
-        document.getElementById(videoElement.id === 'camera1' ? 'results1' : 'results2').style.display = 'none';
-        socket.emit('stop_camera', { camera_id: videoElement.id });
+    function stopCameras() {
+        if (stream1) stream1.getTracks().forEach(track => track.stop());
+        if (stream2) stream2.getTracks().forEach(track => track.stop());
+        document.getElementById('camera1').srcObject = null;
+        document.getElementById('camera2').srcObject = null;
+        document.getElementById('results1').style.display = 'none';
+        document.getElementById('results2').style.display = 'none';
+        socket.emit('stop_camera', { camera_id: 'camera1' });
+        socket.emit('stop_camera', { camera_id: 'camera2' });
     }
 
     openCameraButton.addEventListener("click", function() {
         if (!isCameraOpen) {
+            if (camSelect1.value === camSelect2.value) { alert("Please select two different cameras!"); return; }
             openCameraButton.disabled = true;
-            captureCamera(video1, camSelect1.value, feedbackElement1, 'stream1');
-            captureCamera(video2, camSelect2.value, feedbackElement2, 'stream2');
-
+            captureCamera(document.getElementById('camera1'), camSelect1.value, 'stream1');
+            captureCamera(document.getElementById('camera2'), camSelect2.value, 'stream2');
             setTimeout(() => { 
                 if (intervalId === null) {
-                    socket.emit('start_camera', { camera_id: 'camera1' });
-                    socket.emit('start_camera', { camera_id: 'camera2' });
-                    socket.emit('start_session', { camera_id: 'camera1' });
-                    socket.emit('start_session', { camera_id: 'camera2' });
-
-                    intervalId = setInterval(() => {
-                        sendFrame(video1, 'camera1');
-                        sendFrame(video2, 'camera2');
-                    }, 1000 / FPS);
+                    socket.emit('start_camera', { camera_id: 'camera1' }); socket.emit('start_camera', { camera_id: 'camera2' });
+                    socket.emit('start_session', { camera_id: 'camera1' }); socket.emit('start_session', { camera_id: 'camera2' });
+                    intervalId = setInterval(() => { sendFrame(document.getElementById('camera1'), 'camera1'); sendFrame(document.getElementById('camera2'), 'camera2'); }, 1000 / 12);
                 }
-                document.getElementById('results1').style.display = 'block';
-                document.getElementById('results2').style.display = 'block';
-                
-                isCameraOpen = true;
-                buttonText.innerText = "Stop Cameras";
-                cameraIconOpen.classList.add('hidden');
-                cameraIconClosed.classList.remove('hidden');
+                document.getElementById('results1').style.display = 'block'; document.getElementById('results2').style.display = 'block';
+                isCameraOpen = true; buttonText.innerText = "Stop Cameras";
                 openCameraButton.className = openCameraButton.className.replace('bg-[#F05454] hover:bg-[#f77777]', 'bg-gray-500 hover:bg-gray-600');
                 openCameraButton.disabled = false;
-            }, 500); 
+            }, 1000); 
         } else {
-            clearInterval(intervalId);
-            intervalId = null;
-            
-            stopCameras(video1, stream1);
-            stopCameras(video2, stream2);
-            
-            isCameraOpen = false;
-            buttonText.innerText = "Open Cameras";
-            cameraIconOpen.classList.remove('hidden');
-            cameraIconClosed.classList.add('hidden');
+            clearInterval(intervalId); intervalId = null; stopCameras();
+            isCameraOpen = false; buttonText.innerText = "Open Cameras";
             openCameraButton.className = openCameraButton.className.replace('bg-gray-500 hover:bg-gray-600', 'bg-[#F05454] hover:bg-[#f77777]');
             openCameraButton.disabled = false;
-            
-            feedbackElement1.innerText = "START EXERCISE";
-            feedbackElement2.innerText = "START EXERCISE";
         }
     });
 
-    function captureCamera(video, selectedCameraId, feedbackElement, streamRefName) {
+    function captureCamera(video, selectedCameraId, streamRefName) {
         let constraints = {
             audio: false,
-            video: { deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined }
+            video: { deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }
         };
         navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
             video.srcObject = stream;
             if (streamRefName === 'stream1') stream1 = stream;
             if (streamRefName === 'stream2') stream2 = stream;
-        }).catch(function(error) {
-            console.error("Camera capture error:", error);
-            feedbackElement.innerText = "CAMERA ERROR!";
-            feedbackElement.className = "text-xl font-medium text-red-500 mt-2";
-        });
+        }).catch(function(error) { console.error("Cam error", error); });
     }
     
-    // --- PART 2: AI INTEGRATION LOGIC ---
     const socket = io();
-    // FIX: Reduced FPS to prevent backend overload on local machine
-    const FPS = 4; 
-    
-    const video1 = document.getElementById('camera1');
-    const canvas1 = document.getElementById('canvas1');
-    const canvasCtx1 = canvas1.getContext('2d');
-    // Elements for Main Box
-    const exerciseElement1 = document.getElementById('exercise1');
-    const repsElement1 = document.getElementById('reps1');
-    const feedbackElement1 = document.getElementById('feedback1');
-    const multiUserInd1 = document.getElementById('multi-user-indicator1');
-
-    const video2 = document.getElementById('camera2');
-    const canvas2 = document.getElementById('canvas2');
-    const canvasCtx2 = canvas2.getContext('2d');
-    // Elements for Main Box
-    const exerciseElement2 = document.getElementById('exercise2');
-    const repsElement2 = document.getElementById('reps2');
-    const feedbackElement2 = document.getElementById('feedback2');
-    const multiUserInd2 = document.getElementById('multi-user-indicator2');
-
     const POSE_CONNECTIONS = [[0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8], [9, 10], [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19], [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20], [11, 23], [12, 24], [23, 24], [23, 25], [24, 26], [25, 27], [26, 28], [27, 29], [28, 30], [29, 31], [30, 32], [27, 31], [28, 32]];
 
-    // --- UPDATED DRAW FUNCTION (Handles Single Skeleton) ---
     function drawSkeleton(landmarks, context, canvas, color = 'white') {
-        const width = canvas.width;
-        const height = canvas.height;
-
-        context.save(); 
-        context.scale(-1, 1); 
-        context.translate(-width, 0); 
-
-        if (!landmarks || landmarks.length === 0) {
-            context.restore();
-            return;
-        }
-
-        context.lineWidth = 4;
-        context.strokeStyle = color; 
-        context.fillStyle = '#FF4136'; 
-
-        // Draw connections
+        const width = canvas.width; const height = canvas.height;
+        context.save(); context.scale(-1, 1); context.translate(-width, 0); 
+        if (!landmarks || landmarks.length === 0) { context.restore(); return; }
+        context.lineWidth = 4; context.strokeStyle = color; context.fillStyle = '#FF4136'; 
         context.beginPath();
         POSE_CONNECTIONS.forEach(conn => {
-            const start = landmarks[conn[0]];
-            const end = landmarks[conn[1]];
-            
-            // CRITICAL FIX: Check if start/end exist AND have valid coordinates
-            if (start && end && 
-                start.visibility > 0.3 && end.visibility > 0.3 &&
-                start.x !== undefined && start.y !== undefined &&
-                end.x !== undefined && end.y !== undefined) { 
-                    
-                context.moveTo(start.x * width, start.y * height);
-                context.lineTo(end.x * width, end.y * height);
+            const start = landmarks[conn[0]]; const end = landmarks[conn[1]];
+            if (start && end && start.visibility > 0.3 && end.visibility > 0.3) { 
+                context.moveTo(start.x * width, start.y * height); context.lineTo(end.x * width, end.y * height);
             }
         });
         context.stroke();
-
-        // Draw joints
         landmarks.forEach(lm => {
-            // CRITICAL FIX: Check existence here too
-            if (lm && lm.visibility > 0.3 && lm.x !== undefined && lm.y !== undefined) {
-                context.beginPath();
-                context.arc(lm.x * width, lm.y * height, 6, 0, 2 * Math.PI); 
-                context.fill();
-            }
+            if (lm && lm.visibility > 0.3) { context.beginPath(); context.arc(lm.x * width, lm.y * height, 6, 0, 2 * Math.PI); context.fill(); }
         });
-
         context.restore();
     }
 
-    // --- NEW: DRAW FLOATING TEXT STATS ---
     function drawFloatingStats(context, canvas, landmarks, track_id, reps, status, color) {
         if (!landmarks || landmarks.length < 1) return;
-        const head = landmarks[0]; // Nose landmark
-        
-        if (!head || head.visibility < 0.3) return;
-
-        const width = canvas.width;
-        const height = canvas.height;
-
-        // Calculate flipped X coordinate
-        const drawX = (1 - head.x) * width; 
-        const drawY = head.y * height - 40; // Slightly above head
-
-        context.font = "bold 16px Helvetica";
-        context.fillStyle = color;
-        context.strokeStyle = "black";
-        context.lineWidth = 3;
-        
+        const head = landmarks[0]; if (!head || head.visibility < 0.3) return;
+        const width = canvas.width; const height = canvas.height;
+        const drawX = (1 - head.x) * width; const drawY = head.y * height - 40;
+        context.font = "bold 16px Helvetica"; context.fillStyle = color; context.strokeStyle = "black"; context.lineWidth = 3;
         const text = `ID:${track_id} | Reps: ${reps}`;
-        
-        context.strokeText(text, drawX, drawY);
-        context.fillText(text, drawX, drawY);
-
-        // Draw status below it
+        context.strokeText(text, drawX, drawY); context.fillText(text, drawX, drawY);
         if (status.includes("ERROR")) {
-             context.fillStyle = "#FF4136"; // Red for error
-             const errText = status.replace("ERROR: ", "");
-             context.strokeText(errText, drawX, drawY + 20);
-             context.fillText(errText, drawX, drawY + 20);
+             context.fillStyle = "#FF4136"; const errText = status.replace("ERROR: ", "");
+             context.strokeText(errText, drawX, drawY + 20); context.fillText(errText, drawX, drawY + 20);
         }
     }
 
-    socket.on('connect', () => console.log('Connected to Python backend!'));
-    
     function sendFrame(videoElement, cameraIdentifier) {
-        if (!videoElement.srcObject || videoElement.readyState < 2 || videoElement.videoWidth === 0) {
-            return;
-        }
-        const processWidth = 360;
-        const processHeight = (videoElement.videoHeight / videoElement.videoWidth) * processWidth;
-        let tempCanvas = document.createElement('canvas');
-        tempCanvas.width = processWidth;
-        tempCanvas.height = processHeight;
-        let tempCtx = tempCanvas.getContext('2d');
-        tempCtx.drawImage(videoElement, 0, 0, processWidth, processHeight);
+        if (!videoElement.srcObject || videoElement.readyState < 2 || videoElement.videoWidth === 0) return;
+        const processWidth = 360; const processHeight = (videoElement.videoHeight / videoElement.videoWidth) * processWidth;
+        let tempCanvas = document.createElement('canvas'); tempCanvas.width = processWidth; tempCanvas.height = processHeight;
+        let tempCtx = tempCanvas.getContext('2d'); tempCtx.drawImage(videoElement, 0, 0, processWidth, processHeight);
         let dataURL = tempCanvas.toDataURL('image/jpeg', 0.4);
-
         socket.emit('image', { image_data: dataURL, camera_id: cameraIdentifier });
     }
 
-    // --- UPDATED UI UPDATE LOGIC (Multi-Person) ---
     function updateUi(data, elements) {
-        // 1. Ensure canvas size matches video
-        if (elements.video.videoWidth > 0) {
-            elements.canvas.width = elements.video.videoWidth;
-            elements.canvas.height = elements.video.videoHeight;
-        }
-
-        // 2. Clear the canvas GLOBALLY once per frame
+        if (elements.video.videoWidth > 0) { elements.canvas.width = elements.video.videoWidth; elements.canvas.height = elements.video.videoHeight; }
         elements.canvasCtx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
-
         const people = data.people || [];
-
-        // 3. Handle Empty State
         if (people.length === 0) {
-             elements.exercise.innerText = "Neutral";
-             elements.reps.innerText = "0";
-             elements.feedback.innerText = "NO USER";
-             elements.feedback.className = "text-xl font-medium text-gray-400 mt-2";
-             elements.multiUserInd.classList.add('hidden');
-             return;
+             elements.exercise.innerText = "Neutral"; elements.reps.innerText = "0";
+             elements.feedback.innerText = "NO USER"; elements.feedback.className = "text-xl font-medium text-gray-400 mt-2";
+             elements.multiUserInd.classList.add('hidden'); return;
         }
-
-        // 4. Indicate Multi-User Mode
-        if (people.length > 1) {
-            elements.multiUserInd.classList.remove('hidden');
-        } else {
-            elements.multiUserInd.classList.add('hidden');
-        }
-
-        // 5. Update Sidebar with "Primary" User (First one detected)
+        if (people.length > 1) elements.multiUserInd.classList.remove('hidden'); else elements.multiUserInd.classList.add('hidden');
         const primaryPerson = people[0];
         elements.exercise.innerText = (primaryPerson.stable_prediction || "Neutral").replace(/([A-Z])/g, ' $1').trim();
-        elements.reps.innerText = primaryPerson.rep_counter;
-        elements.feedback.innerText = primaryPerson.form_status;
-
-        // Set feedback color based on primary user
-        if (primaryPerson.form_status.includes("ERROR")) {
-            elements.feedback.className = "text-xl font-medium text-red-400 mt-2";
-        } else if (primaryPerson.form_status.includes("WARNING")) {
-            elements.feedback.className = "text-xl font-medium text-yellow-400 mt-2";
-        } else {
-            elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
-        }
-
-        // 6. Loop and Draw EVERYONE
+        elements.reps.innerText = primaryPerson.rep_counter; elements.feedback.innerText = primaryPerson.form_status;
+        if (primaryPerson.form_status.includes("ERROR")) elements.feedback.className = "text-xl font-medium text-red-400 mt-2";
+        else if (primaryPerson.form_status.includes("WARNING")) elements.feedback.className = "text-xl font-medium text-yellow-400 mt-2";
+        else elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
         people.forEach(person => {
             let color = 'white';
-            if (person.form_status.includes("ERROR")) color = '#FF4136'; // Red
-            else if (person.form_status.includes("WARNING")) color = '#FFDC00'; // Yellow
-            else if (person.form_status === "CORRECT FORM") color = '#0074D9'; // Blue
-            
-            // Draw Skeleton
+            if (person.form_status.includes("ERROR")) color = '#FF4136'; else if (person.form_status.includes("WARNING")) color = '#FFDC00'; else if (person.form_status === "CORRECT FORM") color = '#0074D9';
             drawSkeleton(person.landmarks, elements.canvasCtx, elements.canvas, color);
-            
-            // Draw Floating Text (ID + Reps)
             drawFloatingStats(elements.canvasCtx, elements.canvas, person.landmarks, person.track_id, person.rep_counter, person.form_status, color);
         });
     }
     
     socket.on('response', (data) => {
         const elementMap = {
-            'camera1': {
-                exercise: exerciseElement1, reps: repsElement1, feedback: feedbackElement1,
-                video: video1, canvas: canvas1, canvasCtx: canvasCtx1, multiUserInd: multiUserInd1
-            },
-            'camera2': {
-                exercise: exerciseElement2, reps: repsElement2, feedback: feedbackElement2,
-                video: video2, canvas: canvas2, canvasCtx: canvasCtx2, multiUserInd: multiUserInd2
-            }
+            'camera1': { exercise: document.getElementById('exercise1'), reps: document.getElementById('reps1'), feedback: document.getElementById('feedback1'), video: document.getElementById('camera1'), canvas: document.getElementById('canvas1'), canvasCtx: document.getElementById('canvas1').getContext('2d'), multiUserInd: document.getElementById('multi-user-indicator1') },
+            'camera2': { exercise: document.getElementById('exercise2'), reps: document.getElementById('reps2'), feedback: document.getElementById('feedback2'), video: document.getElementById('camera2'), canvas: document.getElementById('canvas2'), canvasCtx: document.getElementById('canvas2').getContext('2d'), multiUserInd: document.getElementById('multi-user-indicator2') }
         };
-
-        const elements = elementMap[data.camera_id];
-        if (elements) {
-            updateUi(data, elements);
-        }
+        const elements = elementMap[data.camera_id]; if (elements) updateUi(data, elements);
     });
 
-    socket.on('form_error', function(data) {
-        if (speechSynthesis.speaking) return;
-        const utterance = new SpeechSynthesisUtterance(data.message);
-        speechSynthesis.speak(utterance);
-    });
-
-    socket.on('trainer_alert', function(data) {
-        Swal.fire({
-            title: `TRAINER ALERT (${data.camera_id})`,
-            text: data.message,
-            icon: 'error',
-            toast: true, 
-            position: 'bottom-end',
-            showConfirmButton: false,
-            timer: 5000,
-            timerProgressBar: true,
-            showCloseButton: true
-        });
-    });
-
+    socket.on('form_error', function(data) { if (!speechSynthesis.speaking) speechSynthesis.speak(new SpeechSynthesisUtterance(data.message)); });
+    socket.on('trainer_alert', function(data) { Swal.fire({ title: `TRAINER ALERT (${data.camera_id})`, text: data.message, icon: 'error', toast: true, position: 'bottom-end', showConfirmButton: false, timer: 5000, timerProgressBar: true, showCloseButton: true }); });
 </script>
 </div>
 {% endblock %}
