@@ -125,7 +125,6 @@ input_details = None
 output_details = None
 label_mapping = {}
 
-# We do NOT initialize a global YOLO model anymore to avoid conflicts.
 # Each camera gets its own model instance.
 YOLO_CONF_THRESHOLD = 0.50 
 
@@ -139,9 +138,10 @@ pose_extractor = mp_pose.Pose(
     min_tracking_confidence=0.5
 )
 
-# --- Adaptive Smoother Class ---
+# --- Adaptive Smoother Class (TUNED FOR SPEED) ---
 class AdaptiveSmoother:
-    def __init__(self, min_alpha=0.2, max_alpha=0.8, velocity_threshold=0.015):
+    def __init__(self, min_alpha=0.5, max_alpha=0.9, velocity_threshold=0.01):
+        # Increased min_alpha from 0.1 to 0.5 to reduce "lag" feeling
         self.min_alpha = min_alpha
         self.max_alpha = max_alpha
         self.velocity_thresh = velocity_threshold
@@ -167,7 +167,8 @@ class AdaptiveSmoother:
 
                 dist = np.sqrt((cx - px)**2 + (cy - py)**2)
                 
-                # Adaptive Alpha Calculation
+                # Dynamic Alpha: If moving fast, use max_alpha (0.9) for instant response.
+                # If moving slow, use min_alpha (0.5) to filter just a little jitter.
                 alpha = self.min_alpha
                 if dist > self.velocity_thresh:
                     alpha = self.max_alpha
@@ -177,7 +178,7 @@ class AdaptiveSmoother:
                 
                 smoothed.append({'x': new_x, 'y': new_y, 'z': cz, 'visibility': cv})
             except Exception:
-                smoothed.append(lm if isinstance(lm, dict) else {'x':lm.x, 'y':lm.y, 'z':getattr(lm,'z',0), 'visibility':getattr(lm,'visibility',0)})
+                smoothed.append(lm)
         
         self.prev_landmarks = smoothed
         return smoothed
@@ -549,7 +550,9 @@ def admin_dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_this_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_current_month).group_by(ErrorLog.exercise_name).all()
     
-    muscle_group_mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
+    # FIXED: Renamed to 'mapping' to resolve NameError
+    mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
+    
     for ex, count in errors_this_month:
         if mapping.get(ex) in current_month_chart_data:
             current_month_chart_data[mapping.get(ex)] += count
@@ -729,7 +732,7 @@ def handle_connect():
     if not gym_id: return False
     join_room(f'gym_{gym_id}')
     
-    # FIXED: Clean initialization. Smoothers and ghosts are now in 'start_camera'
+    # Initialization of smoothers and ghosts is now in 'start_camera'
     clients[request.sid] = {'gym_id': gym_id}
     print(f"Client {request.sid} connected.")
 
@@ -738,7 +741,7 @@ def handle_disconnect():
     sid = request.sid
     if sid in clients:
         for cam in list(clients[sid].keys()):
-            if cam not in ['gym_id']: # Only check camera keys
+            if cam not in ['gym_id']: 
                 handle_end_session({'camera_id': cam, 'sid_for_shutdown': sid})
         leave_room(f"gym_{clients[sid]['gym_id']}")
         del clients[sid]
@@ -748,7 +751,7 @@ def start_camera(data):
     sid = request.sid
     cam = data.get('camera_id')
     if sid in clients and cam:
-        # FIXED: Initialize 'smoothers' and 'ghost_skeletons' inside the CAMERA specific dictionary
+        # Initialize 'smoothers' and 'ghost_skeletons' inside the CAMERA specific dictionary
         clients[sid][cam] = {
             'analyzers': {},
             'is_processing': False,
@@ -820,20 +823,30 @@ def process_frame_task(sid, data, session_context):
     if not state: return
 
     try:
-        img_bytes = base64.b64decode(data['image_data'].split(',')[1])
-        img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
-        img.thumbnail((320, 320))
-        frame = np.array(img)
+        # OPTIMIZATION: Use OpenCV instead of PIL for faster decoding
+        img_data = base64.b64decode(data['image_data'].split(',')[1])
+        nparr = np.frombuffer(img_data, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # Resize immediately to 320x320 for Model Speed
+        frame = cv2.resize(frame, (320, 320))
+        
+        # YOLO expects RGB, OpenCV gives BGR. Convert it.
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame.flags.writeable = False
-    except:
+    except Exception as e:
+        print(f"Frame Error: {e}")
         state['is_processing'] = False
         return
 
     # Use Independent Model
     model = state.get('model')
-    if not model: return
+    if not model: 
+        state['is_processing'] = False
+        return
 
     try:
+        # TRACKER OPTIMIZATION: Ensure we use the lightweight config
         results = model.track(frame, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True, tracker="bytetrack.yaml")
     except:
         state['is_processing'] = False
@@ -844,7 +857,6 @@ def process_frame_task(sid, data, session_context):
     
     if results[0].boxes and results[0].boxes.id is not None:
         track_ids = results[0].boxes.id.int().cpu().tolist()
-        boxes = results[0].boxes.xyxy.cpu().numpy()
         kpts = results[0].keypoints
         active_ids = track_ids
 
@@ -853,12 +865,12 @@ def process_frame_task(sid, data, session_context):
                 state['analyzers'][tid] = ExerciseAnalyzer(SEQUENCE_LENGTH, CONF_THRESHOLD, STABILITY_FRAMES)
                 state['last_form_status'][tid] = None
             
-            # FIXED: Check the CAMERA SPECIFIC smoother storage
+            # Initialize Smoother if needed
             if tid not in state['smoothers']:
-                state['smoothers'][tid] = AdaptiveSmoother(0.1, 0.8)
+                # Tuned smoother parameters are applied here
+                state['smoothers'][tid] = AdaptiveSmoother(0.5, 0.9, 0.01)
 
             analyzer = state['analyzers'][tid]
-            # FIXED: Use the CAMERA SPECIFIC smoother
             smoother = state['smoothers'][tid]
             
             lms_ui = [{'x': 0.0, 'y': 0.0, 'z': 0.0, 'visibility': 0.0} for _ in range(33)]
@@ -872,8 +884,8 @@ def process_frame_task(sid, data, session_context):
 
             smoothed_lms = smoother.smooth(lms_ui)
             
-            # FIXED: Update Ghost Memory in STATE, not CLIENT
-            state['ghost_skeletons'][tid] = {'lms': smoothed_lms, 'ttl': 8, 'an': analyzer}
+            # Update Ghost Memory
+            state['ghost_skeletons'][tid] = {'lms': smoothed_lms, 'ttl': 5, 'an': analyzer} # Reduced TTL to 5 frames to prevent "stuck" ghosts
 
             p_resp = {
                 'track_id': tid,
@@ -924,7 +936,7 @@ def process_frame_task(sid, data, session_context):
                 except: pass
             current_data.append(p_resp)
 
-    # FIXED: Ghost Handling using STATE
+    # Ghost Handling
     for gid, ghost in list(state['ghost_skeletons'].items()):
         if gid not in active_ids:
             if ghost['ttl'] > 0:
@@ -934,13 +946,13 @@ def process_frame_task(sid, data, session_context):
                     'rep_counter': ghost['an'].rep_counter,
                     'form_status': ghost['an'].form_status,
                     'stable_prediction': ghost['an'].stable_prediction,
-                    'landmarks': ghost['lms'], # Uses the specific camera's last known position
+                    'landmarks': ghost['lms'],
                     'debug_angles': {}
                 })
             else:
                 del state['ghost_skeletons'][gid]
 
-    socketio.emit('response', {'camera_id': cam, 'people': current_data}, room=sid, namespace='/')
+    emit('response', {'camera_id': cam, 'people': current_data}, room=sid)
     state['is_processing'] = False
 
 @socketio.on('image')
