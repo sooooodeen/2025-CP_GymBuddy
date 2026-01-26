@@ -138,10 +138,11 @@ pose_extractor = mp_pose.Pose(
     min_tracking_confidence=0.5
 )
 
-# --- Adaptive Smoother Class (TUNED FOR SPEED) ---
+# --- Adaptive Smoother Class (STABILITY TUNED) ---
 class AdaptiveSmoother:
-    def __init__(self, min_alpha=0.5, max_alpha=0.9, velocity_threshold=0.01):
-        # Increased min_alpha from 0.1 to 0.5 to reduce "lag" feeling
+    def __init__(self, min_alpha=0.15, max_alpha=0.7, velocity_threshold=0.015):
+        # min_alpha=0.15 -> Removes "Wobble" when standing still
+        # max_alpha=0.7 -> Follows efficiently when moving
         self.min_alpha = min_alpha
         self.max_alpha = max_alpha
         self.velocity_thresh = velocity_threshold
@@ -167,8 +168,7 @@ class AdaptiveSmoother:
 
                 dist = np.sqrt((cx - px)**2 + (cy - py)**2)
                 
-                # Dynamic Alpha: If moving fast, use max_alpha (0.9) for instant response.
-                # If moving slow, use min_alpha (0.5) to filter just a little jitter.
+                # Adaptive Logic
                 alpha = self.min_alpha
                 if dist > self.velocity_thresh:
                     alpha = self.max_alpha
@@ -398,6 +398,7 @@ def dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, ErrorLog.timestamp >= start_of_month).group_by(ErrorLog.exercise_name).all()
     
+    # FIXED: Renamed to 'mapping' to avoid NameError
     mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
     for ex, count in errors_month:
         if mapping.get(ex) in current_month_chart_data:
@@ -550,7 +551,7 @@ def admin_dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_this_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_current_month).group_by(ErrorLog.exercise_name).all()
     
-    # FIXED: Renamed to 'mapping' to resolve NameError
+    # FIXED: Renamed to 'mapping' to avoid NameError
     mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
     
     for ex, count in errors_this_month:
@@ -828,8 +829,8 @@ def process_frame_task(sid, data, session_context):
         nparr = np.frombuffer(img_data, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        # Resize immediately to 320x320 for Model Speed
-        frame = cv2.resize(frame, (320, 320))
+        # RESIZE TO 480x480 (FIXES WOBBLE)
+        frame = cv2.resize(frame, (480, 480))
         
         # YOLO expects RGB, OpenCV gives BGR. Convert it.
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -868,7 +869,7 @@ def process_frame_task(sid, data, session_context):
             # Initialize Smoother if needed
             if tid not in state['smoothers']:
                 # Tuned smoother parameters are applied here
-                state['smoothers'][tid] = AdaptiveSmoother(0.5, 0.9, 0.01)
+                state['smoothers'][tid] = AdaptiveSmoother(0.15, 0.7, 0.015)
 
             analyzer = state['analyzers'][tid]
             smoother = state['smoothers'][tid]
@@ -952,7 +953,8 @@ def process_frame_task(sid, data, session_context):
             else:
                 del state['ghost_skeletons'][gid]
 
-    emit('response', {'camera_id': cam, 'people': current_data}, room=sid)
+    # FIXED: Use socketio.emit instead of just emit
+    socketio.emit('response', {'camera_id': cam, 'people': current_data}, room=sid)
     state['is_processing'] = False
 
 @socketio.on('image')
