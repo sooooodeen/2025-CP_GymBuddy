@@ -116,7 +116,7 @@ class ErrorLog(db.Model):
 # --- AI Configuration ---
 SEQUENCE_LENGTH = 90
 CONF_THRESHOLD = 0.30 
-STABILITY_FRAMES = 10
+STABILITY_FRAMES = 5  # Reduced from 10 to 5 to make exercise switching faster
 TRAINING_ARTIFACTS_DIR = os.path.join(basedir, 'training') 
 
 interpreter = None 
@@ -138,11 +138,9 @@ pose_extractor = mp_pose.Pose(
     min_tracking_confidence=0.5
 )
 
-# --- Adaptive Smoother Class (STABILITY TUNED) ---
+# --- Adaptive Smoother Class ---
 class AdaptiveSmoother:
     def __init__(self, min_alpha=0.15, max_alpha=0.7, velocity_threshold=0.015):
-        # min_alpha=0.15 -> Removes "Wobble" when standing still
-        # max_alpha=0.7 -> Follows efficiently when moving
         self.min_alpha = min_alpha
         self.max_alpha = max_alpha
         self.velocity_thresh = velocity_threshold
@@ -168,7 +166,6 @@ class AdaptiveSmoother:
 
                 dist = np.sqrt((cx - px)**2 + (cy - py)**2)
                 
-                # Adaptive Logic
                 alpha = self.min_alpha
                 if dist > self.velocity_thresh:
                     alpha = self.max_alpha
@@ -398,7 +395,6 @@ def dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, ErrorLog.timestamp >= start_of_month).group_by(ErrorLog.exercise_name).all()
     
-    # FIXED: Renamed to 'mapping' to avoid NameError
     mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
     for ex, count in errors_month:
         if mapping.get(ex) in current_month_chart_data:
@@ -551,7 +547,6 @@ def admin_dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_this_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_current_month).group_by(ErrorLog.exercise_name).all()
     
-    # FIXED: Renamed to 'mapping' to avoid NameError
     mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
     
     for ex, count in errors_this_month:
@@ -829,8 +824,8 @@ def process_frame_task(sid, data, session_context):
         nparr = np.frombuffer(img_data, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        # RESIZE TO 480x480 (FIXES WOBBLE)
-        frame = cv2.resize(frame, (480, 480))
+        # REMOVED MANUAL RESIZING TO FIX DISTORTION
+        # frame = cv2.resize(frame, (480, 480)) # <--- DELETED THIS LINE
         
         # YOLO expects RGB, OpenCV gives BGR. Convert it.
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -848,7 +843,8 @@ def process_frame_task(sid, data, session_context):
 
     try:
         # TRACKER OPTIMIZATION: Ensure we use the lightweight config
-        results = model.track(frame, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True, tracker="bytetrack.yaml")
+        # ADDED imgsz=320 to let YOLO handle the resizing internally and correctly
+        results = model.track(frame, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True, tracker="bytetrack.yaml", imgsz=320)
     except:
         state['is_processing'] = False
         return
