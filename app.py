@@ -116,7 +116,7 @@ class ErrorLog(db.Model):
 # --- AI Configuration ---
 SEQUENCE_LENGTH = 90
 CONF_THRESHOLD = 0.30 
-STABILITY_FRAMES = 5  # Reduced from 10 to 5 to make exercise switching faster
+STABILITY_FRAMES = 5  # Keeping this low for responsiveness
 TRAINING_ARTIFACTS_DIR = os.path.join(basedir, 'training') 
 
 interpreter = None 
@@ -395,7 +395,9 @@ def dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, ErrorLog.timestamp >= start_of_month).group_by(ErrorLog.exercise_name).all()
     
+    # FIXED: Defined 'mapping' correctly to solve NameError
     mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
+    
     for ex, count in errors_month:
         if mapping.get(ex) in current_month_chart_data:
             current_month_chart_data[mapping.get(ex)] += count
@@ -547,6 +549,7 @@ def admin_dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_this_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_current_month).group_by(ErrorLog.exercise_name).all()
     
+    # FIXED: Defined mapping here
     mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
     
     for ex, count in errors_this_month:
