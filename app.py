@@ -116,7 +116,7 @@ class ErrorLog(db.Model):
 # --- AI Configuration ---
 SEQUENCE_LENGTH = 90
 CONF_THRESHOLD = 0.30 
-STABILITY_FRAMES = 5  # Keeping this low for responsiveness
+STABILITY_FRAMES = 5 
 TRAINING_ARTIFACTS_DIR = os.path.join(basedir, 'training') 
 
 interpreter = None 
@@ -125,8 +125,8 @@ input_details = None
 output_details = None
 label_mapping = {}
 
-# Each camera gets its own model instance.
-YOLO_CONF_THRESHOLD = 0.50 
+# FIXED: Lowered threshold slightly to detect fast movements better
+YOLO_CONF_THRESHOLD = 0.35 
 
 YOLO_TO_MP = {0:0, 5:11, 6:12, 7:13, 8:14, 9:15, 10:16, 11:23, 12:24, 13:25, 14:26, 15:27, 16:28}
 
@@ -140,7 +140,8 @@ pose_extractor = mp_pose.Pose(
 
 # --- Adaptive Smoother Class ---
 class AdaptiveSmoother:
-    def __init__(self, min_alpha=0.15, max_alpha=0.7, velocity_threshold=0.015):
+    def __init__(self, min_alpha=0.2, max_alpha=0.8, velocity_threshold=0.02):
+        # FIXED: Increased min_alpha to 0.2 to capture rep "peaks" better
         self.min_alpha = min_alpha
         self.max_alpha = max_alpha
         self.velocity_thresh = velocity_threshold
@@ -395,9 +396,7 @@ def dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, ErrorLog.timestamp >= start_of_month).group_by(ErrorLog.exercise_name).all()
     
-    # FIXED: Defined 'mapping' correctly to solve NameError
     mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
-    
     for ex, count in errors_month:
         if mapping.get(ex) in current_month_chart_data:
             current_month_chart_data[mapping.get(ex)] += count
@@ -412,7 +411,7 @@ def my_sessions():
     if session.get('user_role') != 'Trainer':
         return redirect(url_for('admin_dashboard'))
     sessions = WorkoutSession.query.filter_by(gym_id=session['user_gym_id'], user_id=session['user_id']).filter(WorkoutSession.end_time != None).order_by(WorkoutSession.start_time.desc()).all()
-    return render_template("trainer_session_log.html", sessions=sessions, trainer=User.query.get(session['user_id']))
+    return render_template("trainer_session_log.html", sessions=sessions, trainer=db.session.get(User, session['user_id']))
 
 @app.route("/monitor")
 @login_required
@@ -444,7 +443,7 @@ def delete_account():
 @app.route("/profile", methods=['GET', 'POST'])
 @login_required
 def profile():
-    user = User.query.get(session['user_id'])
+    user = db.session.get(User, session['user_id']) 
     if request.method == 'POST':
         user.firstname = request.form.get('firstname')
         user.lastname = request.form.get('lastname')
@@ -462,7 +461,7 @@ def profile():
                 session['user_photo_url'] = user.photo_url
         
         if 'gym_name' in request.form and session.get('user_role') == 'Gym Owner': 
-            gym = Gym.query.get(user.gym_id)
+            gym = db.session.get(Gym, user.gym_id) 
             gym.name = request.form.get('gym_name')
             session['user_gym_name'] = gym.name
         
@@ -477,7 +476,7 @@ def profile():
 def change_password():
     if request.method == 'POST':
         data = request.get_json()
-        user = User.query.get(session.get('user_id'))
+        user = db.session.get(User, session.get('user_id')) 
         if not bcrypt.check_password_hash(user.password_hash, data.get('currentPassword')):
             return jsonify({'status': 'error', 'message': 'Wrong password.'}), 400
         user.password_hash = bcrypt.generate_password_hash(data.get('newPassword')).decode('utf-8')
@@ -488,7 +487,7 @@ def change_password():
 @app.route('/profile/change_password', methods=['POST'])
 @login_required
 def change_password_submit():
-    user = User.query.get(session['user_id'])
+    user = db.session.get(User, session['user_id']) 
     if not bcrypt.check_password_hash(user.password_hash, request.form.get('current_password')):
         flash('Wrong password.', 'error')
     else:
@@ -501,7 +500,8 @@ def change_password_submit():
 @login_required
 def delete_user_account():
     try:
-        db.session.delete(User.query.get(session['user_id']))
+        user_to_delete = db.session.get(User, session['user_id']) 
+        db.session.delete(user_to_delete)
         db.session.commit()
         session.clear()
         return jsonify({'success': True}), 200
@@ -549,7 +549,6 @@ def admin_dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_this_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_current_month).group_by(ErrorLog.exercise_name).all()
     
-    # FIXED: Defined mapping here
     mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
     
     for ex, count in errors_this_month:
@@ -586,7 +585,7 @@ def trainers():
 def admin_edit_gym_name():
     if request.method == 'POST':
         data = request.get_json()
-        gym = Gym.query.get(session['user_gym_id'])
+        gym = db.session.get(Gym, session['user_gym_id']) 
         if gym:
             gym.name = data.get('new_gym_name')
             db.session.commit()
@@ -669,7 +668,7 @@ def assign_trainer(trainer_id):
 @admin_required
 def unassign_trainer(assignment_id):
     assignment = Assignment.query.get_or_404(assignment_id)
-    trainer = User.query.get(assignment.trainer_id)
+    trainer = db.session.get(User, assignment.trainer_id) 
     if not trainer or trainer.gym_id != session['user_gym_id']:
         flash('Permission denied.', 'error')
         return redirect(url_for('admin_dashboard'))
@@ -798,7 +797,7 @@ def handle_end_session(data):
     if sess_id:
         try:
             with app.app_context():
-                s = WorkoutSession.query.get(sess_id)
+                s = db.session.get(WorkoutSession, sess_id) # FIXED: Query.get -> Session.get
                 if s:
                     s.end_time = datetime.utcnow()
                     reps = sum(a.rep_counter for a in state['analyzers'].values())
@@ -846,8 +845,8 @@ def process_frame_task(sid, data, session_context):
 
     try:
         # TRACKER OPTIMIZATION: Ensure we use the lightweight config
-        # ADDED imgsz=320 to let YOLO handle the resizing internally and correctly
-        results = model.track(frame, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True, tracker="bytetrack.yaml", imgsz=320)
+        # ADDED imgsz=640 to boost accuracy
+        results = model.track(frame, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True, tracker="bytetrack.yaml", imgsz=640)
     except:
         state['is_processing'] = False
         return
@@ -868,7 +867,7 @@ def process_frame_task(sid, data, session_context):
             # Initialize Smoother if needed
             if tid not in state['smoothers']:
                 # Tuned smoother parameters are applied here
-                state['smoothers'][tid] = AdaptiveSmoother(0.15, 0.7, 0.015)
+                state['smoothers'][tid] = AdaptiveSmoother(0.2, 0.8, 0.02) # Adjusted for responsiveness
 
             analyzer = state['analyzers'][tid]
             smoother = state['smoothers'][tid]
