@@ -115,8 +115,9 @@ class ErrorLog(db.Model):
 
 # --- AI Configuration ---
 SEQUENCE_LENGTH = 90
-CONF_THRESHOLD = 0.30 
-STABILITY_FRAMES = 5 
+# FIXED: Lowered threshold significantly to catch exercises on wide angles
+CONF_THRESHOLD = 0.15 
+STABILITY_FRAMES = 5  
 TRAINING_ARTIFACTS_DIR = os.path.join(basedir, 'training') 
 
 interpreter = None 
@@ -125,7 +126,7 @@ input_details = None
 output_details = None
 label_mapping = {}
 
-# FIXED: Lowered threshold slightly to detect fast movements better
+# FIXED: Low tracking threshold to keep lock on fast movements
 YOLO_CONF_THRESHOLD = 0.35 
 
 YOLO_TO_MP = {0:0, 5:11, 6:12, 7:13, 8:14, 9:15, 10:16, 11:23, 12:24, 13:25, 14:26, 15:27, 16:28}
@@ -140,8 +141,8 @@ pose_extractor = mp_pose.Pose(
 
 # --- Adaptive Smoother Class ---
 class AdaptiveSmoother:
-    def __init__(self, min_alpha=0.2, max_alpha=0.8, velocity_threshold=0.02):
-        # FIXED: Increased min_alpha to 0.2 to capture rep "peaks" better
+    def __init__(self, min_alpha=0.3, max_alpha=0.9, velocity_threshold=0.02):
+        # FIXED: Higher min_alpha (0.3) makes it snappier and less "laggy"
         self.min_alpha = min_alpha
         self.max_alpha = max_alpha
         self.velocity_thresh = velocity_threshold
@@ -797,7 +798,7 @@ def handle_end_session(data):
     if sess_id:
         try:
             with app.app_context():
-                s = db.session.get(WorkoutSession, sess_id) # FIXED: Query.get -> Session.get
+                s = db.session.get(WorkoutSession, sess_id) 
                 if s:
                     s.end_time = datetime.utcnow()
                     reps = sum(a.rep_counter for a in state['analyzers'].values())
@@ -826,12 +827,13 @@ def process_frame_task(sid, data, session_context):
         nparr = np.frombuffer(img_data, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        # REMOVED MANUAL RESIZING TO FIX DISTORTION
-        # frame = cv2.resize(frame, (480, 480)) # <--- DELETED THIS LINE
+        # Calculate Aspect Ratio Dimensions for AI Normalization
+        h, w, _ = frame.shape
+        max_dim = max(h, w)
         
         # YOLO expects RGB, OpenCV gives BGR. Convert it.
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame.flags.writeable = False
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_rgb.flags.writeable = False
     except Exception as e:
         print(f"Frame Error: {e}")
         state['is_processing'] = False
@@ -844,9 +846,8 @@ def process_frame_task(sid, data, session_context):
         return
 
     try:
-        # TRACKER OPTIMIZATION: Ensure we use the lightweight config
         # ADDED imgsz=640 to boost accuracy
-        results = model.track(frame, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True, tracker="bytetrack.yaml", imgsz=640)
+        results = model.track(frame_rgb, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True, tracker="bytetrack.yaml", imgsz=640)
     except:
         state['is_processing'] = False
         return
@@ -864,27 +865,36 @@ def process_frame_task(sid, data, session_context):
                 state['analyzers'][tid] = ExerciseAnalyzer(SEQUENCE_LENGTH, CONF_THRESHOLD, STABILITY_FRAMES)
                 state['last_form_status'][tid] = None
             
-            # Initialize Smoother if needed
             if tid not in state['smoothers']:
-                # Tuned smoother parameters are applied here
-                state['smoothers'][tid] = AdaptiveSmoother(0.2, 0.8, 0.02) # Adjusted for responsiveness
+                state['smoothers'][tid] = AdaptiveSmoother(0.3, 0.9, 0.02) # Snappier
 
             analyzer = state['analyzers'][tid]
             smoother = state['smoothers'][tid]
             
             lms_ui = [{'x': 0.0, 'y': 0.0, 'z': 0.0, 'visibility': 0.0} for _ in range(33)]
+            lms_ai = [{'x': 0.0, 'y': 0.0, 'z': 0.0, 'visibility': 0.0} for _ in range(33)]
 
             if kpts and kpts.conf is not None:
                 xy = kpts.xy[i].cpu().numpy()
                 conf = kpts.conf[i].cpu().numpy()
                 for yidx, midx in YOLO_TO_MP.items():
                     if yidx < len(conf) and conf[yidx] > 0.5:
-                        lms_ui[midx] = {'x': xy[yidx][0]/frame.shape[1], 'y': xy[yidx][1]/frame.shape[0], 'z': 0.0, 'visibility': float(conf[yidx])}
+                        raw_x, raw_y = xy[yidx][0], xy[yidx][1]
+                        
+                        # Standard 0-1 Normalization for UI Drawing
+                        lms_ui[midx] = {'x': raw_x/w, 'y': raw_y/h, 'z': 0.0, 'visibility': float(conf[yidx])}
+                        
+                        # "Magic" Aspect Ratio Corrected Normalization for AI
+                        # This centers the skeleton in a square virtual frame
+                        norm_x_ai = (raw_x + (max_dim - w) / 2) / max_dim
+                        norm_y_ai = (raw_y + (max_dim - h) / 2) / max_dim
+                        lms_ai[midx] = {'x': norm_x_ai, 'y': norm_y_ai, 'z': 0.0, 'visibility': float(conf[yidx])}
 
             smoothed_lms = smoother.smooth(lms_ui)
+            smoothed_lms_ai = smoother.smooth(lms_ai) # Smooth AI inputs too
             
             # Update Ghost Memory
-            state['ghost_skeletons'][tid] = {'lms': smoothed_lms, 'ttl': 5, 'an': analyzer} # Reduced TTL to 5 frames to prevent "stuck" ghosts
+            state['ghost_skeletons'][tid] = {'lms': smoothed_lms, 'ttl': 5, 'an': analyzer} 
 
             p_resp = {
                 'track_id': tid,
@@ -897,7 +907,8 @@ def process_frame_task(sid, data, session_context):
 
             if interpreter and scaler:
                 try:
-                    reps, form, pred, ang = analyzer.process_frame(interpreter, input_details, output_details, label_mapping, smoothed_lms, analyzer.stable_prediction, scaler)
+                    # PASS THE CORRECTED LANDMARKS TO THE ANALYZER
+                    reps, form, pred, ang = analyzer.process_frame(interpreter, input_details, output_details, label_mapping, smoothed_lms_ai, analyzer.stable_prediction, scaler)
                     p_resp.update({'rep_counter': reps, 'form_status': form, 'stable_prediction': pred, 'debug_angles': {k: int(v) for k, v in ang.items()}})
                     
                     last_form = state['last_form_status'].get(tid)
