@@ -397,7 +397,13 @@ def dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, ErrorLog.timestamp >= start_of_month).group_by(ErrorLog.exercise_name).all()
     
-    mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
+    mapping = {
+        'bicepCurl': 'arms', 
+        'lateralRaise': 'arms', 
+        'shoulderPress': 'arms', 
+        'dumbbellReverseFly': 'back', 
+        'romanianDeadlift': 'legs'
+    }
     for ex, count in errors_month:
         if mapping.get(ex) in current_month_chart_data:
             current_month_chart_data[mapping.get(ex)] += count
@@ -550,7 +556,13 @@ def admin_dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_this_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_current_month).group_by(ErrorLog.exercise_name).all()
     
-    mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
+    mapping = {
+        'bicepCurl': 'arms', 
+        'lateralRaise': 'arms', 
+        'shoulderPress': 'arms', 
+        'dumbbellReverseFly': 'back', 
+        'romanianDeadlift': 'legs'
+    }
     
     for ex, count in errors_this_month:
         if mapping.get(ex) in current_month_chart_data:

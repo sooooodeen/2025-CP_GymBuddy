@@ -3,6 +3,7 @@ import time
 import math
 from collections import deque, Counter
 
+# --- [Keep existing normalize_pose_robust function] ---
 def normalize_pose_robust(landmarks):
     try:
         lms = []
@@ -20,6 +21,7 @@ def normalize_pose_robust(landmarks):
         return (landmarks_np - hip_center_3d) / torso_length
     except Exception: return None
 
+# --- [Keep existing geometry helpers] ---
 def calculate_angle_3d(a, b, c):
     a = np.array(a); b = np.array(b); c = np.array(c)
     ba = a - b; bc = c - b
@@ -37,6 +39,7 @@ def calculate_angle_2d(a, b, c):
     if angle > 180.0: angle = 360 - angle
     return angle
 
+# --- [Keep existing feature extractor] ---
 def extract_engineered_features(landmarks):
     norm_lms = normalize_pose_robust(landmarks)
     if norm_lms is None: return None
@@ -77,7 +80,6 @@ class ExerciseAnalyzer:
         self.previous_exercise = "neutral"; self.last_rep_time = time.time(); self.RESET_TIMEOUT = reset_timeout; self.debug_angles = {} 
         self.model_configured = False; self.expected_seq_len = int(sequence_length); self.input_size = 0; self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
         self.CONF_THRESHOLD = conf_threshold
-        # [OPTIMIZATION] Higher stability frames to stop flickering
         self.STABILITY_FRAMES = 15 
         self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES); self.stable_prediction = "neutral"
         self.locked_exercise = None; self.neutral_persistence_counter = 0 
@@ -102,19 +104,28 @@ class ExerciseAnalyzer:
     def _apply_logic_override(self, ai_prediction, landmarks):
         if not landmarks: return ai_prediction
         if ai_prediction == "neutral": return "neutral"
-        allowed_exercises = ['lateralRaise', 'bicepCurl', 'inclineBenchPress', 'gobletSquat', 'bentOverRow']
+        
+        # CORRECTED: Added 'dumbbellReverseFly' to match your JSON
+        allowed_exercises = ['lateralRaise', 'bicepCurl', 'shoulderPress', 'dumbbellReverseFly', 'romanianDeadlift']
         if ai_prediction not in allowed_exercises: return "neutral"
+        
         try:
             def get_y(i): return landmarks[i]['y'] if isinstance(landmarks[i], dict) else landmarks[i].y
             def get_x(i): return landmarks[i]['x'] if isinstance(landmarks[i], dict) else landmarks[i].x
+            
             s_y = (get_y(11) + get_y(12)) / 2; h_y = (get_y(23) + get_y(24)) / 2
             thigh_len = math.sqrt((get_x(23)-get_x(25))**2 + (get_y(23)-get_y(25))**2)
             y_diff = abs(s_y - h_y)
+            
             is_vertical = y_diff > (thigh_len * 0.8)
-            if ai_prediction in ['lateralRaise', 'bicepCurl', 'gobletSquat']:
+            
+            if ai_prediction in ['lateralRaise', 'bicepCurl', 'shoulderPress']:
                 if not is_vertical: return "neutral"
-            if ai_prediction in ['inclineBenchPress', 'bentOverRow']:
-                if is_vertical: return "neutral"
+                
+            # CORRECTED: Checking for 'dumbbellReverseFly'
+            if ai_prediction in ['dumbbellReverseFly', 'romanianDeadlift']:
+                if ai_prediction == 'dumbbellReverseFly' and is_vertical: return "neutral"
+                
         except Exception: pass
         return ai_prediction 
 
@@ -142,7 +153,6 @@ class ExerciseAnalyzer:
                 if self.locked_exercise:
                     if final_label == "neutral":
                         self.neutral_persistence_counter += 1
-                        # [OPTIMIZATION] High persistence (60 frames ~ 2s) to prevent dropping lock
                         if self.neutral_persistence_counter > 60: 
                             self.locked_exercise = None; self.neutral_persistence_counter = 0; self.rep_counter = 0; final_label = "neutral"
                         else: final_label = self.locked_exercise
@@ -175,10 +185,21 @@ class ExerciseAnalyzer:
         lms = [Point(lm) for lm in landmarks]
         MIN_REP_DURATION = 1.0; current_time = time.time(); self.form_status = "CORRECT FORM"; self.status_color = (0, 255, 0)
         prev_rep_counter = self.rep_counter
+        
         try:
-            ls, rs = lms[11], lms[12]; le, re = lms[13], lms[14]; lw, rw = lms[15], lms[16]; lh, rh = lms[23], lms[24]; lk, rk = lms[25], lms[26]; la, ra = lms[27], lms[28]
+            ls, rs = lms[11], lms[12]; le, re = lms[13], lms[14]; lw, rw = lms[15], lms[16]
+            lh, rh = lms[23], lms[24]; lk, rk = lms[25], lms[26]; la, ra = lms[27], lms[28]
             
-            if exercise_name == 'lateralRaise':
+            if exercise_name == 'bicepCurl':
+                angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                sh_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
+                self.debug_angles = {'Elbow': int(angle)}
+                if angle > 150: self.stage = "down"
+                if angle < 50 and self.stage == 'down':
+                    if (current_time - self.last_rep_time) > MIN_REP_DURATION: self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+                if sh_angle > 50: self.form_status = "ERROR: ELBOWS SWINGING"
+
+            elif exercise_name == 'lateralRaise':
                 sh_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
                 self.debug_angles = {'Shoulder': int(sh_ang)}
                 if sh_ang < 35: self.stage = "down"
@@ -186,39 +207,41 @@ class ExerciseAnalyzer:
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION: self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
                 if sh_ang > 110: self.form_status = "WARNING: TOO HIGH"
 
-            elif exercise_name == 'bicepCurl':
-                angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y]); sh_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
-                self.debug_angles = {'Elbow': int(angle)}
-                if angle > 145: self.stage = "down"
-                if angle < 60 and self.stage == 'down':
-                    if (current_time - self.last_rep_time) > MIN_REP_DURATION: self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
-                if sh_angle > 50: self.form_status = "ERROR: ELBOWS SWINGING"
-
-            elif exercise_name == 'gobletSquat':
-                knee_ang = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y]); torso_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                self.debug_angles = {'Knee': int(knee_ang)}
-                if knee_ang > 155: self.stage = "up"
-                if knee_ang < 115 and self.stage == 'up': self.stage = "down"
-                if knee_ang > 155 and self.stage == 'down':
-                    if (current_time - self.last_rep_time) > MIN_REP_DURATION: self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
-                if torso_ang < 55: self.form_status = "ERROR: CHEST UP"
-
-            elif exercise_name == 'inclineBenchPress':
+            elif exercise_name == 'shoulderPress':
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 self.debug_angles = {'Elbow': int(elb_ang)}
                 if elb_ang < 90: self.stage = "down" 
-                if elb_ang > 145 and self.stage == "down": 
-                    if (current_time - self.last_rep_time) > MIN_REP_DURATION: self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+                if elb_ang > 155 and self.stage == "down": 
+                    if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
+                        self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
-            elif exercise_name == 'bentOverRow':
-                elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y]); hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                self.debug_angles = {'Elbow': int(elb_ang), 'Hip': int(hip_ang)}
-                if hip_ang > 160: self.form_status = "ERROR: BEND OVER TO START"
+            # CORRECTED: Using 'dumbbellReverseFly'
+            elif exercise_name == 'dumbbellReverseFly':
+                hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
+                arm_torso_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
+                self.debug_angles = {'Arm-Torso': int(arm_torso_ang), 'Hip': int(hip_ang)}
+                
+                if hip_ang > 145: self.form_status = "ERROR: BEND OVER MORE"
                 else:
-                    if elb_ang > 150: self.stage = "down"
-                    if elb_ang < 95 and self.stage == 'down':
-                        if (current_time - self.last_rep_time) > MIN_REP_DURATION: self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+                    if arm_torso_ang < 45: self.stage = "down" 
+                    if arm_torso_ang > 80 and self.stage == "down": 
+                         if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
+                            self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
+            elif exercise_name == 'romanianDeadlift':
+                hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
+                knee_ang = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y])
+                self.debug_angles = {'Hip': int(hip_ang), 'Knee': int(knee_ang)}
+                
+                if knee_ang < 140: self.form_status = "ERROR: TOO MUCH KNEE BEND"
+                else:
+                    if hip_ang > 165: self.stage = "up"
+                    if hip_ang < 120 and self.stage == "up": self.stage = "down"
+                    if hip_ang > 165 and self.stage == "down":
+                        if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
+                            self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+
+            # [Keep Error Logging Logic exactly as is...]
             if (self.rep_counter > prev_rep_counter):
                 if "ERROR" in self.form_status:
                     self.new_error_to_log = { "rep_number": self.rep_counter, "error_type": self.form_status, "exercise_name": exercise_name }
