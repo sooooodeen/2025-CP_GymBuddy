@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Your Profile</title>
+    <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
+</head>
+<body class="bg-gray-50 h-screen flex items-center justify-center font-Helvetica">
+    <div class="w-[90%] max-w-md bg-white p-10 rounded-3xl shadow-xl">
+        <div class="text-center mb-6">
+            <h2 class="text-3xl font-bold text-[#2D2C2C]">Almost there!</h2>
+            <p class="text-gray-500 text-sm mt-2">We've got your details from Google. Now, tell us about your gym.</p>
+        </div>
+
+        <form method="POST" action="{{ url_for('finalize_google_reg') }}" class="space-y-6">
+            <div class="flex flex-col gap-2">
+                <label for="gymName" class="font-bold text-lg text-[#2D2C2C]">Gym Name</label>
+                <input id="gymName" name="gymName" type="text" 
+                       class="border border-gray-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-black" 
+                       placeholder="e.g. KENO Fitness Center" required>
+            </div>
+
+            <button type="submit" 
+                    class="bg-[#2D2C2C] text-white py-3 rounded-4xl font-bold hover:bg-[#474646] transition-all w-full">
+                Finish Registration
+            </button>
+        </form>
+    </div>
+</body>
+</html>

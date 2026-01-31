@@ -1,4 +1,5 @@
 import os
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 import cv2
 import pandas as pd
 import uuid
@@ -32,9 +33,21 @@ from analysis_logic import ExerciseAnalyzer
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
+from authlib.integrations.flask_client import OAuth
+load_dotenv('config.env') # Load the file first
 
-# Load environment variables
-load_dotenv('config.env')
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY') # Pulls the long hex string
+
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=os.environ.get('GOOGLE_CLIENT_ID'), # Pulls ID from .env
+    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET'), # Pulls Secret from .env
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'}
+)
+
 
 # --- App and Database Configuration ---
 app = Flask(__name__)
@@ -360,6 +373,112 @@ def login():
         else:
             flash('Invalid credentials.', 'error')
     return render_template("login.html")
+@app.route('/login/google')
+def google_login():
+    """
+    Initiates the Google OAuth login flow.
+    The function name 'google_login' must match url_for('google_login') in your HTML.
+    """
+    # _external=True is required to generate a full URL (http://...) for Google
+    redirect_uri = url_for('google_authorize', _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+@app.route('/authorize')
+def google_authorize():
+    """
+    Handles the response from Google. 
+    The function name MUST be 'google_authorize' to match your url_for call.
+    """
+    # 1. Fetch the token from Google
+    token = google.authorize_access_token()
+    
+    # 2. Extract user info
+    user_info = google.get('https://www.googleapis.com/oauth2/v3/userinfo').json()
+    
+    email = user_info['email']
+    user = User.query.filter_by(email=email).first()
+
+    # 3. Handle existing user login
+    if user:
+        session.clear() 
+        session.update({
+            'user_id': user.id,
+            'user_role': user.role,
+            'user_gym_id': user.gym_id,
+            'user_gym_name': user.gym.name,
+            'user_firstname': user.firstname,
+            'user_lastname': user.lastname,
+            'user_email': user.email,
+            'user_photo_url': user.photo_url or 'src/images/Default_pfp.jpg'
+        })
+        return redirect(url_for('admin_dashboard' if user.role == 'Gym Owner' else 'dashboard'))
+    
+    # 4. Handle new user: Store info in session for Step 2 (Gym Name)
+    session['temp_google_user'] = {
+        'email': email,
+        'firstname': user_info.get('given_name'),
+        'lastname': user_info.get('family_name'),
+        'photo_url': user_info.get('picture')
+    }
+    return redirect(url_for('finalize_google_reg'))
+
+@app.route('/register/finalize-google', methods=['GET', 'POST'])
+def finalize_google_reg():
+    # 1. Safety check: ensure user actually came from Google login
+    if 'temp_google_user' not in session:
+        flash("Registration session expired. Please try again.", "error")
+        return redirect(url_for('register'))
+
+    if request.method == 'POST':
+        gym_name = request.form.get('gymName')
+        google_data = session.pop('temp_google_user') # Clear temp data
+
+        try:
+            # 2. Handle Gym creation or retrieval
+            gym = Gym.query.filter_by(name=gym_name).first()
+            if not gym:
+                gym = Gym(name=gym_name)
+                db.session.add(gym)
+                db.session.commit() # Commit to get the gym.id
+
+            # 3. Create the User as a Gym Owner
+            new_user = User(
+                firstname=google_data['firstname'],
+                lastname=google_data['lastname'],
+                email=google_data['email'],
+                photo_url=google_data['photo_url'],
+                password_hash="GOOGLE_ACCOUNT", # Identifies Google users
+                role='Gym Owner',
+                status='active', # Google users are pre-verified
+                gym_id=gym.id
+            )
+            db.session.add(new_user)
+            db.session.commit()
+
+            # 4. Log the user in by setting the session
+            session.clear()
+            session.update({
+                'user_id': new_user.id,
+                'user_role': new_user.role,
+                'user_gym_id': new_user.gym_id,
+                'user_gym_name': gym.name,
+                'user_firstname': new_user.firstname,
+                'user_lastname': new_user.lastname,
+                'user_email': new_user.email,
+                'user_photo_url': new_user.photo_url or 'src/images/Default_pfp.jpg'
+            })
+
+            flash(f"Welcome, {new_user.firstname}! Your gym '{gym.name}' has been set up.", "success")
+            return redirect(url_for('admin_dashboard'))
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error finalizing Google registration: {e}")
+            flash("An error occurred during registration. Please try again.", "error")
+            return redirect(url_for('register'))
+
+    # GET request: Show the form
+    return render_template('finalize_google.html')
 
 @app.route("/resend_verification", methods=['GET', 'POST'])
 def resend_verification():
