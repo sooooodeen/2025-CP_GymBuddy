@@ -115,7 +115,6 @@ class ErrorLog(db.Model):
 
 # --- AI Configuration ---
 SEQUENCE_LENGTH = 90
-# FIXED: Lowered threshold significantly to catch exercises on wide angles
 CONF_THRESHOLD = 0.15 
 STABILITY_FRAMES = 5  
 TRAINING_ARTIFACTS_DIR = os.path.join(basedir, 'training') 
@@ -126,8 +125,8 @@ input_details = None
 output_details = None
 label_mapping = {}
 
-# FIXED: Low tracking threshold to keep lock on fast movements
-YOLO_CONF_THRESHOLD = 0.35 
+# FIXED: Set back to 0.50. Quality over Quantity helps accuracy.
+YOLO_CONF_THRESHOLD = 0.50 
 
 YOLO_TO_MP = {0:0, 5:11, 6:12, 7:13, 8:14, 9:15, 10:16, 11:23, 12:24, 13:25, 14:26, 15:27, 16:28}
 
@@ -142,7 +141,6 @@ pose_extractor = mp_pose.Pose(
 # --- Adaptive Smoother Class ---
 class AdaptiveSmoother:
     def __init__(self, min_alpha=0.3, max_alpha=0.9, velocity_threshold=0.02):
-        # FIXED: Higher min_alpha (0.3) makes it snappier and less "laggy"
         self.min_alpha = min_alpha
         self.max_alpha = max_alpha
         self.velocity_thresh = velocity_threshold
@@ -404,11 +402,10 @@ def dashboard():
         'dumbbellReverseFly': 'back', 
         'romanianDeadlift': 'legs'
     }
+    
     for ex, count in errors_month:
         if mapping.get(ex) in current_month_chart_data:
             current_month_chart_data[mapping.get(ex)] += count
-            
-    all_sessions = WorkoutSession.query.filter_by(user_id=user_id).filter(WorkoutSession.end_time != None).order_by(WorkoutSession.start_time.desc()).all()
 
     return render_template("dashboard.html", total_errors_today=total_errors_today, most_common_error_week=most_common_error_week, total_errors_month=total_errors_month, recent_errors=recent_errors, current_month_chart_data=current_month_chart_data, sessions=all_sessions)
 
@@ -556,13 +553,7 @@ def admin_dashboard():
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
     errors_this_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_current_month).group_by(ErrorLog.exercise_name).all()
     
-    mapping = {
-        'bicepCurl': 'arms', 
-        'lateralRaise': 'arms', 
-        'shoulderPress': 'arms', 
-        'dumbbellReverseFly': 'back', 
-        'romanianDeadlift': 'legs'
-    }
+    mapping = {'bicepCurl': 'arms', 'tricepKickback': 'arms', 'shoulderPress': 'arms', 'lateralRaise': 'arms', 'bentOverRow': 'back'}
     
     for ex, count in errors_this_month:
         if mapping.get(ex) in current_month_chart_data:
@@ -894,13 +885,10 @@ def process_frame_task(sid, data, session_context):
                         raw_x, raw_y = xy[yidx][0], xy[yidx][1]
                         
                         # Standard 0-1 Normalization for UI Drawing
-                        lms_ui[midx] = {'x': raw_x/w, 'y': raw_y/h, 'z': 0.0, 'visibility': float(conf[yidx])}
-                        
-                        # "Magic" Aspect Ratio Corrected Normalization for AI
-                        # This centers the skeleton in a square virtual frame
-                        norm_x_ai = (raw_x + (max_dim - w) / 2) / max_dim
-                        norm_y_ai = (raw_y + (max_dim - h) / 2) / max_dim
-                        lms_ai[midx] = {'x': norm_x_ai, 'y': norm_y_ai, 'z': 0.0, 'visibility': float(conf[yidx])}
+                        norm_x = raw_x/w
+                        norm_y = raw_y/h
+                        lms_ui[midx] = {'x': norm_x, 'y': norm_y, 'z': 0.0, 'visibility': float(conf[yidx])}
+                        lms_ai[midx] = {'x': norm_x, 'y': norm_y, 'z': 0.0, 'visibility': float(conf[yidx])} # SAME AS UI
 
             smoothed_lms = smoother.smooth(lms_ui)
             smoothed_lms_ai = smoother.smooth(lms_ai) # Smooth AI inputs too
