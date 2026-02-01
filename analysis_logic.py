@@ -92,12 +92,6 @@ class ExerciseAnalyzer:
         interpreter.set_tensor(input_index, input_data); interpreter.invoke(); return interpreter.get_tensor(output_details[0]['index'])[0]
 
     def _apply_logic_override(self, ai_prediction, landmarks):
-        """
-        Robust Priority Logic:
-        1. Sanity Bounds (Head vs Hip levels).
-        2. Geometry Rescues (If AI misses).
-        3. Removed 'Bent Over' blockers to fix camera angle bugs.
-        """
         if not landmarks: return ai_prediction
         
         class P:
@@ -110,54 +104,48 @@ class ExerciseAnalyzer:
         lw = P(landmarks[15]); rw = P(landmarks[16]) # Wrists
         nose = P(landmarks[0])
 
-        # Calculate Geometric States
-        # 1. Hand Height Check (Y increases downwards!)
-        # Hands above nose (Lowest Y value)
+        # GEOMETRIC STATES
         hands_above_head = (lw.y < nose.y) or (rw.y < nose.y)
-        # Hands below shoulders
-        hands_below_shoulder = (lw.y > ls.y) and (rw.y > rs.y)
-
-        # 2. Arm Flare (Shoulder-Elbow Angle)
-        # 0 = Vertical (Arms down), 90 = Horizontal (T-Pose)
-        l_arm_inc = calculate_inclination(ls, le)
-        r_arm_inc = calculate_inclination(rs, re)
-        avg_arm_flare = (l_arm_inc + r_arm_inc) / 2.0
         
-        # 3. Elbow Bend (0 = Folded, 180 = Straight)
+        # 0 = Vertical (Down), 90 = Horizontal
+        l_uarm_inc = calculate_inclination(ls, le)
+        r_uarm_inc = calculate_inclination(rs, re)
+        max_uarm_inc = max(l_uarm_inc, r_uarm_inc)
+
+        # Elbow Bends
         l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
         r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
         avg_elb = (l_elb + r_elb) / 2.0
 
-
         # --- RULE 1: SANITY BOUNDS (Override AI Confusion) ---
         
-        # If hands are ABOVE HEAD, it MUST be Shoulder Press (or jumping jack)
-        # It cannot be Lateral Raise or Bicep Curl
+        # Override 1: Hand Height
         if hands_above_head:
-            if ai_prediction == 'lateralRaise': return 'shoulderPress'
-            if ai_prediction == 'bicepCurl': return 'shoulderPress'
+            if ai_prediction in ['lateralRaise', 'bicepCurl', 'tricepKickback']: return 'shoulderPress'
+
+        # Override 2: TRICEP KICKBACK GUARD
+        # Kickbacks require the upper arm to be somewhat horizontal (> 35 deg inclination)
+        # Bicep curls have upper arms vertical (< 25 deg)
+        if ai_prediction == 'tricepKickback':
+            if max_uarm_inc < 30: # If upper arms are vertical...
+                return 'bicepCurl' # ...it's likely a curl or standing neutral
 
         # --- RULE 2: GEOMETRY RESCUE (If AI says Neutral) ---
         if ai_prediction == "neutral":
             
             # RESCUE: LATERAL RAISE
-            # Logic: Arms flared out (>45 deg) AND not fully straight up
-            # We relax elbow constraint to 90 deg to catch bent-arm variations
-            if avg_arm_flare > 45 and avg_elb > 90:
-                if not hands_above_head: # Don't confuse with press top
-                    return "lateralRaise"
+            # Arms flared out (>45 deg) AND not fully straight up
+            if max_uarm_inc > 45 and avg_elb > 90:
+                if not hands_above_head: return "lateralRaise"
 
             # RESCUE: SHOULDER PRESS
-            # Logic: Hands above head. Period.
-            if hands_above_head:
-                return "shoulderPress"
+            if hands_above_head: return "shoulderPress"
 
             # RESCUE: BICEP CURL
-            # Logic: One arm is bent (< 110) AND Wrist is higher than elbow
-            # Check Left
-            if l_elb < 110 and lw.y < le.y: return "bicepCurl"
-            # Check Right
-            if r_elb < 110 and rw.y < re.y: return "bicepCurl"
+            # Logic: Upper arm is vertical (< 30) AND Elbow is bent (< 110)
+            if max_uarm_inc < 30:
+                if (l_elb < 110 and lw.y < le.y) or (r_elb < 110 and rw.y < re.y):
+                    return "bicepCurl"
 
         return ai_prediction 
 
@@ -181,10 +169,8 @@ class ExerciseAnalyzer:
                 idx = int(np.argmax(prediction)); conf = prediction[idx]
                 raw_label = str(label_mapping.get(idx, label_mapping.get(str(idx), "neutral")))
                 
-                # Apply the robust overrides
                 final_label = self._apply_logic_override(raw_label, landmarks)
                 
-                # Locking Logic
                 if self.locked_exercise:
                     if final_label == "neutral":
                         self.neutral_persistence_counter += 1
@@ -218,7 +204,7 @@ class ExerciseAnalyzer:
                 self.x = float(obj['x']) if isinstance(obj, dict) else float(obj.x)
                 self.y = float(obj['y']) if isinstance(obj, dict) else float(obj.y)
         lms = [Point(lm) for lm in landmarks]
-        MIN_REP_DURATION = 0.5; # Fast reps allowed
+        MIN_REP_DURATION = 0.5;
         current_time = time.time(); self.form_status = "CORRECT FORM"; self.status_color = (0, 255, 0)
         prev_rep_counter = self.rep_counter
         
@@ -227,7 +213,6 @@ class ExerciseAnalyzer:
             lh, rh = lms[23], lms[24]; lk, rk = lms[25], lms[26]; la, ra = lms[27], lms[28]
             
             if exercise_name == 'bicepCurl':
-                # Track best arm
                 l_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 r_angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
                 
@@ -247,14 +232,12 @@ class ExerciseAnalyzer:
                 l_sh_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
                 r_sh_ang = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
                 max_ang = max(l_sh_ang, r_sh_ang)
-
                 self.debug_angles = {'Shoulder': int(max_ang)}
 
                 if max_ang < 45: self.stage = "down"
                 if max_ang > 75 and self.stage == 'down': 
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
-                
                 if max_ang > 110: self.form_status = "WARNING: TOO HIGH"
 
             elif exercise_name == 'shoulderPress':
@@ -277,6 +260,29 @@ class ExerciseAnalyzer:
                 else:
                     if active_elb_ang > 150: self.stage = "down" 
                     if active_elb_ang < 100 and self.stage == "down": 
+                         if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
+                            self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+
+            # --- ADDED: Tricep Kickback Logic ---
+            elif exercise_name == 'tricepKickback':
+                # Upper Arm Inclination Check (Must be > 30 deg horizontal-ish)
+                l_uarm = calculate_inclination(ls, le)
+                r_uarm = calculate_inclination(rs, re)
+                active_uarm = max(l_uarm, r_uarm)
+                
+                # Elbow Angle Check (Straightens to 180)
+                l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+                active_elb = max(l_elb, r_elb)
+
+                self.debug_angles = {'UpArm': int(active_uarm), 'Elbow': int(active_elb)}
+
+                # Double check to prevent Standing Bicep Curl confusion
+                if active_uarm < 30: 
+                    self.form_status = "ERROR: RAISE ELBOW HIGHER"
+                else:
+                    if active_elb < 100: self.stage = "down" # Flexed
+                    if active_elb > 160 and self.stage == "down": # Extended
                          if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
                             self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
