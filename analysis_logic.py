@@ -100,6 +100,7 @@ class ExerciseAnalyzer:
                 self.y = obj['y'] if isinstance(obj, dict) else obj.y
 
         ls = P(landmarks[11]); rs = P(landmarks[12]) # Shoulders
+        lh = P(landmarks[23]); rh = P(landmarks[24]) # Hips
         le = P(landmarks[13]); re = P(landmarks[14]) # Elbows
         lw = P(landmarks[15]); rw = P(landmarks[16]) # Wrists
         nose = P(landmarks[0])
@@ -107,10 +108,14 @@ class ExerciseAnalyzer:
         # GEOMETRIC STATES
         hands_above_head = (lw.y < nose.y) or (rw.y < nose.y)
         
-        # 0 = Vertical (Down), 90 = Horizontal
+        # Upper Arm Inclination (0 = Vertical Down, 90 = Horizontal)
         l_uarm_inc = calculate_inclination(ls, le)
         r_uarm_inc = calculate_inclination(rs, re)
         max_uarm_inc = max(l_uarm_inc, r_uarm_inc)
+
+        # Torso Inclination (0 = Upright, 90 = Bent Over)
+        avg_torso_inc = (calculate_inclination(ls, lh) + calculate_inclination(rs, rh)) / 2.0
+        is_upright = avg_torso_inc < 30
 
         # Elbow Bends
         l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
@@ -119,31 +124,32 @@ class ExerciseAnalyzer:
 
         # --- RULE 1: SANITY BOUNDS (Override AI Confusion) ---
         
-        # Override 1: Hand Height
+        # Override 1: Hand Height (Shoulder Press Guard)
         if hands_above_head:
             if ai_prediction in ['lateralRaise', 'bicepCurl', 'tricepKickback']: return 'shoulderPress'
 
         # Override 2: TRICEP KICKBACK GUARD
-        # Kickbacks require the upper arm to be somewhat horizontal (> 35 deg inclination)
-        # Bicep curls have upper arms vertical (< 25 deg)
+        # Kickbacks require upper arm horizontal (>35) OR torso bent over
         if ai_prediction == 'tricepKickback':
-            if max_uarm_inc < 30: # If upper arms are vertical...
-                return 'bicepCurl' # ...it's likely a curl or standing neutral
+            # If standing upright AND upper arms are vertical (< 45), it's likely a curl
+            if is_upright and max_uarm_inc < 45: 
+                return 'bicepCurl'
 
         # --- RULE 2: GEOMETRY RESCUE (If AI says Neutral) ---
         if ai_prediction == "neutral":
             
             # RESCUE: LATERAL RAISE
-            # Arms flared out (>45 deg) AND not fully straight up
-            if max_uarm_inc > 45 and avg_elb > 90:
+            # Arms flared out (>40 deg)
+            # CHANGED: Relaxed elbow constraint from 90 to 60 to catch bent-arm variations
+            if max_uarm_inc > 40 and avg_elb > 60:
                 if not hands_above_head: return "lateralRaise"
 
             # RESCUE: SHOULDER PRESS
             if hands_above_head: return "shoulderPress"
 
             # RESCUE: BICEP CURL
-            # Logic: Upper arm is vertical (< 30) AND Elbow is bent (< 110)
-            if max_uarm_inc < 30:
+            # Logic: Upper arm is vertical (< 40) AND Elbow is bent (< 110)
+            if max_uarm_inc < 40:
                 if (l_elb < 110 and lw.y < le.y) or (r_elb < 110 and rw.y < re.y):
                     return "bicepCurl"
 
@@ -278,11 +284,14 @@ class ExerciseAnalyzer:
                 self.debug_angles = {'UpArm': int(active_uarm), 'Elbow': int(active_elb)}
 
                 # Double check to prevent Standing Bicep Curl confusion
-                if active_uarm < 30: 
-                    self.form_status = "ERROR: RAISE ELBOW HIGHER"
+                # If arm is vertical (< 30) AND you are upright (< 30), alert user
+                avg_torso_inc = (calculate_inclination(ls, lh) + calculate_inclination(rs, rh)) / 2.0
+                
+                if active_uarm < 30 and avg_torso_inc < 30: 
+                    self.form_status = "ERROR: LEAN FORWARD & LIFT ELBOW"
                 else:
-                    if active_elb < 100: self.stage = "down" # Flexed
-                    if active_elb > 160 and self.stage == "down": # Extended
+                    if active_elb < 100: self.stage = "down" 
+                    if active_elb > 160 and self.stage == "down": 
                          if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
                             self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
