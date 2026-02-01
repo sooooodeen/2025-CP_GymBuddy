@@ -3,7 +3,26 @@ import time
 import math
 from collections import deque, Counter
 
-# --- [Keep existing normalize_pose_robust function] ---
+# --- HELPER FUNCTIONS ---
+
+def calculate_inclination(point_top, point_bottom):
+    """
+    Calculates the angle of a limb relative to vertical gravity (y-axis).
+    Returns: 0.0 (Perfectly Vertical) to 90.0 (Perfectly Horizontal)
+    """
+    p1_x = point_top['x'] if isinstance(point_top, dict) else point_top.x
+    p1_y = point_top['y'] if isinstance(point_top, dict) else point_top.y
+    p2_x = point_bottom['x'] if isinstance(point_bottom, dict) else point_bottom.x
+    p2_y = point_bottom['y'] if isinstance(point_bottom, dict) else point_bottom.y
+
+    dx = p2_x - p1_x
+    dy = p2_y - p1_y
+        
+    angle_rad = math.atan2(dy, dx) 
+    angle_deg = math.degrees(angle_rad)
+    
+    return abs(abs(angle_deg) - 90)
+
 def normalize_pose_robust(landmarks):
     try:
         lms = []
@@ -21,7 +40,6 @@ def normalize_pose_robust(landmarks):
         return (landmarks_np - hip_center_3d) / torso_length
     except Exception: return None
 
-# --- [Keep existing geometry helpers] ---
 def calculate_angle_3d(a, b, c):
     a = np.array(a); b = np.array(b); c = np.array(c)
     ba = a - b; bc = c - b
@@ -33,13 +51,13 @@ def calculate_angle_3d(a, b, c):
     return np.degrees(angle)
 
 def calculate_angle_2d(a, b, c):
+    # Calculates angle at point b
     a = np.array(a[:2]); b = np.array(b[:2]); c = np.array(c[:2])
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = np.abs(radians * 180.0 / np.pi)
     if angle > 180.0: angle = 360 - angle
     return angle
 
-# --- [Keep existing feature extractor] ---
 def extract_engineered_features(landmarks):
     norm_lms = normalize_pose_robust(landmarks)
     if norm_lms is None: return None
@@ -105,26 +123,27 @@ class ExerciseAnalyzer:
         if not landmarks: return ai_prediction
         if ai_prediction == "neutral": return "neutral"
         
-        # CORRECTED: Added 'dumbbellReverseFly' to match your JSON
-        allowed_exercises = ['lateralRaise', 'bicepCurl', 'shoulderPress', 'dumbbellReverseFly', 'romanianDeadlift']
+        allowed_exercises = ['lateralRaise', 'bicepCurl', 'shoulderPress', 'dumbbellReverseFly', 'bentOverRow', 'squat', 'gobletSquat']
         if ai_prediction not in allowed_exercises: return "neutral"
         
         try:
-            def get_y(i): return landmarks[i]['y'] if isinstance(landmarks[i], dict) else landmarks[i].y
-            def get_x(i): return landmarks[i]['x'] if isinstance(landmarks[i], dict) else landmarks[i].x
+            class P:
+                def __init__(self, obj):
+                    self.x = obj['x'] if isinstance(obj, dict) else obj.x
+                    self.y = obj['y'] if isinstance(obj, dict) else obj.y
+
+            ls = P(landmarks[11]); rs = P(landmarks[12])
+            lh = P(landmarks[23]); rh = P(landmarks[24])
+
+            left_inc = calculate_inclination(ls, lh)
+            right_inc = calculate_inclination(rs, rh)
+            avg_torso_inc = (left_inc + right_inc) / 2.0
+
+            if ai_prediction in ['lateralRaise', 'bicepCurl', 'shoulderPress', 'squat', 'gobletSquat']:
+                if avg_torso_inc > 35: return "neutral"
             
-            s_y = (get_y(11) + get_y(12)) / 2; h_y = (get_y(23) + get_y(24)) / 2
-            thigh_len = math.sqrt((get_x(23)-get_x(25))**2 + (get_y(23)-get_y(25))**2)
-            y_diff = abs(s_y - h_y)
-            
-            is_vertical = y_diff > (thigh_len * 0.8)
-            
-            if ai_prediction in ['lateralRaise', 'bicepCurl', 'shoulderPress']:
-                if not is_vertical: return "neutral"
-                
-            # CORRECTED: Checking for 'dumbbellReverseFly'
-            if ai_prediction in ['dumbbellReverseFly', 'romanianDeadlift']:
-                if ai_prediction == 'dumbbellReverseFly' and is_vertical: return "neutral"
+            if ai_prediction in ['dumbbellReverseFly', 'bentOverRow']:
+                if avg_torso_inc < 25: return "neutral"
                 
         except Exception: pass
         return ai_prediction 
@@ -191,21 +210,51 @@ class ExerciseAnalyzer:
             lh, rh = lms[23], lms[24]; lk, rk = lms[25], lms[26]; la, ra = lms[27], lms[28]
             
             if exercise_name == 'bicepCurl':
-                angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                sh_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
+                # Bilateral check for Bicep Curl
+                l_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                r_angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+                
+                # Use the arm that is moving more
+                if abs(l_angle - 180) > abs(r_angle - 180): angle = l_angle; active_side = "Left"
+                else: angle = r_angle; active_side = "Right"
+
                 self.debug_angles = {'Elbow': int(angle)}
                 if angle > 150: self.stage = "down"
                 if angle < 50 and self.stage == 'down':
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION: self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+                
+                # Check for swinging on active side
+                if active_side == "Left": sh_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
+                else: sh_angle = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
+
                 if sh_angle > 50: self.form_status = "ERROR: ELBOWS SWINGING"
 
+            # --- FIXED: LATERAL RAISE LOGIC ---
             elif exercise_name == 'lateralRaise':
-                sh_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
-                self.debug_angles = {'Shoulder': int(sh_ang)}
-                if sh_ang < 35: self.stage = "down"
-                if sh_ang > 75 and self.stage == 'down': 
-                    if (current_time - self.last_rep_time) > MIN_REP_DURATION: self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
-                if sh_ang > 110: self.form_status = "WARNING: TOO HIGH"
+                # 1. Calculate angles for BOTH arms (Hip-Shoulder-Elbow)
+                # Angle 0 = Arm at side, Angle 90 = Arm T-pose
+                left_sh_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
+                right_sh_ang = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
+                
+                # 2. Use the Maximum angle to detect the "UP" phase
+                # 3. Use the Minimum (or average) to detect "DOWN" phase to ensure full reset
+                max_ang = max(left_sh_ang, right_sh_ang)
+                min_ang = min(left_sh_ang, right_sh_ang)
+
+                self.debug_angles = {'L_Sh': int(left_sh_ang), 'R_Sh': int(right_sh_ang)}
+
+                # Increased Down threshold from 35 to 45 to account for muscular builds/lats
+                if max_ang < 45: 
+                    self.stage = "down"
+                
+                # Up threshold at 75 degrees
+                if max_ang > 75 and self.stage == 'down': 
+                    if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
+                        self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+                
+                # Form Check: Hands too high (above shoulder level significantly)
+                # 110 degrees is a good cutoff for "Too High"
+                if max_ang > 110: self.form_status = "WARNING: TOO HIGH"
 
             elif exercise_name == 'shoulderPress':
                 elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
@@ -215,33 +264,47 @@ class ExerciseAnalyzer:
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
-            # CORRECTED: Using 'dumbbellReverseFly'
-            elif exercise_name == 'dumbbellReverseFly':
-                hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                arm_torso_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
-                self.debug_angles = {'Arm-Torso': int(arm_torso_ang), 'Hip': int(hip_ang)}
+            elif exercise_name in ['dumbbellReverseFly', 'bentOverRow']:
+                torso_inc = calculate_inclination(ls, lh)
+                # Bilateral Arm Check
+                l_arm_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
+                r_arm_ang = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
                 
-                if hip_ang > 145: self.form_status = "ERROR: BEND OVER MORE"
+                # Bent Over Row usually keeps arms tighter, Fly is wider.
+                # We track the angle change relative to torso.
+                # Simplification: Use elbow angle to detect pull
+                l_elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                r_elb_ang = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+                
+                active_elb_ang = min(l_elb_ang, r_elb_ang) # Use the more bent arm
+
+                self.debug_angles = {'Torso': int(torso_inc), 'Elbow': int(active_elb_ang)}
+                
+                if torso_inc < 30: 
+                    self.form_status = "ERROR: BEND OVER MORE"
                 else:
-                    if arm_torso_ang < 45: self.stage = "down" 
-                    if arm_torso_ang > 80 and self.stage == "down": 
+                    # Arm extended down (angle > 150)
+                    if active_elb_ang > 150: self.stage = "down" 
+                    # Arm pulled up (angle < 100)
+                    if active_elb_ang < 100 and self.stage == "down": 
                          if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
                             self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
-            elif exercise_name == 'romanianDeadlift':
-                hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                knee_ang = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y])
-                self.debug_angles = {'Hip': int(hip_ang), 'Knee': int(knee_ang)}
+            elif exercise_name in ['squat', 'gobletSquat']:
                 
-                if knee_ang < 140: self.form_status = "ERROR: TOO MUCH KNEE BEND"
-                else:
-                    if hip_ang > 165: self.stage = "up"
-                    if hip_ang < 120 and self.stage == "up": self.stage = "down"
-                    if hip_ang > 165 and self.stage == "down":
-                        if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
-                            self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+                hip_below_knee = (lh.y > (lk.y * 0.95)) or (rh.y > (rk.y * 0.95))
+                knee_ang = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y])
+                
+                self.debug_angles = {'Knee': int(knee_ang), 'Depth': 'GOOD' if hip_below_knee else 'HIGH'}
+                
+                if not hip_below_knee and self.stage == 'down': self.form_status = "WARNING: GO LOWER"
 
-            # [Keep Error Logging Logic exactly as is...]
+                if knee_ang > 160: self.stage = "up"
+                
+                if hip_below_knee and self.stage == "up":
+                    if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
+                        self.stage = "down"; self.rep_counter += 1; self.last_rep_time = current_time
+
             if (self.rep_counter > prev_rep_counter):
                 if "ERROR" in self.form_status:
                     self.new_error_to_log = { "rep_number": self.rep_counter, "error_type": self.form_status, "exercise_name": exercise_name }

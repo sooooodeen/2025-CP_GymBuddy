@@ -400,7 +400,10 @@ def dashboard():
         'lateralRaise': 'arms', 
         'shoulderPress': 'arms', 
         'dumbbellReverseFly': 'back', 
-        'romanianDeadlift': 'legs'
+        'bentOverRow': 'back',
+        'romanianDeadlift': 'legs',
+        'squat': 'legs',
+        'gobletSquat': 'legs'
     }
     
     for ex, count in errors_month:
@@ -559,7 +562,10 @@ def admin_dashboard():
         'lateralRaise': 'arms', 
         'shoulderPress': 'arms', 
         'dumbbellReverseFly': 'back', 
-        'romanianDeadlift': 'legs'
+        'bentOverRow': 'back',
+        'romanianDeadlift': 'legs',
+        'squat': 'legs',
+        'gobletSquat': 'legs'
     }
     
     for ex, count in errors_this_month:
@@ -836,6 +842,15 @@ def process_frame_task(sid, data, session_context):
         img_data = base64.b64decode(data['image_data'].split(',')[1])
         nparr = np.frombuffer(img_data, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # --- NEW: LENS DISTORTION CORRECTION ---
+        h, w = frame.shape[:2]
+        # Approximation of Wide Angle Lens Correction
+        # Note: For best results, run a calibration script to get precise K and D
+        K = np.array([[w, 0, w/2], [0, w, h/2], [0, 0, 1]]) # Approx Camera Matrix
+        D = np.array([-0.1, 0.01, 0, 0]) # Mild pincushion removal
+        frame = cv2.undistort(frame, K, D)
+        # ---------------------------------------
         
         # Calculate Aspect Ratio Dimensions for AI Normalization
         h, w, _ = frame.shape
