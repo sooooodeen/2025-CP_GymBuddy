@@ -103,55 +103,60 @@ class ExerciseAnalyzer:
         lh = P(landmarks[23]); rh = P(landmarks[24]) # Hips
         le = P(landmarks[13]); re = P(landmarks[14]) # Elbows
         lw = P(landmarks[15]); rw = P(landmarks[16]) # Wrists
+        lk = P(landmarks[25]); rk = P(landmarks[26]) # Knees
         nose = P(landmarks[0])
 
-        # GEOMETRIC STATES
+        # --- CALCULATIONS ---
+        
+        # 1. Torso Alignment (Good Morning Check)
+        # Angle between Torso Vector and Upper Leg Vector should be ~180 if standing straight
+        l_hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
+        r_hip_ang = calculate_angle_2d([rs.x, rs.y], [rh.x, rh.y], [rk.x, rk.y])
+        avg_hip_ang = (l_hip_ang + r_hip_ang) / 2.0
+        is_standing_straight = avg_hip_ang > 150
+
+        # 2. Hand Position Logic
         hands_above_head = (lw.y < nose.y) or (rw.y < nose.y)
         
-        # Upper Arm Inclination (0 = Vertical Down, 90 = Horizontal)
+        # 3. Arm Width (Crucial for Lateral Raise vs Press)
+        shoulder_width = abs(ls.x - rs.x)
+        hand_width = abs(lw.x - rw.x)
+        is_wide_grip = hand_width > (shoulder_width * 1.5) # Hands are wide apart
+
+        # 4. Inclination
         l_uarm_inc = calculate_inclination(ls, le)
         r_uarm_inc = calculate_inclination(rs, re)
         max_uarm_inc = max(l_uarm_inc, r_uarm_inc)
+        avg_elb = (calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y]) + calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])) / 2.0
 
-        # Torso Inclination (0 = Upright, 90 = Bent Over)
-        avg_torso_inc = (calculate_inclination(ls, lh) + calculate_inclination(rs, rh)) / 2.0
-        is_upright = avg_torso_inc < 30
 
-        # Elbow Bends
-        l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-        r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
-        avg_elb = (l_elb + r_elb) / 2.0
+        # --- FILTER 1: KILL GOOD MORNING FALSE POSITIVES ---
+        if ai_prediction == 'dumbbellGoodMorning' or ai_prediction == 'bentOverRow':
+            # If hips are straight (180 deg), you are standing, not hinging.
+            if is_standing_straight: 
+                return "neutral" 
 
-        # --- RULE 1: SANITY BOUNDS (Override AI Confusion) ---
-        
-        # Override 1: Hand Height (Shoulder Press Guard)
+        # --- FILTER 2: SHOULDER PRESS VS LATERAL RAISE ---
         if hands_above_head:
-            if ai_prediction in ['lateralRaise', 'bicepCurl', 'tricepKickback']: return 'shoulderPress'
+            # If hands are high BUT WIDE, it's the top of a Lateral Raise
+            if is_wide_grip:
+                return "lateralRaise"
+            # If hands are high and NARROW (above shoulders), it's a Press
+            else:
+                return "shoulderPress"
 
-        # Override 2: TRICEP KICKBACK GUARD
-        # Kickbacks require upper arm horizontal (>35) OR torso bent over
-        if ai_prediction == 'tricepKickback':
-            # If standing upright AND upper arms are vertical (< 45), it's likely a curl
-            if is_upright and max_uarm_inc < 45: 
-                return 'bicepCurl'
-
-        # --- RULE 2: GEOMETRY RESCUE (If AI says Neutral) ---
+        # --- RESCUE LOGIC (If AI fails to Neutral) ---
         if ai_prediction == "neutral":
             
             # RESCUE: LATERAL RAISE
-            # Arms flared out (>40 deg)
-            # CHANGED: Relaxed elbow constraint from 90 to 60 to catch bent-arm variations
-            if max_uarm_inc > 40 and avg_elb > 60:
-                if not hands_above_head: return "lateralRaise"
-
-            # RESCUE: SHOULDER PRESS
-            if hands_above_head: return "shoulderPress"
+            # Arms flared (>45) AND Elbows reasonably straight (>60)
+            if max_uarm_inc > 45 and avg_elb > 60:
+                if is_wide_grip: return "lateralRaise" # High confidence if wide
 
             # RESCUE: BICEP CURL
-            # Logic: Upper arm is vertical (< 40) AND Elbow is bent (< 110)
-            if max_uarm_inc < 40:
-                if (l_elb < 110 and lw.y < le.y) or (r_elb < 110 and rw.y < re.y):
-                    return "bicepCurl"
+            # Arms vertical (<40) AND Elbows bent (<110)
+            if max_uarm_inc < 40 and avg_elb < 110:
+                return "bicepCurl"
 
         return ai_prediction 
 
@@ -269,22 +274,16 @@ class ExerciseAnalyzer:
                          if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
                             self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
-            # --- ADDED: Tricep Kickback Logic ---
             elif exercise_name == 'tricepKickback':
-                # Upper Arm Inclination Check (Must be > 30 deg horizontal-ish)
                 l_uarm = calculate_inclination(ls, le)
                 r_uarm = calculate_inclination(rs, re)
                 active_uarm = max(l_uarm, r_uarm)
-                
-                # Elbow Angle Check (Straightens to 180)
                 l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
                 active_elb = max(l_elb, r_elb)
 
                 self.debug_angles = {'UpArm': int(active_uarm), 'Elbow': int(active_elb)}
 
-                # Double check to prevent Standing Bicep Curl confusion
-                # If arm is vertical (< 30) AND you are upright (< 30), alert user
                 avg_torso_inc = (calculate_inclination(ls, lh) + calculate_inclination(rs, rh)) / 2.0
                 
                 if active_uarm < 30 and avg_torso_inc < 30: 
