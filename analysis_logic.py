@@ -284,6 +284,8 @@ class ExerciseAnalyzer:
 
                 self.debug_angles = {'UpArm': int(active_uarm), 'Elbow': int(active_elb)}
 
+                # Double check to prevent Standing Bicep Curl confusion
+                # If arm is vertical (< 30) AND you are upright (< 30), alert user
                 avg_torso_inc = (calculate_inclination(ls, lh) + calculate_inclination(rs, rh)) / 2.0
                 
                 if active_uarm < 30 and avg_torso_inc < 30: 
