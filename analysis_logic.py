@@ -108,8 +108,7 @@ class ExerciseAnalyzer:
 
         # --- CALCULATIONS ---
         
-        # 1. Torso Alignment (Good Morning Check)
-        # Angle between Torso Vector and Upper Leg Vector should be ~180 if standing straight
+        # 1. Torso Alignment
         l_hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
         r_hip_ang = calculate_angle_2d([rs.x, rs.y], [rh.x, rh.y], [rk.x, rk.y])
         avg_hip_ang = (l_hip_ang + r_hip_ang) / 2.0
@@ -118,10 +117,12 @@ class ExerciseAnalyzer:
         # 2. Hand Position Logic
         hands_above_head = (lw.y < nose.y) or (rw.y < nose.y)
         
-        # 3. Arm Width (Crucial for Lateral Raise vs Press)
+        # 3. Arm Width (Crucial for Lateral Raise vs Good Morning)
+        # Good Morning: Hands stay near chest/shoulders
+        # Lateral Raise: Hands move OUT
         shoulder_width = abs(ls.x - rs.x)
         hand_width = abs(lw.x - rw.x)
-        is_wide_grip = hand_width > (shoulder_width * 1.5) # Hands are wide apart
+        is_wide_grip = hand_width > (shoulder_width * 1.5) 
 
         # 4. Inclination
         l_uarm_inc = calculate_inclination(ls, le)
@@ -130,32 +131,34 @@ class ExerciseAnalyzer:
         avg_elb = (calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y]) + calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])) / 2.0
 
 
-        # --- FILTER 1: KILL GOOD MORNING FALSE POSITIVES ---
+        # --- FILTER 1: FALSE POSITIVE PROTECTORS ---
+        
+        # Guard against Good Morning / Bent Over Row if hands are WIDE
         if ai_prediction == 'dumbbellGoodMorning' or ai_prediction == 'bentOverRow':
-            # If hips are straight (180 deg), you are standing, not hinging.
-            if is_standing_straight: 
-                return "neutral" 
+            if is_wide_grip: return "lateralRaise" # It's actually a lateral raise
+            if is_standing_straight: return "neutral" # Just standing
+
+        # Guard against Tricep Kickback if arm is VERTICAL
+        if ai_prediction == 'tricepKickback':
+            # Kickback requires lifting the elbow up (horizontal upper arm)
+            # If upper arm is vertical (angle < 45), it is physically impossible to be a kickback
+            if max_uarm_inc < 45: 
+                return 'bicepCurl'
 
         # --- FILTER 2: SHOULDER PRESS VS LATERAL RAISE ---
         if hands_above_head:
-            # If hands are high BUT WIDE, it's the top of a Lateral Raise
-            if is_wide_grip:
-                return "lateralRaise"
-            # If hands are high and NARROW (above shoulders), it's a Press
-            else:
-                return "shoulderPress"
+            if is_wide_grip: return "lateralRaise"
+            else: return "shoulderPress"
 
         # --- RESCUE LOGIC (If AI fails to Neutral) ---
         if ai_prediction == "neutral":
             
             # RESCUE: LATERAL RAISE
-            # Arms flared (>45) AND Elbows reasonably straight (>60)
             if max_uarm_inc > 45 and avg_elb > 60:
-                if is_wide_grip: return "lateralRaise" # High confidence if wide
+                if is_wide_grip: return "lateralRaise" 
 
             # RESCUE: BICEP CURL
-            # Arms vertical (<40) AND Elbows bent (<110)
-            if max_uarm_inc < 40 and avg_elb < 110:
+            if max_uarm_inc < 45 and avg_elb < 110:
                 return "bicepCurl"
 
         return ai_prediction 
@@ -284,8 +287,6 @@ class ExerciseAnalyzer:
 
                 self.debug_angles = {'UpArm': int(active_uarm), 'Elbow': int(active_elb)}
 
-                # Double check to prevent Standing Bicep Curl confusion
-                # If arm is vertical (< 30) AND you are upright (< 30), alert user
                 avg_torso_inc = (calculate_inclination(ls, lh) + calculate_inclination(rs, rh)) / 2.0
                 
                 if active_uarm < 30 and avg_torso_inc < 30: 
