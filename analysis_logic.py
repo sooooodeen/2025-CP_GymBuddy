@@ -117,48 +117,51 @@ class ExerciseAnalyzer:
         # 2. Hand Position Logic
         hands_above_head = (lw.y < nose.y) or (rw.y < nose.y)
         
-        # 3. Arm Width (Crucial for Lateral Raise vs Good Morning)
-        # Good Morning: Hands stay near chest/shoulders
-        # Lateral Raise: Hands move OUT
+        # 3. Arm Width (Crucial for Lateral Raise vs Press)
         shoulder_width = abs(ls.x - rs.x)
         hand_width = abs(lw.x - rw.x)
-        is_wide_grip = hand_width > (shoulder_width * 1.5) 
+        is_wide_grip = hand_width > (shoulder_width * 1.1) 
 
-        # 4. Inclination
+        # 4. Inclination (0 = Vertical Down, 90 = Horizontal)
         l_uarm_inc = calculate_inclination(ls, le)
         r_uarm_inc = calculate_inclination(rs, re)
         max_uarm_inc = max(l_uarm_inc, r_uarm_inc)
-        avg_elb = (calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y]) + calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])) / 2.0
+        
+        # 5. Elbow Bends
+        l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+        r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+        
+        # CHANGED: Don't use Average. Check if EITHER arm is "Good"
+        # Used for Rescue logic
+        l_arm_good_for_lat = (l_uarm_inc > 40 and l_elb > 60)
+        r_arm_good_for_lat = (r_uarm_inc > 40 and r_elb > 60)
+        
+        l_arm_good_for_curl = (l_uarm_inc < 40 and l_elb < 110)
+        r_arm_good_for_curl = (r_uarm_inc < 40 and r_elb < 110)
 
 
         # --- FILTER 1: FALSE POSITIVE PROTECTORS ---
-        
-        # Guard against Good Morning / Bent Over Row if hands are WIDE
-        if ai_prediction == 'dumbbellGoodMorning' or ai_prediction == 'bentOverRow':
-            if is_wide_grip: return "lateralRaise" # It's actually a lateral raise
-            if is_standing_straight: return "neutral" # Just standing
+        if ai_prediction in ['dumbbellGoodMorning', 'bentOverRow']:
+            if max_uarm_inc > 50: return "lateralRaise" 
+            if is_standing_straight: return "neutral" 
 
-        # Guard against Tricep Kickback if arm is VERTICAL
         if ai_prediction == 'tricepKickback':
-            # Kickback requires lifting the elbow up (horizontal upper arm)
-            # If upper arm is vertical (angle < 45), it is physically impossible to be a kickback
-            if max_uarm_inc < 45: 
-                return 'bicepCurl'
+            # Guard: If EITHER arm is clearly vertical, force Curl
+            if l_uarm_inc < 45 or r_uarm_inc < 45: return 'bicepCurl'
 
         # --- FILTER 2: SHOULDER PRESS VS LATERAL RAISE ---
         if hands_above_head:
             if is_wide_grip: return "lateralRaise"
             else: return "shoulderPress"
 
-        # --- RESCUE LOGIC (If AI fails to Neutral) ---
+        # --- RESCUE LOGIC (The One-Good-Arm Rule) ---
         if ai_prediction == "neutral":
-            
-            # RESCUE: LATERAL RAISE
-            if max_uarm_inc > 45 and avg_elb > 60:
+            # If EITHER arm looks like a Lateral Raise...
+            if (l_arm_good_for_lat or r_arm_good_for_lat):
                 if is_wide_grip: return "lateralRaise" 
 
-            # RESCUE: BICEP CURL
-            if max_uarm_inc < 45 and avg_elb < 110:
+            # If EITHER arm looks like a Curl...
+            if (l_arm_good_for_curl or r_arm_good_for_curl):
                 return "bicepCurl"
 
         return ai_prediction 
@@ -182,7 +185,6 @@ class ExerciseAnalyzer:
                 if np.max(prediction) > 1.0: prediction = np.exp(prediction - np.max(prediction)); prediction = prediction / prediction.sum()
                 idx = int(np.argmax(prediction)); conf = prediction[idx]
                 raw_label = str(label_mapping.get(idx, label_mapping.get(str(idx), "neutral")))
-                
                 final_label = self._apply_logic_override(raw_label, landmarks)
                 
                 if self.locked_exercise:
@@ -227,6 +229,7 @@ class ExerciseAnalyzer:
             lh, rh = lms[23], lms[24]; lk, rk = lms[25], lms[26]; la, ra = lms[27], lms[28]
             
             if exercise_name == 'bicepCurl':
+                # ONE GOOD ARM RULE: Use the arm that is MOST curled (smallest angle)
                 l_angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 r_angle = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
                 
@@ -238,14 +241,17 @@ class ExerciseAnalyzer:
                 if angle < 60 and self.stage == 'down': 
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION: self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
                 
+                # Only check swinging on the ACTIVE arm
                 if active_side == "Left": sh_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
                 else: sh_angle = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
                 if sh_angle > 50: self.form_status = "ERROR: ELBOWS SWINGING"
 
             elif exercise_name == 'lateralRaise':
+                # ONE GOOD ARM RULE: Use the arm that is HIGHEST (max shoulder angle)
                 l_sh_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
                 r_sh_ang = calculate_angle_2d([re.x, re.y], [rs.x, rs.y], [rh.x, rh.y])
                 max_ang = max(l_sh_ang, r_sh_ang)
+                
                 self.debug_angles = {'Shoulder': int(max_ang)}
 
                 if max_ang < 45: self.stage = "down"
@@ -255,15 +261,24 @@ class ExerciseAnalyzer:
                 if max_ang > 110: self.form_status = "WARNING: TOO HIGH"
 
             elif exercise_name == 'shoulderPress':
-                elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                self.debug_angles = {'Elbow': int(elb_ang)}
-                if elb_ang < 90: self.stage = "down" 
-                if elb_ang > 150 and self.stage == "down": 
+                # ONE GOOD ARM RULE: Use the arm that is MOST STRAIGHT (largest elbow angle)
+                elb_l = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
+                elb_r = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
+                active_elb = max(elb_l, elb_r)
+
+                self.debug_angles = {'Elbow': int(active_elb)}
+                
+                # Check for "down" on the arm that is most bent (min) to ensure full ROM
+                min_elb = min(elb_l, elb_r)
+                
+                if min_elb < 90: self.stage = "down" 
+                if active_elb > 150 and self.stage == "down": 
                     if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
                         self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
 
             elif exercise_name in ['dumbbellReverseFly', 'bentOverRow']:
                 torso_inc = calculate_inclination(ls, lh)
+                # ONE GOOD ARM RULE: Use the arm that is MOST PULLED BACK (smallest angle)
                 l_elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 r_elb_ang = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
                 active_elb_ang = min(l_elb_ang, r_elb_ang) 
@@ -272,7 +287,8 @@ class ExerciseAnalyzer:
                 
                 if torso_inc < 30: self.form_status = "ERROR: BEND OVER MORE"
                 else:
-                    if active_elb_ang > 150: self.stage = "down" 
+                    # Reset when arm extends (max angle)
+                    if max(l_elb_ang, r_elb_ang) > 150: self.stage = "down" 
                     if active_elb_ang < 100 and self.stage == "down": 
                          if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
                             self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
@@ -281,9 +297,12 @@ class ExerciseAnalyzer:
                 l_uarm = calculate_inclination(ls, le)
                 r_uarm = calculate_inclination(rs, re)
                 active_uarm = max(l_uarm, r_uarm)
+                
+                # ONE GOOD ARM RULE: Use the arm that is MOST EXTENDED
                 l_elb = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
                 r_elb = calculate_angle_2d([rs.x, rs.y], [re.x, re.y], [rw.x, rw.y])
                 active_elb = max(l_elb, r_elb)
+                min_elb = min(l_elb, r_elb) # Use most bent for reset
 
                 self.debug_angles = {'UpArm': int(active_uarm), 'Elbow': int(active_elb)}
 
@@ -292,7 +311,7 @@ class ExerciseAnalyzer:
                 if active_uarm < 30 and avg_torso_inc < 30: 
                     self.form_status = "ERROR: LEAN FORWARD & LIFT ELBOW"
                 else:
-                    if active_elb < 100: self.stage = "down" 
+                    if min_elb < 100: self.stage = "down" 
                     if active_elb > 160 and self.stage == "down": 
                          if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
                             self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
