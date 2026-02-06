@@ -68,7 +68,7 @@ def extract_engineered_features(landmarks):
 # --- 3. EXERCISE ANALYZER ---
 
 class ExerciseAnalyzer:
-    def __init__(self, sequence_length=45, conf_threshold=0.60, stability_frames=7, reset_timeout=5.0):
+    def __init__(self, sequence_length=45, conf_threshold=0.60, stability_frames=10, reset_timeout=5.0):
         # Rep Counting & Status
         self.rep_counter = 0; self.stage = None; self.form_status = "START EXERCISE"; self.status_color = (0, 255, 0)
         self.last_rep_time = time.time(); self.RESET_TIMEOUT = reset_timeout
@@ -78,13 +78,13 @@ class ExerciseAnalyzer:
         self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
         self.CONF_THRESHOLD = conf_threshold
         
-        # Stability & Locking
+        # Stability & Locking (INCREASED STABILITY)
         self.STABILITY_FRAMES = stability_frames
         self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES); self.stable_prediction = "neutral"
         self.locked_exercise = None; self.neutral_persistence_counter = 0
         self.frame_count = 0; self.PREDICTION_INTERVAL = 2; self.stable_counter = 0
         
-        # Error Logging & Alerts (RESTORING ORIGINAL SYSTEM)
+        # Error Logging
         self.triggered_alert = None; self.consecutive_error_counter = 0
         self.last_consecutive_error_type = None; self.new_error_to_log = None
         self.debug_angles = {}
@@ -114,17 +114,44 @@ class ExerciseAnalyzer:
         return interpreter.get_tensor(output_details[0]['index'])[0]
 
     def _apply_logic_override(self, ai_prediction, landmarks):
+        """Forces Neutral if the pose makes the detected exercise physically impossible."""
         if not landmarks: return ai_prediction
         p = [self.Point(lm) for lm in landmarks]
         ls, rs, lw, rw, nose = p[11], p[12], p[15], p[16], p[0]
+        lh, rh = p[23], p[24]
         
-        # Restoring the "Rescue" logic with 3D checks
-        hands_above_head = (lw.y < nose.y) or (rw.y < nose.y)
-        is_wide = abs(lw.x - rw.x) > (abs(ls.x - rs.x) * 1.3)
+        # --- 1. THE "HEIGHT" GUARD (Stops Upright Rows / Presses when hands are low) ---
+        # If hands are below the navel (Hip Y), you cannot be doing a Press or Upright Row.
+        hands_low = (lw.y > lh.y) and (rw.y > rh.y)
+        
+        if ai_prediction in ["uprightRow", "shoulderPress", "lateralRaise"]:
+            if hands_low: return "neutral"
 
-        if ai_prediction == "neutral":
-            if hands_above_head: return "shoulderPress"
-            if is_wide: return "lateralRaise"
+        # --- 2. THE "KICKBACK" GUARD (The Ghost Detection Killer) ---
+        # Kickbacks & Rows require the Torso to be bent over.
+        torso_inc = calculate_inclination_3d(ls, lh)
+        
+        # Calculate Upper Arm Inclination (Is the arm raised behind/horizontal?)
+        # We construct a point for the Elbows
+        le_pt, re_pt = p[13], p[14]
+        l_uarm_inc = calculate_inclination_3d(ls, le_pt) 
+        r_uarm_inc = calculate_inclination_3d(rs, re_pt)
+        max_uarm_inc = max(l_uarm_inc, r_uarm_inc)
+
+        if ai_prediction in ["tricepKickback", "bentOverRow", "dumbbellReverseFly"]:
+            # If standing up straight (angle < 45), it's NOT a kickback/row
+            if torso_inc < 45: return "neutral"
+            
+            # Additional Kickback check: Upper arm must be somewhat horizontal
+            if ai_prediction == "tricepKickback" and max_uarm_inc < 50:
+                return "neutral"
+
+        # --- 3. BICEP CURL GUARD ---
+        # If hands are very wide (like a T-pose), it's a Lateral Raise, not a Curl.
+        is_wide = abs(lw.x - rw.x) > (abs(ls.x - rs.x) * 1.6)
+        if ai_prediction == "bicepCurl" and is_wide:
+            return "lateralRaise"
+
         return ai_prediction
 
     def process_frame(self, interpreter, input_details, output_details, label_mapping, landmarks, current_exercise, scaler=None):
@@ -139,20 +166,29 @@ class ExerciseAnalyzer:
             except: pass
         self.angle_sequence_buffer.append(features)
 
+        # PREDICT only when buffer is full
         if len(self.angle_sequence_buffer) == self.expected_seq_len and self.frame_count % self.PREDICTION_INTERVAL == 0:
             try:
                 input_tensor = np.expand_dims(np.array(self.angle_sequence_buffer), axis=0).astype(np.float32)
                 prediction = self.predict_with_tflite(interpreter, input_details, output_details, input_tensor)
                 
                 idx = int(np.argmax(prediction))
-                raw_label = str(label_mapping.get(idx, "neutral"))
+                conf = prediction[idx]
+
+                # --- CONFIDENCE FILTER ---
+                # If the AI is unsure (< 70%), assume Neutral.
+                if conf < 0.70: 
+                    raw_label = "neutral"
+                else:
+                    raw_label = str(label_mapping.get(idx, "neutral"))
+                
                 final_label = self._apply_logic_override(raw_label, landmarks)
                 
-                # Locking Logic (ORIGINAL)
+                # Locking Logic
                 if self.locked_exercise:
                     if final_label == "neutral":
                         self.neutral_persistence_counter += 1
-                        if self.neutral_persistence_counter > 60:
+                        if self.neutral_persistence_counter > 40: # Faster unlock
                             self.locked_exercise = None; self.rep_counter = 0; final_label = "neutral"
                         else: final_label = self.locked_exercise
                     else: self.neutral_persistence_counter = 0; final_label = self.locked_exercise
@@ -160,14 +196,16 @@ class ExerciseAnalyzer:
                 self.recent_predictions.append(final_label)
                 most_common, count = Counter(self.recent_predictions).most_common(1)[0]
                 
-                if count > (self.STABILITY_FRAMES // 2):
+                # Increased stability requirement (Count > 6 out of 10)
+                if count > 6:
                     if self.stable_prediction != most_common:
                         if not self.locked_exercise: self.rep_counter = 0; self.stage = None
                         self.stable_prediction = most_common; self.stable_counter = 0
                     else: self.stable_counter += 1
             except: pass
 
-        if self.stable_counter > 3 and self.stable_prediction != "neutral":
+        # Analyze if stable
+        if self.stable_counter > 5 and self.stable_prediction != "neutral":
             if not self.locked_exercise: self.locked_exercise = self.stable_prediction
             self.analyze_frame(self.stable_prediction, landmarks)
         else:
@@ -189,10 +227,16 @@ class ExerciseAnalyzer:
                 ang = min(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
                 swing = max(calculate_inclination_3d(ls, le), calculate_inclination_3d(rs, re))
                 self.debug_angles = {"Elbow": int(ang), "Swing": int(swing)}
+                
                 if ang > 145: self.stage = "down"
                 if ang < 70 and self.stage == "down":
                     if now - self.last_rep_time > 0.6: self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
-                if swing > 40: self.form_status = "ERROR: ELBOWS SWINGING"
+                
+                # FIX FOR RED SKELETON: Relaxed Swing Threshold to 65
+                if swing > 65: self.form_status = "ERROR: ELBOWS SWINGING"
+                
+                # FORCE GREEN if rep was just counted
+                if (now - self.last_rep_time) < 1.0: self.form_status = "GOOD FORM"
 
             elif exercise_name == 'lateralRaise':
                 sh = max(calculate_inclination_3d(ls, le), calculate_inclination_3d(rs, re))
@@ -200,7 +244,7 @@ class ExerciseAnalyzer:
                 if sh < 35: self.stage = "down"
                 if sh > 80 and self.stage == "down":
                     if now - self.last_rep_time > 0.6: self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
-                if sh > 110: self.form_status = "WARNING: TOO HIGH"
+                if sh > 115: self.form_status = "WARNING: TOO HIGH"
 
             elif exercise_name == 'shoulderPress':
                 elb = max(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
@@ -223,10 +267,12 @@ class ExerciseAnalyzer:
                 uarm = max(calculate_inclination_3d(ls, le), calculate_inclination_3d(rs, re))
                 elb = max(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
                 self.debug_angles = {"Arm": int(uarm), "Elbow": int(elb)}
-                if uarm < 65: self.form_status = "ERROR: LIFT ELBOW HIGHER"
+                
+                # Check 1: Upper Arm must be high (low inclination relative to horizontal)
+                if uarm < 60: self.form_status = "ERROR: LIFT ELBOW HIGHER"
                 else:
-                    if elb < 110: self.stage = "down"
-                    if elb > 155 and self.stage == "down":
+                    if elb < 100: self.stage = "down"
+                    if elb > 150 and self.stage == "down":
                         if now - self.last_rep_time > 0.6: self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
 
             elif exercise_name in ['squat', 'gobletSquat']:
@@ -237,7 +283,7 @@ class ExerciseAnalyzer:
                     if now - self.last_rep_time > 0.8: self.rep_counter += 1; self.stage = "down"; self.last_rep_time = now
                 if knee < 120: self.form_status = "GOOD DEPTH"
 
-            # --- RESTORING ERROR LOGGING SYSTEM ---
+            # --- ERROR LOGGING SYSTEM ---
             if self.rep_counter > prev_reps:
                 if "ERROR" in self.form_status or "WARNING" in self.form_status:
                     self.new_error_to_log = {"rep_number": self.rep_counter, "error_type": self.form_status, "exercise_name": exercise_name}
@@ -252,7 +298,7 @@ class ExerciseAnalyzer:
                     self.consecutive_error_counter = 0
         except: pass
 
-    # Utility functions (RESORED)
+    # Utility functions
     def get_triggered_alert(self):
         alert = self.triggered_alert; self.triggered_alert = None; return alert
     def get_new_error_log(self):
