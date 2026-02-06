@@ -3,26 +3,29 @@ import time
 import math
 from collections import deque, Counter
 
-# --- 1. GEOMETRY ENGINE (3D FIXES) ---
+# --- 1. GEOMETRY ENGINE ---
 
 def calculate_angle_3d(a, b, c):
-    """Calculates the 3D angle at point b using vector dot products."""
+    """Calculates the 3D angle at point b."""
     a = np.array([a.x, a.y, a.z]); b = np.array([b.x, b.y, b.z]); c = np.array([c.x, c.y, c.z])
     ba = a - b; bc = c - b
     cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-7)
     return np.degrees(np.arccos(np.clip(cosine_angle, -1.0, 1.0)))
 
 def calculate_inclination_3d(point_top, point_bottom):
-    """Calculates verticality relative to gravity (0=Vertical Down, 90=Horizontal)."""
+    """Calculates verticality (0=Vertical Standing, 90=Bent Over Horizontal)."""
     p1 = np.array([point_top.x, point_top.y, point_top.z])
     p2 = np.array([point_bottom.x, point_bottom.y, point_bottom.z])
-    vector = p2 - p1
+    vector = p2 - p1 # Vector points down from shoulder to hip
+    # Compare against pure vertical UP [0, 1, 0]
     unit_vector = vector / (np.linalg.norm(vector) + 1e-7)
-    dot_product = np.dot(unit_vector, [0, 1, 0]) # Compare to vertical Y axis
+    dot_product = np.dot(unit_vector, [0, 1, 0]) 
     angle = np.degrees(np.arccos(np.clip(dot_product, -1.0, 1.0)))
+    # If standing perfectly, vector is [0, -1, 0], dot is -1, angle is 180.
+    # We want 0 for standing.
     return abs(angle - 180)
 
-# --- 2. DATA PREPROCESSING (Maintains Model Compatibility) ---
+# --- 2. DATA PREPROCESSING ---
 
 def normalize_pose_robust(landmarks):
     try:
@@ -68,23 +71,18 @@ def extract_engineered_features(landmarks):
 # --- 3. EXERCISE ANALYZER ---
 
 class ExerciseAnalyzer:
-    def __init__(self, sequence_length=45, conf_threshold=0.60, stability_frames=10, reset_timeout=5.0):
-        # Rep Counting & Status
-        self.rep_counter = 0; self.stage = None; self.form_status = "START EXERCISE"; self.status_color = (0, 255, 0)
+    def __init__(self, sequence_length=45, conf_threshold=0.60, stability_frames=6, reset_timeout=5.0):
+        self.rep_counter = 0; self.stage = None; self.form_status = "START EXERCISE"
         self.last_rep_time = time.time(); self.RESET_TIMEOUT = reset_timeout
-        
-        # AI Model Configuration
         self.model_configured = False; self.expected_seq_len = int(sequence_length); self.input_size = 0
         self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
         self.CONF_THRESHOLD = conf_threshold
         
-        # Stability & Locking (INCREASED STABILITY)
+        # Reduced Stability Frames for faster detection
         self.STABILITY_FRAMES = stability_frames
         self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES); self.stable_prediction = "neutral"
         self.locked_exercise = None; self.neutral_persistence_counter = 0
         self.frame_count = 0; self.PREDICTION_INTERVAL = 2; self.stable_counter = 0
-        
-        # Error Logging
         self.triggered_alert = None; self.consecutive_error_counter = 0
         self.last_consecutive_error_type = None; self.new_error_to_log = None
         self.debug_angles = {}
@@ -113,42 +111,30 @@ class ExerciseAnalyzer:
         interpreter.set_tensor(input_index, input_data); interpreter.invoke()
         return interpreter.get_tensor(output_details[0]['index'])[0]
 
-    def _apply_logic_override(self, ai_prediction, landmarks):
-        """Forces Neutral if the pose makes the detected exercise physically impossible."""
+    def _apply_logic_override(self, ai_prediction, landmarks, conf):
+        """Prevents Impossible Moves (e.g., Kickbacks while standing)."""
         if not landmarks: return ai_prediction
         p = [self.Point(lm) for lm in landmarks]
         ls, rs, lw, rw, nose = p[11], p[12], p[15], p[16], p[0]
         lh, rh = p[23], p[24]
         
-        # --- 1. THE "HEIGHT" GUARD (Stops Upright Rows / Presses when hands are low) ---
-        # If hands are below the navel (Hip Y), you cannot be doing a Press or Upright Row.
-        hands_low = (lw.y > lh.y) and (rw.y > rh.y)
-        
-        if ai_prediction in ["uprightRow", "shoulderPress", "lateralRaise"]:
-            if hands_low: return "neutral"
-
-        # --- 2. THE "KICKBACK" GUARD (The Ghost Detection Killer) ---
-        # Kickbacks & Rows require the Torso to be bent over.
+        # DEBUG: Print inclination to console so we know what the camera sees
         torso_inc = calculate_inclination_3d(ls, lh)
         
-        # Calculate Upper Arm Inclination (Is the arm raised behind/horizontal?)
-        # We construct a point for the Elbows
-        le_pt, re_pt = p[13], p[14]
-        l_uarm_inc = calculate_inclination_3d(ls, le_pt) 
-        r_uarm_inc = calculate_inclination_3d(rs, re_pt)
-        max_uarm_inc = max(l_uarm_inc, r_uarm_inc)
-
+        # 1. KICKBACK/ROW GUARD: Relaxed to 25 degrees (was 45)
+        # If you are leaning forward even slightly, we allow the Row detection.
         if ai_prediction in ["tricepKickback", "bentOverRow", "dumbbellReverseFly"]:
-            # If standing up straight (angle < 45), it's NOT a kickback/row
-            if torso_inc < 45: return "neutral"
-            
-            # Additional Kickback check: Upper arm must be somewhat horizontal
-            if ai_prediction == "tricepKickback" and max_uarm_inc < 50:
+            if torso_inc < 25: 
+                # print(f"DEBUG: Rejected {ai_prediction} - Too Upright ({int(torso_inc)}°)")
                 return "neutral"
 
-        # --- 3. BICEP CURL GUARD ---
-        # If hands are very wide (like a T-pose), it's a Lateral Raise, not a Curl.
-        is_wide = abs(lw.x - rw.x) > (abs(ls.x - rs.x) * 1.6)
+        # 2. SHOULDER PRESS GUARD: Hands must be generally up
+        hands_above_shoulders = (lw.y < ls.y) or (rw.y < rs.y)
+        if ai_prediction == "shoulderPress" and not hands_above_shoulders:
+            return "neutral"
+
+        # 3. WIDE ARM GUARD
+        is_wide = abs(lw.x - rw.x) > (abs(ls.x - rs.x) * 1.5)
         if ai_prediction == "bicepCurl" and is_wide:
             return "lateralRaise"
 
@@ -166,7 +152,6 @@ class ExerciseAnalyzer:
             except: pass
         self.angle_sequence_buffer.append(features)
 
-        # PREDICT only when buffer is full
         if len(self.angle_sequence_buffer) == self.expected_seq_len and self.frame_count % self.PREDICTION_INTERVAL == 0:
             try:
                 input_tensor = np.expand_dims(np.array(self.angle_sequence_buffer), axis=0).astype(np.float32)
@@ -174,21 +159,17 @@ class ExerciseAnalyzer:
                 
                 idx = int(np.argmax(prediction))
                 conf = prediction[idx]
-
-                # --- CONFIDENCE FILTER ---
-                # If the AI is unsure (< 70%), assume Neutral.
-                if conf < 0.70: 
-                    raw_label = "neutral"
-                else:
-                    raw_label = str(label_mapping.get(idx, "neutral"))
+                raw_label = str(label_mapping.get(idx, "neutral"))
                 
-                final_label = self._apply_logic_override(raw_label, landmarks)
+                # REMOVED STRICT CONFIDENCE FILTER causing "Zero Detection"
+                # Passing confidence into override to use if needed later
+                final_label = self._apply_logic_override(raw_label, landmarks, conf)
                 
                 # Locking Logic
                 if self.locked_exercise:
                     if final_label == "neutral":
                         self.neutral_persistence_counter += 1
-                        if self.neutral_persistence_counter > 40: # Faster unlock
+                        if self.neutral_persistence_counter > 40:
                             self.locked_exercise = None; self.rep_counter = 0; final_label = "neutral"
                         else: final_label = self.locked_exercise
                     else: self.neutral_persistence_counter = 0; final_label = self.locked_exercise
@@ -196,16 +177,15 @@ class ExerciseAnalyzer:
                 self.recent_predictions.append(final_label)
                 most_common, count = Counter(self.recent_predictions).most_common(1)[0]
                 
-                # Increased stability requirement (Count > 6 out of 10)
-                if count > 6:
+                # Stability Check (Lowered to 4 for responsiveness)
+                if count >= 4:
                     if self.stable_prediction != most_common:
                         if not self.locked_exercise: self.rep_counter = 0; self.stage = None
                         self.stable_prediction = most_common; self.stable_counter = 0
                     else: self.stable_counter += 1
             except: pass
 
-        # Analyze if stable
-        if self.stable_counter > 5 and self.stable_prediction != "neutral":
+        if self.stable_counter > 4 and self.stable_prediction != "neutral":
             if not self.locked_exercise: self.locked_exercise = self.stable_prediction
             self.analyze_frame(self.stable_prediction, landmarks)
         else:
@@ -222,21 +202,15 @@ class ExerciseAnalyzer:
         now = time.time(); self.form_status = "CORRECT FORM"; prev_reps = self.rep_counter
         
         try:
-            # --- UPDATED 3D LOGIC FOR ALL EXERCISES ---
             if exercise_name == 'bicepCurl':
                 ang = min(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
                 swing = max(calculate_inclination_3d(ls, le), calculate_inclination_3d(rs, re))
                 self.debug_angles = {"Elbow": int(ang), "Swing": int(swing)}
                 
-                if ang > 145: self.stage = "down"
-                if ang < 70 and self.stage == "down":
+                if ang > 150: self.stage = "down"
+                if ang < 80 and self.stage == "down": # Relaxed Up Threshold
                     if now - self.last_rep_time > 0.6: self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
-                
-                # FIX FOR RED SKELETON: Relaxed Swing Threshold to 65
-                if swing > 65: self.form_status = "ERROR: ELBOWS SWINGING"
-                
-                # FORCE GREEN if rep was just counted
-                if (now - self.last_rep_time) < 1.0: self.form_status = "GOOD FORM"
+                if swing > 70: self.form_status = "ERROR: ELBOWS SWINGING" # Relaxed Swing
 
             elif exercise_name == 'lateralRaise':
                 sh = max(calculate_inclination_3d(ls, le), calculate_inclination_3d(rs, re))
@@ -257,9 +231,9 @@ class ExerciseAnalyzer:
                 torso = calculate_inclination_3d(ls, lh)
                 elb = min(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
                 self.debug_angles = {"Torso": int(torso), "Elbow": int(elb)}
-                if torso < 40: self.form_status = "ERROR: BEND OVER MORE"
+                if torso < 20: self.form_status = "ERROR: BEND OVER MORE" # Relaxed
                 else:
-                    if elb > 145: self.stage = "down"
+                    if elb > 150: self.stage = "down"
                     if elb < 100 and self.stage == "down":
                         if now - self.last_rep_time > 0.6: self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
 
@@ -267,8 +241,6 @@ class ExerciseAnalyzer:
                 uarm = max(calculate_inclination_3d(ls, le), calculate_inclination_3d(rs, re))
                 elb = max(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
                 self.debug_angles = {"Arm": int(uarm), "Elbow": int(elb)}
-                
-                # Check 1: Upper Arm must be high (low inclination relative to horizontal)
                 if uarm < 60: self.form_status = "ERROR: LIFT ELBOW HIGHER"
                 else:
                     if elb < 100: self.stage = "down"
@@ -279,11 +251,11 @@ class ExerciseAnalyzer:
                 knee = (calculate_angle_3d(lh, lk, la) + calculate_angle_3d(rh, rk, ra)) / 2
                 self.debug_angles = {"Knee": int(knee)}
                 if knee > 165: self.stage = "up"
-                if knee < 105 and self.stage == "up":
+                if knee < 115 and self.stage == "up": # Relaxed from 105
                     if now - self.last_rep_time > 0.8: self.rep_counter += 1; self.stage = "down"; self.last_rep_time = now
                 if knee < 120: self.form_status = "GOOD DEPTH"
 
-            # --- ERROR LOGGING SYSTEM ---
+            # --- ERROR LOGGING ---
             if self.rep_counter > prev_reps:
                 if "ERROR" in self.form_status or "WARNING" in self.form_status:
                     self.new_error_to_log = {"rep_number": self.rep_counter, "error_type": self.form_status, "exercise_name": exercise_name}
