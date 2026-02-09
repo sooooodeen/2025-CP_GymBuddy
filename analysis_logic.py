@@ -175,7 +175,8 @@ class ExerciseAnalyzer:
 
     def _apply_logic_override(self, ai_prediction, landmarks, conf):
         """
-        Prevents Impossible Moves and uses Hysteresis (Memory) to stop flickering.
+        Prevents Impossible Moves.
+        FIX: Added strict "Upper Arm" check for Kickbacks.
         """
         if not landmarks: return ai_prediction
         
@@ -183,37 +184,44 @@ class ExerciseAnalyzer:
         ls, rs = p[11], p[12] # Shoulders
         lw, rw = p[15], p[16] # Wrists
         lh, rh = p[23], p[24] # Hips
+        le, re = p[13], p[14] # Elbows
         
         # Calculate Current States
         torso_inc = calculate_inclination_3d(ls, lh)
         
-        # --- FIX 1: Hysteresis for Bent-Over Exercises ---
-        # Logic: Require deep bend to enter state, but allow slight rise to stay in state.
+        # Hysteresis for Bent-Over Exercises
         if torso_inc > 35: 
             self.is_bent_over = True
         elif torso_inc < 20: 
             self.is_bent_over = False
             
-        # If AI says Row/Kickback but we are standing upright -> Force Neutral
-        if ai_prediction in ["tricepKickback", "bentOverRow", "dumbbellReverseFly"]:
+        # --- FIX 1: Strict Kickback Guard ---
+        if ai_prediction == "tricepKickback":
             if not self.is_bent_over:
-                # Debug print if needed: print(f"Override: Too Upright ({int(torso_inc)})")
                 return "neutral"
+            
+            # CRITICAL FIX: Upper Arm Inclination Check
+            # Kickbacks REQUIRE the upper arm to be raised (near horizontal).
+            # If Upper Arm inclination is low (< 50), the arm is hanging down.
+            # This turns "Walking/Setup" noise into "neutral" or "Row" instead of Kickback.
+            uarm_inc = max(calculate_inclination_3d(ls, le), calculate_inclination_3d(rs, re))
+            if uarm_inc < 45:
+                # If arms are down, it might be a Row, but it is DEFINITELY not a Kickback.
+                return "bentOverRow"
 
-        # --- FIX 2: Shoulder Press Guard (Relaxed) ---
-        # Logic: Hands must be near or above shoulders.
-        # Added +0.15 buffer: Allows hands to dip slightly below shoulders at bottom of rep.
+        # General Bent-Over Guard
+        if ai_prediction in ["bentOverRow", "dumbbellReverseFly"] and not self.is_bent_over:
+            return "neutral"
+
+        # Shoulder Press Guard
         hands_above_shoulders = (lw.y < ls.y + 0.15) or (rw.y < rs.y + 0.15)
-        
         if ai_prediction == "shoulderPress" and not hands_above_shoulders:
             return "neutral"
 
-        # --- FIX 3: Wide Arm Guard (Lateral Raise vs Curl) ---
-        # Logic: If arms are very wide, it's likely a Raise, not a Curl.
+        # Wide Arm Guard
         shoulder_width = abs(ls.x - rs.x)
         hand_width = abs(lw.x - rw.x)
         is_wide = hand_width > (shoulder_width * 1.6)
-        
         if ai_prediction == "bicepCurl" and is_wide:
             return "lateralRaise"
 
@@ -353,13 +361,18 @@ class ExerciseAnalyzer:
                 elb = max(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
                 self.debug_angles = {"Arm": int(uarm), "Elbow": int(elb)}
                 
-                if uarm < 60: self.form_status = "ERROR: LIFT ELBOW HIGHER"
+                # FIX 2: Strict Rep Counting
+                # If the arm drops below 50 degrees, we RESET the stage.
+                # This prevents counting reps while you are just standing up or relaxing.
+                if uarm < 50:
+                    self.form_status = "ERROR: LIFT ELBOW HIGHER"
+                    self.stage = None # Reset stage to prevent ghost counts
                 else:
                     if elb < 90: self.stage = "down"
                     if elb > 150 and self.stage == "down":
                         if now - self.last_rep_time > 0.6: 
                             self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
-
+                            
             # --- SQUATS ---
             elif exercise_name in ['squat', 'gobletSquat']:
                 # Averaging both knees for stability
