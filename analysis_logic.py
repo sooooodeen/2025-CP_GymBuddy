@@ -25,16 +25,10 @@ def calculate_inclination_3d(point_top, point_bottom):
     vector = p2 - p1 
     unit_vector = vector / (np.linalg.norm(vector) + 1e-7)
     
-    # In Image coords: Y increases DOWNWARDS.
-    # A standing person goes from Shoulder (Top) to Hip (Bottom).
-    # The vector [0, 1, 0] points DOWN.
-    # Therefore, Standing Vector aligned with [0, 1, 0] should be angle 0.
+    # Vector points DOWN [0, 1, 0] for standing.
+    # Standing = 0 degrees. Bent = 90 degrees.
     dot_product = np.dot(unit_vector, [0, 1, 0]) 
     angle = np.degrees(np.arccos(np.clip(dot_product, -1.0, 1.0)))
-    
-    # --- CRITICAL FIX: REMOVED THE "- 180" INVERSION ---
-    # Previous code: return abs(angle - 180) -> Made Standing = 180 (Broken)
-    # New code: return angle -> Makes Standing = 0 (Correct)
     return angle
 
 # --- 2. DATA PREPROCESSING ---
@@ -135,9 +129,8 @@ class ExerciseAnalyzer:
         self.new_error_to_log = None
         self.debug_angles = {}
 
-        # State Variables for Hysteresis
+        # State Variables
         self.is_bent_over = False
-        self.is_hands_up = False
 
     class Point:
         def __init__(self, lm):
@@ -183,27 +176,34 @@ class ExerciseAnalyzer:
         
         torso_inc = calculate_inclination_3d(ls, lh)
         
-        # --- FIXED HYSTERESIS FOR CORRECTED MATH ---
-        # 0 = Standing, 90 = Bent.
-        # We now correctly look for > 35 degrees to be "bent over".
-        # Before, this was triggering on "180" (standing) which broke everything.
+        # Hysteresis for Bent-Over Exercises (0=Standing, 90=Bent)
         if torso_inc > 35: self.is_bent_over = True
         elif torso_inc < 15: self.is_bent_over = False
             
-        # Kickback Guard
-        if ai_prediction == "tricepKickback":
-            if not self.is_bent_over: return "neutral"
-            
-            # Elbow Height Check: Elbow must be HIGH (near or above shoulder)
-            # Y increases downwards, so lower Y value = higher on screen
-            l_valid = le.y < (ls.y + 0.2) 
-            r_valid = re.y < (rs.y + 0.2)
-            
-            if not (l_valid or r_valid):
+        # --- SMART REDIRECTION LOGIC ---
+        # If AI predicts a bent-over exercise, BUT the user is standing, 
+        # it's likely a misclassified Standing Exercise (Curl, Press, Raise).
+        if ai_prediction in ["tricepKickback", "bentOverRow", "dumbbellReverseFly", "romanianDeadlift"]:
+            if not self.is_bent_over:
+                # We are standing. AI is wrong. Let's find the real exercise.
+                
+                # 1. Check Shoulder Press (Hands above shoulders)
+                if lw.y < ls.y and rw.y < rs.y:
+                    return "shoulderPress"
+                
+                # 2. Check Lateral Raise (Arms wide)
+                if abs(lw.x - rw.x) > abs(ls.x - rs.x) * 1.5:
+                    return "lateralRaise"
+                
+                # 3. Check Bicep Curl (Elbows bent and hands close to shoulders)
+                avg_elbow_angle = (calculate_angle_3d(ls, le, lw) + calculate_angle_3d(rs, re, rw)) / 2
+                if avg_elbow_angle < 145: 
+                    return "bicepCurl"
+                
+                # If standing with straight arms, it's truly neutral.
                 return "neutral"
 
-        if ai_prediction in ["bentOverRow", "dumbbellReverseFly", "romanianDeadlift"] and not self.is_bent_over:
-            return "neutral"
+        # --- EXERCISE SPECIFIC GUARDS (Secondary Checks) ---
 
         if ai_prediction == "lateralRaise":
             wrist_span = abs(lw.x - rw.x)
