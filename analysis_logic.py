@@ -26,10 +26,9 @@ def calculate_inclination_3d(point_top, point_bottom):
     unit_vector = vector / (np.linalg.norm(vector) + 1e-7)
     
     # Vector points DOWN [0, 1, 0] for standing.
-    # Standing = 0 degrees. Bent = 90 degrees.
     dot_product = np.dot(unit_vector, [0, 1, 0]) 
     angle = np.degrees(np.arccos(np.clip(dot_product, -1.0, 1.0)))
-    return angle
+    return abs(angle - 180) # 0 = Standing, 90 = Horizontal
 
 # --- 2. DATA PREPROCESSING ---
 
@@ -176,16 +175,15 @@ class ExerciseAnalyzer:
         
         torso_inc = calculate_inclination_3d(ls, lh)
         
-        # Hysteresis for Bent-Over Exercises (0=Standing, 90=Bent)
+        # Hysteresis for Bent-Over Exercises
         if torso_inc > 35: self.is_bent_over = True
         elif torso_inc < 15: self.is_bent_over = False
             
         # --- SMART REDIRECTION LOGIC ---
-        # If AI predicts a bent-over exercise, BUT the user is standing, 
-        # it's likely a misclassified Standing Exercise (Curl, Press, Raise).
-        if ai_prediction in ["tricepKickback", "bentOverRow", "dumbbellReverseFly", "romanianDeadlift"]:
+        # REMOVED romanianDeadlift to prevent confusion
+        if ai_prediction in ["tricepKickback", "bentOverRow", "dumbbellReverseFly"]:
             if not self.is_bent_over:
-                # We are standing. AI is wrong. Let's find the real exercise.
+                # We are standing. AI is wrong. Find the real exercise.
                 
                 # 1. Check Shoulder Press (Hands above shoulders)
                 if lw.y < ls.y and rw.y < rs.y:
@@ -200,10 +198,9 @@ class ExerciseAnalyzer:
                 if avg_elbow_angle < 145: 
                     return "bicepCurl"
                 
-                # If standing with straight arms, it's truly neutral.
                 return "neutral"
 
-        # --- EXERCISE SPECIFIC GUARDS (Secondary Checks) ---
+        # --- EXERCISE SPECIFIC GUARDS ---
 
         if ai_prediction == "lateralRaise":
             wrist_span = abs(lw.x - rw.x)
@@ -326,37 +323,32 @@ class ExerciseAnalyzer:
                     if now - self.last_rep_time > 0.6: 
                         self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
 
-            elif exercise_name in ['bentOverRow', 'dumbbellReverseFly', 'romanianDeadlift']:
+            elif exercise_name in ['bentOverRow', 'dumbbellReverseFly']: 
+                # REMOVED RDL logic
                 torso = calculate_inclination_3d(ls, lh)
                 
-                if exercise_name == 'romanianDeadlift':
-                     if torso > 75: self.stage = "down"
-                     if torso < 45 and self.stage == "down":
-                         if now - self.last_rep_time > 0.8:
-                             self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
-                     self.debug_angles = {"Torso": int(torso)}
-                
-                else:
-                    avg_elbow_angle = (calculate_angle_3d(ls, le, lw) + calculate_angle_3d(rs, re, rw)) / 2
-                    if avg_elbow_angle > 135: exercise_name = "dumbbellReverseFly"
-                    elif avg_elbow_angle < 125: exercise_name = "bentOverRow"
+                # Check Elbow angle to distinguish Row vs Fly
+                avg_elbow_angle = (calculate_angle_3d(ls, le, lw) + calculate_angle_3d(rs, re, rw)) / 2
+                if avg_elbow_angle > 135: exercise_name = "dumbbellReverseFly"
+                elif avg_elbow_angle < 125: exercise_name = "bentOverRow"
 
-                    elb = min(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
-                    self.debug_angles = {"Torso": int(torso), "Elbow": int(elb), "Type": exercise_name}
-                    
-                    if torso < 35: self.form_status = "ERROR: BEND OVER MORE"
-                    else:
-                        if exercise_name == "bentOverRow":
-                             if elb > 150: self.stage = "down"
-                             if elb < 100 and self.stage == "down":
-                                 if now - self.last_rep_time > 0.6: 
-                                     self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
-                        else: 
-                             fly_arm_lift = max(calculate_inclination_3d(ls, le), calculate_inclination_3d(rs, re))
-                             if fly_arm_lift < 30: self.stage = "down"
-                             if fly_arm_lift > 75 and self.stage == "down":
-                                 if now - self.last_rep_time > 0.6: 
-                                     self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
+                elb = min(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
+                self.debug_angles = {"Torso": int(torso), "Elbow": int(elb), "Type": exercise_name}
+                
+                if torso < 35: self.form_status = "ERROR: BEND OVER MORE"
+                else:
+                    if exercise_name == "bentOverRow":
+                        if elb > 150: self.stage = "down"
+                        if elb < 100 and self.stage == "down":
+                            if now - self.last_rep_time > 0.6: 
+                                self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
+                    else: 
+                        # Reverse Fly Logic
+                        fly_arm_lift = max(calculate_inclination_3d(ls, le), calculate_inclination_3d(rs, re))
+                        if fly_arm_lift < 30: self.stage = "down"
+                        if fly_arm_lift > 75 and self.stage == "down":
+                            if now - self.last_rep_time > 0.6: 
+                                self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
 
             elif exercise_name == 'tricepKickback':
                 uarm = max(calculate_inclination_3d(ls, le), calculate_inclination_3d(rs, re))
