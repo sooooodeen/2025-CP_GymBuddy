@@ -59,6 +59,13 @@ def extract_engineered_features(landmarks):
         v2 = lm(c)[:2] - lm(b)[:2]
         res = np.degrees(np.arctan2(v2[1], v2[0]) - np.arctan2(v1[1], v1[0]))
         return abs(res) if abs(res) <= 180 else 360 - abs(res)
+    
+    def ang_3d(i, j, k):
+        a, b, c = lm(i), lm(j), lm(k)
+        ba = a - b
+        bc = c - b
+        cosang = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-7)
+        return np.degrees(np.arccos(np.clip(cosang, -1, 1)))
         
     def dist(i, j): return np.linalg.norm(lm(i) - lm(j))
     
@@ -67,7 +74,8 @@ def extract_engineered_features(landmarks):
         ang_2d(23,11,12), ang_2d(24,12,11), ang_2d(11,13,15), ang_2d(12,14,16), 
         ang_2d(23,11,13), ang_2d(24,12,14), ang_2d(13,15,19), ang_2d(14,16,20),
         ang_2d(23,25,27), ang_2d(24,26,28), ang_2d(25,27,29), ang_2d(26,28,30),
-        ang_2d(12,23,24), ang_2d(11,24,23)
+        ang_2d(12,23,24), ang_2d(11,24,23), ang_3d(23,25,27), ang_3d(24,26,28),
+        ang_3d(11,23,25), ang_3d(12,24,26),   
     ]
     
     hip_center = np.array([0.0, 0.0, 0.0])
@@ -183,6 +191,25 @@ class ExerciseAnalyzer:
 
         if ai_prediction == "lateralRaise":
             if abs(lw.x - rw.x) < abs(ls.x - rs.x): return "neutral"
+
+        knee = min(
+            calculate_angle_3d(lh, lk, la),
+            calculate_angle_3d(rh, rk, ra)
+        )
+
+        hip = min(
+            calculate_angle_3d(ls, lh, lk),
+            calculate_angle_3d(rs, rh, rk)
+        )
+
+        # Strong squat signature: bent knees + bent hips
+        if knee < 125 and hip < 150:
+            return "squat"
+        
+        if knee < 130 and ai_prediction in [
+            "bicepCurl", "lateralRaise", "shoulderPress", "uprightRow"
+        ]:
+            return "squat"
 
         return ai_prediction
 
@@ -310,14 +337,19 @@ class ExerciseAnalyzer:
 
             # --- 5. SQUATS ---
             elif exercise_name in ['squat', 'gobletSquat', 'sumoSquat']:
+
                 l_knee_ang = calculate_angle_3d(lh, lk, la)
                 r_knee_ang = calculate_angle_3d(rh, rk, ra)
                 knee = min(l_knee_ang, r_knee_ang)
 
-                hip_angle = calculate_angle_3d(ls, lh, lk)
+                hip = min(
+                    calculate_angle_3d(ls, lh, lk),
+                    calculate_angle_3d(rs, rh, rk)
+                )
 
-                self.debug_angles = {"Knee": int(knee), "Hip": int(hip_angle)}
+                self.debug_angles = {"Knee": int(knee), "Hip": int(hip)}
 
+                # Standing
                 if knee > 160:
                     if self.stage == "down":
                         if now - self.last_rep_time > 0.8:
@@ -325,7 +357,8 @@ class ExerciseAnalyzer:
                             self.last_rep_time = now
                     self.stage = "up"
 
-                elif knee < 155 and hip_angle < 140:
+                # Bottom position
+                elif knee < 115 and hip < 150:
                     self.stage = "down"
                     self.form_status = "GOOD DEPTH"
 
