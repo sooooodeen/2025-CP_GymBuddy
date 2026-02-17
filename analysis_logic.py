@@ -313,12 +313,21 @@ class ExerciseAnalyzer:
                 l_knee_ang = calculate_angle_3d(lh, lk, la)
                 r_knee_ang = calculate_angle_3d(rh, rk, ra)
                 knee = min(l_knee_ang, r_knee_ang)
-                self.debug_angles = {"Knee": int(knee)}
-                if knee > 160: self.stage = "up"
-                if knee < 110 and self.stage == "up":
-                    if now - self.last_rep_time > 0.8: 
-                        self.rep_counter += 1; self.stage = "down"; self.last_rep_time = now
-                if knee < 120: self.form_status = "GOOD DEPTH"
+
+                hip_angle = calculate_angle_3d(ls, lh, lk)
+
+                self.debug_angles = {"Knee": int(knee), "Hip": int(hip_angle)}
+
+                if knee > 160:
+                    if self.stage == "down":
+                        if now - self.last_rep_time > 0.8:
+                            self.rep_counter += 1
+                            self.last_rep_time = now
+                    self.stage = "up"
+
+                elif knee < 155 and hip_angle < 140:
+                    self.stage = "down"
+                    self.form_status = "GOOD DEPTH"
 
             if self.rep_counter > prev_reps:
                 if "ERROR" in self.form_status or "WARNING" in self.form_status:
