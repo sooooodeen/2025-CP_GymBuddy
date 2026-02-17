@@ -118,7 +118,7 @@ class ExerciseAnalyzer:
         self.new_error_to_log = None
         self.debug_angles = {}
 
-        # THE WHITE LIST
+        # WHITE LIST
         self.ALLOWED_EXERCISES = {
             "bicepCurl", "shoulderPress", "lateralRaise", "bentOverRow", 
             "squat", "gobletSquat", "sumoSquat"
@@ -154,10 +154,32 @@ class ExerciseAnalyzer:
     def _apply_logic_override(self, ai_prediction, landmarks):
         if not landmarks: return ai_prediction
         p = [self.Point(lm) for lm in landmarks]
-        ls, rs, lw, rw = p[11], p[12], p[15], p[16]
-        lh, rh, le, re = p[23], p[24], p[13], p[14]
         
-        # SMART RESCUE LOGIC
+        # Shortcuts
+        ls, rs = p[11], p[12] 
+        le, re = p[13], p[14] 
+        lw, rw = p[15], p[16] 
+        lh, rh = p[23], p[24] 
+        lk, rk = p[25], p[26] 
+        la, ra = p[27], p[28] 
+        
+        # 1. CALCULATE POSTURE METRICS
+        torso_inc = calculate_inclination_3d(ls, lh)
+        l_knee = calculate_angle_3d(lh, lk, la)
+        r_knee = calculate_angle_3d(rh, rk, ra)
+        avg_knee = (l_knee + r_knee) / 2.0
+
+        # 2. "POSTURE BINNING" (The Fix for Row vs Squat)
+        # If you lean forward significantly (>45 degrees), you are ROWING.
+        # This protects Rows from being misclassified as Squats even if knees are bent.
+        if torso_inc > 45:
+            return "bentOverRow"
+
+        # If you are NOT leaning forward, but knees are bent, you are SQUATTING.
+        if avg_knee < 135:
+            return "squat"
+
+        # 3. IF STANDING (Torso Upright + Knees Straight) -> Check Arm Exercises
         if ai_prediction in self.CONFUSING_EXERCISES:
             # Rescue Shoulder Press
             neck_y = (ls.y + rs.y) / 2.0
@@ -170,14 +192,11 @@ class ExerciseAnalyzer:
             # Rescue Bicep Curl
             avg_elb = (calculate_angle_3d(ls, le, lw) + calculate_angle_3d(rs, re, rw)) / 2.0
             if avg_elb < 145 and (abs(lw.x - ls.x) < 0.2 or abs(rw.x - rs.x) < 0.2): return "bicepCurl"
-
-            # Rescue Bent Over Row
-            torso_inc = calculate_inclination_3d(ls, lh)
-            if torso_inc > 35: return "bentOverRow"
-                
+            
+            # If confusing and not rescued, default to neutral
             return "neutral"
 
-        # STANDARD GUARDS
+        # 4. STANDARD GUARDS FOR STANDING EXERCISES
         if ai_prediction == "shoulderPress":
             if (lw.y > ls.y + 0.1) and (rw.y > rs.y + 0.1): return "neutral"
 
@@ -244,16 +263,12 @@ class ExerciseAnalyzer:
         prev_reps = self.rep_counter
         
         try:
-            # --- 1. BICEP CURL (Body-Relative Geometry) ---
+            # --- 1. BICEP CURL (Body-Relative) ---
             if exercise_name == 'bicepCurl':
                 ang = min(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
-                
-                # NEW SWING CALCULATION: Angle between "Upper Arm" and "Torso" (Shoulder->Hip)
-                # This compares body parts to body parts, ignoring camera tilt.
                 l_swing = calculate_angle_3d(le, ls, lh)
                 r_swing = calculate_angle_3d(re, rs, rh)
                 swing = max(l_swing, r_swing)
-                
                 self.debug_angles = {"Elbow": int(ang), "Swing": int(swing)}
                 
                 if ang > 150: self.stage = "down"
@@ -262,28 +277,19 @@ class ExerciseAnalyzer:
                     if vertical_alignment < 0.15: 
                         if now - self.last_rep_time > 0.6: 
                             self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
-                
-                # Adjusted Threshold: If elbow-torso angle > 45, you are swinging.
                 if swing > 45: self.form_status = "ERROR: ELBOWS SWINGING"
 
-            # --- 2. LATERAL RAISE (Body-Relative Geometry) ---
+            # --- 2. LATERAL RAISE (Body-Relative) ---
             elif exercise_name == 'lateralRaise':
-                # NEW HEIGHT CALCULATION: Angle between "Upper Arm" and "Torso"
                 l_height = calculate_angle_3d(le, ls, lh)
                 r_height = calculate_angle_3d(re, rs, rh)
                 sh = max(l_height, r_height)
-                
                 self.debug_angles = {"Shoulder": int(sh)}
                 
-                # < 35 means arms are down at sides
                 if sh < 35: self.stage = "down"
-                
-                # > 80 means arms are near horizontal (Lifted)
                 if sh > 80 and self.stage == "down":
                     if now - self.last_rep_time > 0.6: 
                         self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
-                
-                # Relaxed Limit: Warning only if arm goes way past horizontal (> 160) relative to body
                 if sh > 160: self.form_status = "WARNING: TOO HIGH"
 
             # --- 3. SHOULDER PRESS ---
@@ -314,8 +320,9 @@ class ExerciseAnalyzer:
                 r_knee_ang = calculate_angle_3d(rh, rk, ra)
                 knee = min(l_knee_ang, r_knee_ang)
                 self.debug_angles = {"Knee": int(knee)}
-                if knee > 160: self.stage = "up"
-                if knee < 110 and self.stage == "up":
+                
+                if knee > 150: self.stage = "up"
+                if knee < 125 and self.stage == "up":
                     if now - self.last_rep_time > 0.8: 
                         self.rep_counter += 1; self.stage = "down"; self.last_rep_time = now
                 if knee < 120: self.form_status = "GOOD DEPTH"
