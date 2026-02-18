@@ -29,6 +29,7 @@ from sqlalchemy.orm import relationship
 from ultralytics import YOLO 
 from datetime import timedelta
 
+# Import the UPDATED analyzer
 from analysis_logic import ExerciseAnalyzer 
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired
 from flask_mail import Mail, Message
@@ -128,7 +129,6 @@ class ErrorLog(db.Model):
 
 # --- AI Configuration ---
 SEQUENCE_LENGTH = 90
-# FIXED: Lowered threshold significantly to catch exercises on wide angles
 CONF_THRESHOLD = 0.15 
 STABILITY_FRAMES = 5  
 TRAINING_ARTIFACTS_DIR = os.path.join(basedir, 'training') 
@@ -139,9 +139,9 @@ input_details = None
 output_details = None
 label_mapping = {}
 
-# FIXED: Low tracking threshold to keep lock on fast movements
-YOLO_CONF_THRESHOLD = 0.35 
+YOLO_CONF_THRESHOLD = 0.50 
 
+# Mapping YOLO to MediaPipe (Up to ankles)
 YOLO_TO_MP = {0:0, 5:11, 6:12, 7:13, 8:14, 9:15, 10:16, 11:23, 12:24, 13:25, 14:26, 15:27, 16:28}
 
 mp_pose = mp.solutions.pose
@@ -155,7 +155,6 @@ pose_extractor = mp_pose.Pose(
 # --- Adaptive Smoother Class ---
 class AdaptiveSmoother:
     def __init__(self, min_alpha=0.3, max_alpha=0.9, velocity_threshold=0.02):
-        # FIXED: Higher min_alpha (0.3) makes it snappier and less "laggy"
         self.min_alpha = min_alpha
         self.max_alpha = max_alpha
         self.velocity_thresh = velocity_threshold
@@ -274,15 +273,17 @@ def utility_processor():
         return utc_dt + timedelta(hours=8)
     return dict(to_gmt8=to_gmt8)
 
-# --- Routes ---
+# --- Routes (Keep your existing routes mostly the same, abbreviated for clarity) ---
 
 @app.route("/")
 def home():
     if 'user_id' in session:
-        if session.get('user_role') == 'Gym Owner':
-            return redirect(url_for('admin_dashboard'))
+        if session.get('user_role') == 'Gym Owner': return redirect(url_for('admin_dashboard'))
         return redirect(url_for('dashboard'))
     return render_template("index.html")
+
+# ... [KEEP ALL YOUR AUTH/DASHBOARD ROUTES HERE AS THEY WERE] ...
+# (I am focusing on the SocketIO logic updates below)
 
 @app.route("/register", methods=['GET', 'POST'])
 def register():
@@ -521,12 +522,15 @@ def dashboard():
         'lateralRaise': 'arms', 
         'shoulderPress': 'arms', 
         'dumbbellReverseFly': 'back', 
-        'romanianDeadlift': 'legs'
+        'bentOverRow': 'back',
+        'romanianDeadlift': 'legs',
+        'squat': 'legs',
+        'gobletSquat': 'legs'
     }
+    
     for ex, count in errors_month:
         if mapping.get(ex) in current_month_chart_data:
             current_month_chart_data[mapping.get(ex)] += count
-            
     all_sessions = WorkoutSession.query.filter_by(user_id=user_id).filter(WorkoutSession.end_time != None).order_by(WorkoutSession.start_time.desc()).all()
 
     return render_template("dashboard.html", total_errors_today=total_errors_today, most_common_error_week=most_common_error_week, total_errors_month=total_errors_month, recent_errors=recent_errors, current_month_chart_data=current_month_chart_data, sessions=all_sessions)
@@ -680,7 +684,10 @@ def admin_dashboard():
         'lateralRaise': 'arms', 
         'shoulderPress': 'arms', 
         'dumbbellReverseFly': 'back', 
-        'romanianDeadlift': 'legs'
+        'bentOverRow': 'back',
+        'romanianDeadlift': 'legs',
+        'squat': 'legs',
+        'gobletSquat': 'legs'
     }
     
     for ex, count in errors_this_month:
@@ -862,7 +869,6 @@ def handle_connect():
     if not gym_id: return False
     join_room(f'gym_{gym_id}')
     
-    # Initialization of smoothers and ghosts is now in 'start_camera'
     clients[request.sid] = {'gym_id': gym_id}
     print(f"Client {request.sid} connected.")
 
@@ -881,15 +887,14 @@ def start_camera(data):
     sid = request.sid
     cam = data.get('camera_id')
     if sid in clients and cam:
-        # Initialize 'smoothers' and 'ghost_skeletons' inside the CAMERA specific dictionary
         clients[sid][cam] = {
             'analyzers': {},
             'is_processing': False,
             'active_session_id': None,
             'last_form_status': {},
             'model': YOLO('yolov8n-pose.pt'),
-            'smoothers': {},  # Per-camera smoother storage
-            'ghost_skeletons': {} # Per-camera ghost storage
+            'smoothers': {},  
+            'ghost_skeletons': {} 
         }
 
 @socketio.on('stop_camera')
@@ -953,16 +958,17 @@ def process_frame_task(sid, data, session_context):
     if not state: return
 
     try:
-        # OPTIMIZATION: Use OpenCV instead of PIL for faster decoding
         img_data = base64.b64decode(data['image_data'].split(',')[1])
         nparr = np.frombuffer(img_data, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        # Calculate Aspect Ratio Dimensions for AI Normalization
-        h, w, _ = frame.shape
-        max_dim = max(h, w)
+        # --- LENS DISTORTION (Optimized to be stateless) ---
+        h, w = frame.shape[:2]
+        # Approximation of Wide Angle Lens Correction
+        K = np.array([[w, 0, w/2], [0, w, h/2], [0, 0, 1]]) 
+        D = np.array([-0.1, 0.01, 0, 0]) 
+        frame = cv2.undistort(frame, K, D)
         
-        # YOLO expects RGB, OpenCV gives BGR. Convert it.
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame_rgb.flags.writeable = False
     except Exception as e:
@@ -970,14 +976,12 @@ def process_frame_task(sid, data, session_context):
         state['is_processing'] = False
         return
 
-    # Use Independent Model
     model = state.get('model')
     if not model: 
         state['is_processing'] = False
         return
 
     try:
-        # ADDED imgsz=640 to boost accuracy
         results = model.track(frame_rgb, verbose=False, conf=YOLO_CONF_THRESHOLD, persist=True, tracker="bytetrack.yaml", imgsz=640)
     except:
         state['is_processing'] = False
@@ -997,7 +1001,7 @@ def process_frame_task(sid, data, session_context):
                 state['last_form_status'][tid] = None
             
             if tid not in state['smoothers']:
-                state['smoothers'][tid] = AdaptiveSmoother(0.3, 0.9, 0.02) # Snappier
+                state['smoothers'][tid] = AdaptiveSmoother(0.3, 0.9, 0.02) 
 
             analyzer = state['analyzers'][tid]
             smoother = state['smoothers'][tid]
@@ -1011,20 +1015,26 @@ def process_frame_task(sid, data, session_context):
                 for yidx, midx in YOLO_TO_MP.items():
                     if yidx < len(conf) and conf[yidx] > 0.5:
                         raw_x, raw_y = xy[yidx][0], xy[yidx][1]
+                        norm_x = raw_x/w
+                        norm_y = raw_y/h
                         
-                        # Standard 0-1 Normalization for UI Drawing
-                        lms_ui[midx] = {'x': raw_x/w, 'y': raw_y/h, 'z': 0.0, 'visibility': float(conf[yidx])}
-                        
-                        # "Magic" Aspect Ratio Corrected Normalization for AI
-                        # This centers the skeleton in a square virtual frame
-                        norm_x_ai = (raw_x + (max_dim - w) / 2) / max_dim
-                        norm_y_ai = (raw_y + (max_dim - h) / 2) / max_dim
-                        lms_ai[midx] = {'x': norm_x_ai, 'y': norm_y_ai, 'z': 0.0, 'visibility': float(conf[yidx])}
+                        point_data = {'x': norm_x, 'y': norm_y, 'z': 0.0, 'visibility': float(conf[yidx])}
+                        lms_ui[midx] = point_data
+                        lms_ai[midx] = point_data
+
+                # --- FIX: Hallucinate Feet for AI ---
+                # YOLO stops at Ankles (15, 16). Analyzer needs Heels (29, 30) and Toes (31, 32) 
+                # to prevent divide-by-zero or flatline features.
+                if lms_ai[27]['visibility'] > 0.5: # If Left Ankle Visible
+                    lms_ai[29] = lms_ai[27] # Left Heel = Left Ankle
+                    lms_ai[31] = lms_ai[27] # Left Toe = Left Ankle
+                if lms_ai[28]['visibility'] > 0.5: # If Right Ankle Visible
+                    lms_ai[30] = lms_ai[28] # Right Heel = Right Ankle
+                    lms_ai[32] = lms_ai[28] # Right Toe = Right Ankle
 
             smoothed_lms = smoother.smooth(lms_ui)
-            smoothed_lms_ai = smoother.smooth(lms_ai) # Smooth AI inputs too
+            smoothed_lms_ai = smoother.smooth(lms_ai) 
             
-            # Update Ghost Memory
             state['ghost_skeletons'][tid] = {'lms': smoothed_lms, 'ttl': 5, 'an': analyzer} 
 
             p_resp = {
@@ -1038,7 +1048,7 @@ def process_frame_task(sid, data, session_context):
 
             if interpreter and scaler:
                 try:
-                    # PASS THE CORRECTED LANDMARKS TO THE ANALYZER
+                    # PASS SCALER AND INTERPRETER to updated analyzer
                     reps, form, pred, ang = analyzer.process_frame(interpreter, input_details, output_details, label_mapping, smoothed_lms_ai, analyzer.stable_prediction, scaler)
                     p_resp.update({'rep_counter': reps, 'form_status': form, 'stable_prediction': pred, 'debug_angles': {k: int(v) for k, v in ang.items()}})
                     
@@ -1093,7 +1103,6 @@ def process_frame_task(sid, data, session_context):
             else:
                 del state['ghost_skeletons'][gid]
 
-    # FIXED: Use socketio.emit instead of just emit
     socketio.emit('response', {'camera_id': cam, 'people': current_data}, room=sid)
     state['is_processing'] = False
 

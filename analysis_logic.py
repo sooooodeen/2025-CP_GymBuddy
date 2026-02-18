@@ -3,92 +3,145 @@ import time
 import math
 from collections import deque, Counter
 
-# --- [Keep existing normalize_pose_robust function] ---
+# --- 1. GEOMETRY ENGINE ---
+
+def calculate_angle_3d(a, b, c):
+    """Calculates the 3D angle at point b."""
+    a = np.array([a.x, a.y, a.z])
+    b = np.array([b.x, b.y, b.z])
+    c = np.array([c.x, c.y, c.z])
+    
+    ba = a - b
+    bc = c - b
+    
+    cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-7)
+    return np.degrees(np.arccos(np.clip(cosine_angle, -1.0, 1.0)))
+
+def calculate_inclination_3d(point_top, point_bottom):
+    """Calculates verticality (0=Vertical Standing, 90=Bent Over Horizontal)."""
+    p1 = np.array([point_top.x, point_top.y, point_top.z])
+    p2 = np.array([point_bottom.x, point_bottom.y, point_bottom.z])
+    
+    vector = p2 - p1 
+    unit_vector = vector / (np.linalg.norm(vector) + 1e-7)
+    
+    dot_product = np.dot(unit_vector, [0, 1, 0]) 
+    angle = np.degrees(np.arccos(np.clip(dot_product, -1.0, 1.0)))
+    return abs(angle - 180)
+
+# --- 2. DATA PREPROCESSING ---
+
 def normalize_pose_robust(landmarks):
     try:
         lms = []
         for lm in landmarks:
-            if isinstance(lm, dict): lms.append([float(lm['x']), float(lm['y']), float(lm.get('z', 0.0))])
-            else: lms.append([float(lm.x), float(lm.y), float(lm.z)])
+            if isinstance(lm, dict):
+                lms.append([float(lm['x']), float(lm['y']), float(lm.get('z', 0.0))])
+            else:
+                lms.append([float(lm.x), float(lm.y), float(lm.z)])
+        
         landmarks_np = np.array(lms, dtype=np.float32)
-        left_hip = landmarks_np[23][:2]; right_hip = landmarks_np[24][:2]
-        left_shoulder = landmarks_np[11][:2]; right_shoulder = landmarks_np[12][:2]
-        shoulder_center_2d = (left_shoulder + right_shoulder) / 2.0
-        hip_center_2d = (left_hip + right_hip) / 2.0
-        torso_length = np.linalg.norm(hip_center_2d - shoulder_center_2d) + 1e-6
-        if torso_length < 1e-5: return None
         hip_center_3d = (landmarks_np[23] + landmarks_np[24]) / 2.0
-        return (landmarks_np - hip_center_3d) / torso_length
-    except Exception: return None
+        torso_len = max(np.linalg.norm(landmarks_np[11] - landmarks_np[23]), 0.1)
+        
+        return (landmarks_np - hip_center_3d) / torso_len
+    except:
+        return None
 
-# --- [Keep existing geometry helpers] ---
-def calculate_angle_3d(a, b, c):
-    a = np.array(a); b = np.array(b); c = np.array(c)
-    ba = a - b; bc = c - b
-    norm_ba = np.linalg.norm(ba); norm_bc = np.linalg.norm(bc)
-    if norm_ba == 0 or norm_bc == 0: return 0.0
-    dot_product = np.dot(ba, bc)
-    cosine_angle = dot_product / (norm_ba * norm_bc)
-    angle = np.arccos(np.clip(cosine_angle, -1.0, 1.0))
-    return np.degrees(angle)
-
-def calculate_angle_2d(a, b, c):
-    a = np.array(a[:2]); b = np.array(b[:2]); c = np.array(c[:2])
-    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
-    angle = np.abs(radians * 180.0 / np.pi)
-    if angle > 180.0: angle = 360 - angle
-    return angle
-
-# --- [Keep existing feature extractor] ---
 def extract_engineered_features(landmarks):
     norm_lms = normalize_pose_robust(landmarks)
     if norm_lms is None: return None
     def lm(i): return norm_lms[i]
-    angles = [
-        calculate_angle_3d(lm(11), lm(23), lm(25)), calculate_angle_3d(lm(12), lm(24), lm(26)),
-        calculate_angle_3d(lm(11), lm(24), lm(12)), calculate_angle_3d(lm(0), lm(7), lm(8)),
-        calculate_angle_3d(lm(23), lm(11), lm(12)), calculate_angle_3d(lm(24), lm(12), lm(11)),
-        calculate_angle_3d(lm(11), lm(13), lm(15)), calculate_angle_3d(lm(12), lm(14), lm(16)),
-        calculate_angle_3d(lm(23), lm(11), lm(13)), calculate_angle_3d(lm(24), lm(12), lm(14)),
-        calculate_angle_3d(lm(13), lm(15), lm(19)), calculate_angle_3d(lm(14), lm(16), lm(20)),
-        calculate_angle_3d(lm(11), lm(23), lm(25)), calculate_angle_3d(lm(12), lm(24), lm(26)),
-        calculate_angle_3d(lm(23), lm(25), lm(27)), calculate_angle_3d(lm(24), lm(26), lm(28)),
-        calculate_angle_3d(lm(25), lm(27), lm(29)), calculate_angle_3d(lm(26), lm(28), lm(30)),
-        calculate_angle_3d(lm(12), lm(23), lm(24)), calculate_angle_3d(lm(11), lm(24), lm(23))
-    ]
+    
+    def ang_2d(a,b,c):
+        v1 = lm(a)[:2] - lm(b)[:2]; v2 = lm(c)[:2] - lm(b)[:2]
+        res = np.degrees(np.arctan2(v2[1], v2[0]) - np.arctan2(v1[1], v1[0]))
+        return abs(res) if abs(res) <= 180 else 360 - abs(res)
     def dist(i, j): return np.linalg.norm(lm(i) - lm(j))
-    hip_center = np.array([0.0, 0.0, 0.0]) 
+    
+    # Simple 3D angle helper for features
+    def ang_3d_feat(i, j, k):
+        a, b, c = lm(i), lm(j), lm(k)
+        ba = a - b; bc = c - b
+        cos = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-7)
+        return np.degrees(np.arccos(np.clip(cos, -1, 1)))
+
+    angles = [
+        ang_2d(11,23,25), ang_2d(12,24,26), ang_2d(11,24,12), ang_2d(0,7,8), 
+        ang_2d(23,11,12), ang_2d(24,12,11), ang_2d(11,13,15), ang_2d(12,14,16), 
+        ang_2d(23,11,13), ang_2d(24,12,14), ang_2d(13,15,19), ang_2d(14,16,20),
+        ang_2d(23,25,27), ang_2d(24,26,28), ang_2d(25,27,29), ang_2d(26,28,30),
+        ang_2d(12,23,24), ang_2d(11,24,23), ang_3d_feat(23,25,27), ang_3d_feat(24,26,28),
+        ang_3d_feat(11,23,25), ang_3d_feat(12,24,26)
+    ]
+    
+    hip_center = np.array([0.0, 0.0, 0.0])
+    
     distances = [
-        dist(11, 12), dist(23, 24), dist(15, 25), dist(16, 26),
-        dist(13, 23), dist(14, 24), dist(27, 15), dist(28, 16),
+        dist(11, 12), dist(23, 24), dist(15, 25), dist(16, 26), dist(13, 23), dist(14, 24), 
+        dist(27, 15), dist(28, 16),
         np.linalg.norm(lm(0) - hip_center),
-        abs(lm(15)[1] - lm(11)[1]), abs(lm(16)[1] - lm(12)[1]),
+        abs(lm(15)[1] - lm(11)[1]), abs(lm(16)[1] - lm(12)[1]), 
         abs(lm(23)[1] - lm(25)[1]), abs(lm(24)[1] - lm(26)[1]),
-        abs(lm(11)[1] - lm(23)[1]), abs(lm(12)[1] - lm(24)[1]),
+        abs(lm(11)[1] - lm(23)[1]), abs(lm(12)[1] - lm(24)[1]), 
         abs(lm(27)[1] - lm(29)[1]), abs(lm(28)[1] - lm(30)[1]),
-        abs(lm(15)[2] - lm(23)[2]), abs(lm(16)[2] - lm(24)[2]),
+        abs(lm(15)[2] - lm(23)[2]), abs(lm(16)[2] - lm(24)[2]), 
         abs(lm(11)[2] - lm(23)[2]), abs(lm(12)[2] - lm(24)[2]),
         abs(lm(0)[2] - hip_center[2])
     ]
     features = np.array(angles + distances, dtype=np.float32)
-    if len(features) == 42: features = np.concatenate([features, np.zeros(5, dtype=np.float32)])
+    target_len = 47
+    if len(features) < target_len: 
+        features = np.concatenate([features, np.zeros(target_len - len(features))])
     return features
 
+# --- 3. EXERCISE ANALYZER ---
+
 class ExerciseAnalyzer:
-    def __init__(self, sequence_length=90, conf_threshold=0.60, stability_frames=12, reset_timeout=5.0):
-        self.rep_counter = 0; self.stage = None; self.form_status = "START EXERCISE"; self.status_color = (0, 255, 0)
-        self.previous_exercise = "neutral"; self.last_rep_time = time.time(); self.RESET_TIMEOUT = reset_timeout; self.debug_angles = {} 
-        self.model_configured = False; self.expected_seq_len = int(sequence_length); self.input_size = 0; self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
+    def __init__(self, sequence_length=45, conf_threshold=0.60, stability_frames=5, reset_timeout=6.0):
+        self.rep_counter = 0
+        self.stage = None
+        self.form_status = "START EXERCISE"
+        self.last_rep_time = time.time()
+        self.RESET_TIMEOUT = reset_timeout
+        self.model_configured = False
+        self.expected_seq_len = int(sequence_length)
+        self.input_size = 0
+        self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
         self.CONF_THRESHOLD = conf_threshold
-        self.STABILITY_FRAMES = 15 
-        self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES); self.stable_prediction = "neutral"
-        self.locked_exercise = None; self.neutral_persistence_counter = 0 
-        self.frame_count = 0; self.PREDICTION_INTERVAL = 2; self.stable_counter = 0 
-        self.triggered_alert = None; self.consecutive_error_counter = 0; self.last_consecutive_error_type = None; self.new_error_to_log = None
+        self.STABILITY_FRAMES = stability_frames
+        self.recent_predictions = deque(maxlen=self.STABILITY_FRAMES)
+        self.stable_prediction = "neutral"
+        self.locked_exercise = None
+        self.neutral_persistence_counter = 0
+        self.frame_count = 0
+        self.PREDICTION_INTERVAL = 2
+        self.stable_counter = 0
+        self.triggered_alert = None
+        self.consecutive_error_counter = 0
+        self.last_consecutive_error_type = None
+        self.new_error_to_log = None
+        self.debug_angles = {}
+
+        # ALLOWED EXERCISES (Squat commented out for logic, but kept in list for future)
+        self.ALLOWED_EXERCISES = {
+            "bicepCurl", "shoulderPress", "lateralRaise", "bentOverRow", 
+            "uprightRow", "squat", "gobletSquat", "sumoSquat"
+        }
+        self.CONFUSING_EXERCISES = ["tricepKickback", "romanianDeadlift", "dumbbellReverseFly", "bentOverRow", "uprightRow"]
+
+    class Point:
+        def __init__(self, lm):
+            self.x = lm['x'] if isinstance(lm, dict) else lm.x
+            self.y = lm['y'] if isinstance(lm, dict) else lm.y
+            self.z = lm['z'] if isinstance(lm, dict) else lm.z
 
     def _auto_configure_model(self, input_details):
-        shape = input_details[0]['shape']; self.input_size = int(shape[-1])
-        if len(shape) == 3: self.expected_seq_len = int(shape[1]); self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
+        shape = input_details[0]['shape']
+        self.input_size = int(shape[-1])
+        if len(shape) == 3: 
+            self.expected_seq_len = int(shape[1])
+            self.angle_sequence_buffer = deque(maxlen=self.expected_seq_len)
         self.model_configured = True
 
     def predict_with_tflite(self, interpreter, input_details, output_details, input_data):
@@ -99,159 +152,215 @@ class ExerciseAnalyzer:
                 input_data = (input_data / scale) + zero_point
                 input_data = np.clip(input_data, -128, 127) if input_details[0]['dtype'] == np.int8 else np.clip(input_data, 0, 255)
                 input_data = input_data.astype(input_details[0]['dtype'])
-        interpreter.set_tensor(input_index, input_data); interpreter.invoke(); return interpreter.get_tensor(output_details[0]['index'])[0]
+        interpreter.set_tensor(input_index, input_data)
+        interpreter.invoke()
+        return interpreter.get_tensor(output_details[0]['index'])[0]
 
     def _apply_logic_override(self, ai_prediction, landmarks):
         if not landmarks: return ai_prediction
-        if ai_prediction == "neutral": return "neutral"
+        p = [self.Point(lm) for lm in landmarks]
         
-        # CORRECTED: Added 'dumbbellReverseFly' to match your JSON
-        allowed_exercises = ['lateralRaise', 'bicepCurl', 'shoulderPress', 'dumbbellReverseFly', 'romanianDeadlift']
-        if ai_prediction not in allowed_exercises: return "neutral"
+        ls, rs = p[11], p[12] 
+        le, re = p[13], p[14] 
+        lw, rw = p[15], p[16] 
+        lh, rh = p[23], p[24] 
+        lk, rk = p[25], p[26] 
+        la, ra = p[27], p[28] 
         
-        try:
-            def get_y(i): return landmarks[i]['y'] if isinstance(landmarks[i], dict) else landmarks[i].y
-            def get_x(i): return landmarks[i]['x'] if isinstance(landmarks[i], dict) else landmarks[i].x
-            
-            s_y = (get_y(11) + get_y(12)) / 2; h_y = (get_y(23) + get_y(24)) / 2
-            thigh_len = math.sqrt((get_x(23)-get_x(25))**2 + (get_y(23)-get_y(25))**2)
-            y_diff = abs(s_y - h_y)
-            
-            is_vertical = y_diff > (thigh_len * 0.8)
-            
-            if ai_prediction in ['lateralRaise', 'bicepCurl', 'shoulderPress']:
-                if not is_vertical: return "neutral"
+        # 1. CALCULATE POSTURE METRICS
+        torso_inc = calculate_inclination_3d(ls, lh)
+        sh_width = abs(ls.x - rs.x)
+        hand_span = abs(lw.x - rw.x)
+        avg_elb = (calculate_angle_3d(ls, le, lw) + calculate_angle_3d(rs, re, rw)) / 2.0
+
+        # --- SQUAT LOGIC DISABLED ---
+        # if max_knee < 135: return "squat"
+
+        # --- PRIORITY 1: SHOULDER PRESS OVERRIDE ---
+        # If hands are ABOVE SHOULDERS, it is a Press.
+        if (lw.y < ls.y) and (rw.y < rs.y):
+            return "shoulderPress"
+
+        # --- PRIORITY 2: UPRIGHT ROW LOGIC ---
+        # Check: Elbows are physically HIGHER than Wrists (le.y < lw.y) 
+        # AND Hands are close together (Narrow width).
+        if (le.y < lw.y) and (re.y < rw.y) and (abs(lw.x - rw.x) < sh_width * 1.4):
+            return "uprightRow"
+
+        # --- PRIORITY 3: SMART RESCUE (General Upper Body) ---
+        if ai_prediction in self.CONFUSING_EXERCISES:
+            # Rescue Shoulder Press
+            if lw.y < ls.y and rw.y < rs.y: return "shoulderPress"
+
+            # Rescue Lateral Raise
+            if abs(lw.x - rw.x) > (sh_width * 1.5): return "lateralRaise"
+
+            # Rescue Bicep Curl
+            if avg_elb < 145 and (abs(lw.x - ls.x) < 0.2 or abs(rw.x - rs.x) < 0.2): return "bicepCurl"
+
+            # Rescue Bent Over Row
+            if torso_inc > 35: return "bentOverRow"
                 
-            # CORRECTED: Checking for 'dumbbellReverseFly'
-            if ai_prediction in ['dumbbellReverseFly', 'romanianDeadlift']:
-                if ai_prediction == 'dumbbellReverseFly' and is_vertical: return "neutral"
-                
-        except Exception: pass
-        return ai_prediction 
+            return "neutral"
+
+        # --- STANDARD GUARDS ---
+        if ai_prediction == "shoulderPress":
+            if (lw.y > ls.y) or (rw.y > rs.y): return "neutral"
+
+        if ai_prediction == "lateralRaise":
+            if abs(lw.x - rw.x) < abs(ls.x - rs.x): return "neutral"
+
+        # if ai_prediction == "bicepCurl":
+        #    if (lh.y - ls.y) < 0.3: return "squat" # Disabled Goblet Guard
+
+        return ai_prediction
 
     def process_frame(self, interpreter, input_details, output_details, label_mapping, landmarks, current_exercise, scaler=None):
         self.frame_count += 1
         if not self.model_configured: self._auto_configure_model(input_details)
-        if self.input_size == 47: 
-            features = extract_engineered_features(landmarks)
-            if features is not None and scaler is not None:
-                try: features = scaler.transform(features.reshape(1, -1)).flatten()
-                except Exception: pass
-        else: features = np.zeros(self.input_size, dtype=np.float32)
-        if features is None: return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
-        self.angle_sequence_buffer.append(features)
         
+        features = extract_engineered_features(landmarks) 
+        if features is None: return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
+        if scaler:
+            try: features = scaler.transform(features.reshape(1, -1)).flatten()
+            except: pass
+        self.angle_sequence_buffer.append(features)
+
         if len(self.angle_sequence_buffer) == self.expected_seq_len and self.frame_count % self.PREDICTION_INTERVAL == 0:
             try:
-                input_tensor = np.expand_dims(np.array(self.angle_sequence_buffer), axis=0)
-                prediction = self.predict_with_tflite(interpreter, input_details, output_details, input_tensor.astype(np.float32))
-                if np.max(prediction) > 1.0: prediction = np.exp(prediction - np.max(prediction)); prediction = prediction / prediction.sum()
-                idx = int(np.argmax(prediction)); conf = prediction[idx]
-                raw_label = str(label_mapping.get(idx, label_mapping.get(str(idx), "neutral")))
+                input_tensor = np.expand_dims(np.array(self.angle_sequence_buffer), axis=0).astype(np.float32)
+                prediction = self.predict_with_tflite(interpreter, input_details, output_details, input_tensor)
+                idx = int(np.argmax(prediction))
+                raw_label = str(label_mapping.get(idx, "neutral"))
                 final_label = self._apply_logic_override(raw_label, landmarks)
                 
                 if self.locked_exercise:
                     if final_label == "neutral":
                         self.neutral_persistence_counter += 1
-                        if self.neutral_persistence_counter > 60: 
-                            self.locked_exercise = None; self.neutral_persistence_counter = 0; self.rep_counter = 0; final_label = "neutral"
+                        if self.neutral_persistence_counter > 40:
+                            self.locked_exercise = None; self.rep_counter = 0; self.stage = None; final_label = "neutral"
                         else: final_label = self.locked_exercise
-                    else: self.neutral_persistence_counter = 0; final_label = self.locked_exercise
-
-                if conf > self.CONF_THRESHOLD: self.recent_predictions.append(final_label)
-                else: self.recent_predictions.append("neutral")
-                most_common, count = Counter(self.recent_predictions).most_common(1)[0]
-                if count > (self.STABILITY_FRAMES // 2): 
-                    if self.stable_prediction == most_common: self.stable_counter += 1
                     else:
-                        if not self.locked_exercise:
-                            if most_common != "neutral" and self.stable_prediction != "neutral": self.rep_counter = 0; self.stage = None
-                        self.stable_prediction = most_common; self.stable_counter = 0 
-            except Exception: pass
+                        self.neutral_persistence_counter = 0
+                        final_label = self.locked_exercise
+
+                self.recent_predictions.append(final_label)
+                most_common, count = Counter(self.recent_predictions).most_common(1)[0]
+                
+                if count >= 3:
+                    if self.stable_prediction != most_common:
+                        if not self.locked_exercise: self.rep_counter = 0; self.stage = None
+                        self.stable_prediction = most_common; self.stable_counter = 0
+                    else: self.stable_counter += 1
+            except Exception as e: print(f"Prediction Error: {e}")
 
         if self.stable_counter > 5 and self.stable_prediction != "neutral":
-             if not self.locked_exercise: self.locked_exercise = self.stable_prediction
-             self.analyze_frame(self.stable_prediction, landmarks)
-        elif self.stable_prediction != "neutral": self.form_status = f"Verifying {self.stable_prediction}..."
-        else: self.form_status = "Identifying Exercise..."
+            if not self.locked_exercise: self.locked_exercise = self.stable_prediction
+            self.analyze_frame(self.stable_prediction, landmarks)
+        elif not self.locked_exercise:
+            self.form_status = "Identifying..."
+            
         return self.rep_counter, self.form_status, self.stable_prediction, self.debug_angles
 
     def analyze_frame(self, exercise_name, landmarks):
         if not landmarks: return
-        class Point:
-            def __init__(self, obj):
-                self.x = float(obj['x']) if isinstance(obj, dict) else float(obj.x)
-                self.y = float(obj['y']) if isinstance(obj, dict) else float(obj.y)
-        lms = [Point(lm) for lm in landmarks]
-        MIN_REP_DURATION = 1.0; current_time = time.time(); self.form_status = "CORRECT FORM"; self.status_color = (0, 255, 0)
-        prev_rep_counter = self.rep_counter
+        p = [self.Point(lm) for lm in landmarks]
+        ls, rs, le, re, lw, rw = p[11], p[12], p[13], p[14], p[15], p[16]
+        lh, rh, lk, rk, la, ra = p[23], p[24], p[25], p[26], p[27], p[28]
+
+        now = time.time()
+        self.form_status = "CORRECT FORM"
+        prev_reps = self.rep_counter
         
         try:
-            ls, rs = lms[11], lms[12]; le, re = lms[13], lms[14]; lw, rw = lms[15], lms[16]
-            lh, rh = lms[23], lms[24]; lk, rk = lms[25], lms[26]; la, ra = lms[27], lms[28]
-            
+            # --- 1. BICEP CURL ---
             if exercise_name == 'bicepCurl':
-                angle = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                sh_angle = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
-                self.debug_angles = {'Elbow': int(angle)}
-                if angle > 150: self.stage = "down"
-                if angle < 50 and self.stage == 'down':
-                    if (current_time - self.last_rep_time) > MIN_REP_DURATION: self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
-                if sh_angle > 50: self.form_status = "ERROR: ELBOWS SWINGING"
+                ang = min(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
+                l_swing = calculate_angle_3d(le, ls, lh)
+                r_swing = calculate_angle_3d(re, rs, rh)
+                swing = max(l_swing, r_swing)
+                self.debug_angles = {"Elbow": int(ang), "Swing": int(swing)}
+                
+                if ang > 150: self.stage = "down"
+                if ang < 85 and self.stage == "down":
+                    vertical_alignment = abs(lw.x - ls.x) 
+                    if vertical_alignment < 0.15: 
+                        if now - self.last_rep_time > 0.6: 
+                            self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
+                if swing > 45: self.form_status = "ERROR: ELBOWS SWINGING"
 
+            # --- 2. LATERAL RAISE ---
             elif exercise_name == 'lateralRaise':
-                sh_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
-                self.debug_angles = {'Shoulder': int(sh_ang)}
-                if sh_ang < 35: self.stage = "down"
-                if sh_ang > 75 and self.stage == 'down': 
-                    if (current_time - self.last_rep_time) > MIN_REP_DURATION: self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
-                if sh_ang > 110: self.form_status = "WARNING: TOO HIGH"
+                l_height = calculate_angle_3d(le, ls, lh)
+                r_height = calculate_angle_3d(re, rs, rh)
+                sh = max(l_height, r_height)
+                self.debug_angles = {"Shoulder": int(sh)}
+                
+                if sh < 35: self.stage = "down"
+                if sh > 80 and self.stage == "down":
+                    if now - self.last_rep_time > 0.6: 
+                        self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
+                if sh > 160: self.form_status = "WARNING: TOO HIGH"
 
+            # --- 3. SHOULDER PRESS ---
             elif exercise_name == 'shoulderPress':
-                elb_ang = calculate_angle_2d([ls.x, ls.y], [le.x, le.y], [lw.x, lw.y])
-                self.debug_angles = {'Elbow': int(elb_ang)}
-                if elb_ang < 90: self.stage = "down" 
-                if elb_ang > 155 and self.stage == "down": 
-                    if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
-                        self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+                elb = max(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
+                self.debug_angles = {"Elbow": int(elb)}
+                if elb < 90: self.stage = "down"
+                if elb > 155 and self.stage == "down":
+                    if now - self.last_rep_time > 0.6: 
+                        self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
 
-            # CORRECTED: Using 'dumbbellReverseFly'
-            elif exercise_name == 'dumbbellReverseFly':
-                hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                arm_torso_ang = calculate_angle_2d([le.x, le.y], [ls.x, ls.y], [lh.x, lh.y])
-                self.debug_angles = {'Arm-Torso': int(arm_torso_ang), 'Hip': int(hip_ang)}
+            # --- 4. BENT OVER ROW ---
+            elif exercise_name == 'bentOverRow': 
+                torso = calculate_inclination_3d(ls, lh)
+                elb = min(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
+                self.debug_angles = {"Torso": int(torso), "Elbow": int(elb)}
                 
-                if hip_ang > 145: self.form_status = "ERROR: BEND OVER MORE"
+                if torso < 30: self.form_status = "ERROR: BEND OVER MORE"
                 else:
-                    if arm_torso_ang < 45: self.stage = "down" 
-                    if arm_torso_ang > 80 and self.stage == "down": 
-                         if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
-                            self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+                    if elb > 150: self.stage = "down"
+                    if elb < 100 and self.stage == "down":
+                        if now - self.last_rep_time > 0.6: 
+                            self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
 
-            elif exercise_name == 'romanianDeadlift':
-                hip_ang = calculate_angle_2d([ls.x, ls.y], [lh.x, lh.y], [lk.x, lk.y])
-                knee_ang = calculate_angle_2d([lh.x, lh.y], [lk.x, lk.y], [la.x, la.y])
-                self.debug_angles = {'Hip': int(hip_ang), 'Knee': int(knee_ang)}
+            # --- 5. UPRIGHT ROW ---
+            elif exercise_name == 'uprightRow':
+                l_hand_height = (lh.y - lw.y) 
+                r_hand_height = (rh.y - rw.y)
+                avg_h = (l_hand_height + r_hand_height) / 2.0
                 
-                if knee_ang < 140: self.form_status = "ERROR: TOO MUCH KNEE BEND"
+                if avg_h < 0.1: self.stage = "down" 
+                
+                # REPS: Hands > 0.25 (Mid Chest)
+                if avg_h > 0.25 and self.stage == "down":
+                     if now - self.last_rep_time > 0.6: 
+                        self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
+                
+                if (le.y > lw.y + 0.05) or (re.y > rw.y + 0.05):
+                    self.form_status = "ELBOWS HIGHER THAN WRISTS"
                 else:
-                    if hip_ang > 165: self.stage = "up"
-                    if hip_ang < 120 and self.stage == "up": self.stage = "down"
-                    if hip_ang > 165 and self.stage == "down":
-                        if (current_time - self.last_rep_time) > MIN_REP_DURATION: 
-                            self.stage = "up"; self.rep_counter += 1; self.last_rep_time = current_time
+                    self.form_status = "CORRECT FORM"
 
-            # [Keep Error Logging Logic exactly as is...]
-            if (self.rep_counter > prev_rep_counter):
-                if "ERROR" in self.form_status:
-                    self.new_error_to_log = { "rep_number": self.rep_counter, "error_type": self.form_status, "exercise_name": exercise_name }
-                    if self.form_status == self.last_consecutive_error_type: self.consecutive_error_counter += 1
-                    else: self.last_consecutive_error_type = self.form_status; self.consecutive_error_counter = 1
-                else: self.consecutive_error_counter = 0; self.last_consecutive_error_type = None
-                if self.consecutive_error_counter >= 6:
+            # --- 6. SQUATS (DISABLED) ---
+            # elif exercise_name in ['squat', 'gobletSquat', 'sumoSquat']: ...
+
+            if self.rep_counter > prev_reps:
+                if "ERROR" in self.form_status or "WARNING" in self.form_status:
+                    self.new_error_to_log = {"rep_number": self.rep_counter, "error_type": self.form_status, "exercise_name": exercise_name}
+                    if self.form_status == self.last_consecutive_error_type: 
+                        self.consecutive_error_counter += 1
+                    else: 
+                        self.last_consecutive_error_type = self.form_status; self.consecutive_error_counter = 1
+                else:
+                    self.consecutive_error_counter = 0; self.last_consecutive_error_type = None
+                
+                if self.consecutive_error_counter >= 4:
                     msg = f"Repeated Error: {self.last_consecutive_error_type.replace('ERROR: ', '')}"
-                    self.triggered_alert = {'message': msg, 'exercise': exercise_name, 'reps': self.rep_counter}; self.consecutive_error_counter = 0
-        except Exception: pass
+                    self.triggered_alert = {'message': msg, 'exercise': exercise_name, 'reps': self.rep_counter}
+                    self.consecutive_error_counter = 0
+        except Exception as e:
+            print(f"Analysis Error: {e}")
 
     def get_triggered_alert(self):
         alert = self.triggered_alert; self.triggered_alert = None; return alert

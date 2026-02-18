@@ -157,8 +157,9 @@
         context.font = "bold 16px Helvetica"; context.fillStyle = color; context.strokeStyle = "black"; context.lineWidth = 3;
         const text = `ID:${track_id} | Reps: ${reps}`;
         context.strokeText(text, drawX, drawY); context.fillText(text, drawX, drawY);
-        if (status.includes("ERROR")) {
-             context.fillStyle = "#FF4136"; const errText = status.replace("ERROR: ", "");
+        if (status.includes("ERROR") || status.includes("WARNING")) {
+             context.fillStyle = status.includes("ERROR") ? "#FF4136" : "#FFDC00"; 
+             const errText = status.replace(/^(ERROR|WARNING): /, "");
              context.strokeText(errText, drawX, drawY + 20); context.fillText(errText, drawX, drawY + 20);
         }
     }
@@ -185,12 +186,17 @@
         const primaryPerson = people[0];
         elements.exercise.innerText = (primaryPerson.stable_prediction || "Neutral").replace(/([A-Z])/g, ' $1').trim();
         elements.reps.innerText = primaryPerson.rep_counter; elements.feedback.innerText = primaryPerson.form_status;
+        
+        // Updated Status Color Logic
         if (primaryPerson.form_status.includes("ERROR")) elements.feedback.className = "text-xl font-medium text-red-400 mt-2";
         else if (primaryPerson.form_status.includes("WARNING")) elements.feedback.className = "text-xl font-medium text-yellow-400 mt-2";
         else elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
+        
         people.forEach(person => {
             let color = 'white';
-            if (person.form_status.includes("ERROR")) color = '#FF4136'; else if (person.form_status.includes("WARNING")) color = '#FFDC00'; else if (person.form_status === "CORRECT FORM") color = '#0074D9';
+            if (person.form_status.includes("ERROR")) color = '#FF4136'; 
+            else if (person.form_status.includes("WARNING")) color = '#FFDC00'; 
+            else if (person.form_status === "CORRECT FORM") color = '#0074D9';
             drawSkeleton(person.landmarks, elements.canvasCtx, elements.canvas, color);
             drawFloatingStats(elements.canvasCtx, elements.canvas, person.landmarks, person.track_id, person.rep_counter, person.form_status, color);
         });
