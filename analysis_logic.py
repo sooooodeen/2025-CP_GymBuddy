@@ -3,7 +3,6 @@ import time
 import math
 from collections import deque, Counter
 
-# --- 1. GEOMETRY ENGINE ---
 
 def calculate_angle_3d(a, b, c):
     """Calculates the 3D angle at point b."""
@@ -27,9 +26,7 @@ def calculate_inclination_3d(point_top, point_bottom):
     
     dot_product = np.dot(unit_vector, [0, 1, 0]) 
     angle = np.degrees(np.arccos(np.clip(dot_product, -1.0, 1.0)))
-    return abs(angle - 180)
-
-# --- 2. DATA PREPROCESSING ---
+    return angle 
 
 def normalize_pose_robust(landmarks):
     try:
@@ -59,7 +56,6 @@ def extract_engineered_features(landmarks):
         return abs(res) if abs(res) <= 180 else 360 - abs(res)
     def dist(i, j): return np.linalg.norm(lm(i) - lm(j))
     
-    # Simple 3D angle helper for features
     def ang_3d_feat(i, j, k):
         a, b, c = lm(i), lm(j), lm(k)
         ba = a - b; bc = c - b
@@ -95,7 +91,6 @@ def extract_engineered_features(landmarks):
         features = np.concatenate([features, np.zeros(target_len - len(features))])
     return features
 
-# --- 3. EXERCISE ANALYZER ---
 
 class ExerciseAnalyzer:
     def __init__(self, sequence_length=45, conf_threshold=0.60, stability_frames=5, reset_timeout=6.0):
@@ -123,12 +118,9 @@ class ExerciseAnalyzer:
         self.new_error_to_log = None
         self.debug_angles = {}
 
-        # ALLOWED EXERCISES (Squat commented out for logic, but kept in list for future)
         self.ALLOWED_EXERCISES = {
-            "bicepCurl", "shoulderPress", "lateralRaise", "bentOverRow", 
-            "uprightRow", "squat", "gobletSquat", "sumoSquat"
+            "bicepCurl", "shoulderPress", "lateralRaise", "bentOverRow", "uprightRow"
         }
-        self.CONFUSING_EXERCISES = ["tricepKickback", "romanianDeadlift", "dumbbellReverseFly", "bentOverRow", "uprightRow"]
 
     class Point:
         def __init__(self, lm):
@@ -164,54 +156,48 @@ class ExerciseAnalyzer:
         le, re = p[13], p[14] 
         lw, rw = p[15], p[16] 
         lh, rh = p[23], p[24] 
-        lk, rk = p[25], p[26] 
-        la, ra = p[27], p[28] 
         
-        # 1. CALCULATE POSTURE METRICS
-        torso_inc = calculate_inclination_3d(ls, lh)
-        sh_width = abs(ls.x - rs.x)
+        sh_width = max(abs(ls.x - rs.x), 0.01) 
         hand_span = abs(lw.x - rw.x)
-        avg_elb = (calculate_angle_3d(ls, le, lw) + calculate_angle_3d(rs, re, rw)) / 2.0
+        elbow_span = abs(le.x - re.x) 
+        
+        torso_height_y = abs(lh.y - ls.y)
+        mid_chest_y = ls.y + (torso_height_y * 0.45) 
 
-        # --- SQUAT LOGIC DISABLED ---
-        # if max_knee < 135: return "squat"
+        if ai_prediction not in self.ALLOWED_EXERCISES and ai_prediction != "neutral":
+            if ai_prediction == "romanianDeadlift":
+                ai_prediction = "bentOverRow"
+            else:
+                ai_prediction = "neutral"
 
-        # --- PRIORITY 1: SHOULDER PRESS OVERRIDE ---
-        # If hands are ABOVE SHOULDERS, it is a Press.
         if (lw.y < ls.y) and (rw.y < rs.y):
             return "shoulderPress"
 
-        # --- PRIORITY 2: UPRIGHT ROW LOGIC ---
-        # Check: Elbows are physically HIGHER than Wrists (le.y < lw.y) 
-        # AND Hands are close together (Narrow width).
-        if (le.y < lw.y) and (re.y < rw.y) and (abs(lw.x - rw.x) < sh_width * 1.4):
-            return "uprightRow"
+        if hand_span > (sh_width * 1.6) and (lw.y < lh.y):
+            return "lateralRaise"
 
-        # --- PRIORITY 3: SMART RESCUE (General Upper Body) ---
-        if ai_prediction in self.CONFUSING_EXERCISES:
-            # Rescue Shoulder Press
-            if lw.y < ls.y and rw.y < rs.y: return "shoulderPress"
-
-            # Rescue Lateral Raise
-            if abs(lw.x - rw.x) > (sh_width * 1.5): return "lateralRaise"
-
-            # Rescue Bicep Curl
-            if avg_elb < 145 and (abs(lw.x - ls.x) < 0.2 or abs(rw.x - rs.x) < 0.2): return "bicepCurl"
-
-            # Rescue Bent Over Row
-            if torso_inc > 35: return "bentOverRow"
+        if (lw.y < lh.y - 0.05) and (rw.y < rh.y - 0.05):
+            
+            if (lw.y < le.y - 0.02) and (rw.y < re.y - 0.02):
+                return "bicepCurl"
                 
+            if (le.y <= lw.y) and (re.y <= rw.y):
+                
+                if (lw.y < mid_chest_y) and (rw.y < mid_chest_y):
+                    return "uprightRow"
+                else:
+                    return "bentOverRow"
+
+        if ai_prediction == "uprightRow":
+            if elbow_span < (sh_width * 1.1):
+                return "bicepCurl" 
+
+        if ai_prediction == "bicepCurl":
+            if elbow_span > (sh_width * 1.3):
+                return "uprightRow"
+
+        if ai_prediction not in self.ALLOWED_EXERCISES:
             return "neutral"
-
-        # --- STANDARD GUARDS ---
-        if ai_prediction == "shoulderPress":
-            if (lw.y > ls.y) or (rw.y > rs.y): return "neutral"
-
-        if ai_prediction == "lateralRaise":
-            if abs(lw.x - rw.x) < abs(ls.x - rs.x): return "neutral"
-
-        # if ai_prediction == "bicepCurl":
-        #    if (lh.y - ls.y) < 0.3: return "squat" # Disabled Goblet Guard
 
         return ai_prediction
 
@@ -266,7 +252,7 @@ class ExerciseAnalyzer:
         if not landmarks: return
         p = [self.Point(lm) for lm in landmarks]
         ls, rs, le, re, lw, rw = p[11], p[12], p[13], p[14], p[15], p[16]
-        lh, rh, lk, rk, la, ra = p[23], p[24], p[25], p[26], p[27], p[28]
+        lh, rh = p[23], p[24]
 
         now = time.time()
         self.form_status = "CORRECT FORM"
@@ -313,11 +299,15 @@ class ExerciseAnalyzer:
 
             # --- 4. BENT OVER ROW ---
             elif exercise_name == 'bentOverRow': 
-                torso = calculate_inclination_3d(ls, lh)
                 elb = min(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
-                self.debug_angles = {"Torso": int(torso), "Elbow": int(elb)}
                 
-                if torso < 30: self.form_status = "ERROR: BEND OVER MORE"
+                torso_height_y = abs(lh.y - ls.y)
+                mid_chest_y = ls.y + (torso_height_y * 0.45)
+                
+                self.debug_angles = {"Elbow": int(elb)}
+                
+                if (lw.y < mid_chest_y) and (rw.y < mid_chest_y): 
+                    self.form_status = "ERROR: PULLING TOO HIGH"
                 else:
                     if elb > 150: self.stage = "down"
                     if elb < 100 and self.stage == "down":
@@ -330,20 +320,21 @@ class ExerciseAnalyzer:
                 r_hand_height = (rh.y - rw.y)
                 avg_h = (l_hand_height + r_hand_height) / 2.0
                 
+                self.debug_angles = {"Hand Height": round(avg_h, 2)}
+                
                 if avg_h < 0.1: self.stage = "down" 
                 
-                # REPS: Hands > 0.25 (Mid Chest)
                 if avg_h > 0.25 and self.stage == "down":
                      if now - self.last_rep_time > 0.6: 
                         self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
                 
-                if (le.y > lw.y + 0.05) or (re.y > rw.y + 0.05):
-                    self.form_status = "ELBOWS HIGHER THAN WRISTS"
+                if self.stage == "up":
+                    if (le.y > lw.y + 0.05) or (re.y > rw.y + 0.05):
+                        self.form_status = "ERROR: ELBOWS LOWER THAN WRISTS"
+                    else:
+                        self.form_status = "CORRECT FORM"
                 else:
                     self.form_status = "CORRECT FORM"
-
-            # --- 6. SQUATS (DISABLED) ---
-            # elif exercise_name in ['squat', 'gobletSquat', 'sumoSquat']: ...
 
             if self.rep_counter > prev_reps:
                 if "ERROR" in self.form_status or "WARNING" in self.form_status:
@@ -368,3 +359,8 @@ class ExerciseAnalyzer:
         log = self.new_error_to_log; self.new_error_to_log = None; return log
     def reset_session(self):
         self.rep_counter = 0; self.stage = None; self.angle_sequence_buffer.clear(); self.locked_exercise = None
+        # Lateral raise = Knee Level
+        # Bicep Curl = Half body or Knee Level
+        # Shoulder Pres = Show Higher part for arm / Knee Level
+        # Upright Row = Below Knee Level 
+        # Bent Over Row = Half Body or Knee Level
