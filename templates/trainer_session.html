@@ -1,14 +1,11 @@
 {% extends "house.html" %}
 {% block title %}Trainer Session{% endblock %}
 {% block content %}
-<head>
-    <title>Session {{ session.id }} | {{ session.get('user_gym_name', 'Admin') }}</title>
-</head>
 <div class="p-10 bg-[#f1f1f1] h-full font-Helvetica flex flex-col items-center gap-6">
     <div id="header" class="w-full grid grid-cols-2 h-[7%]">
         <div>
             <h1 class="text-4xl font-semibold">Trainer Session</h1>
-            <p class="text-lg text-gray-400 font-normal leading-[15px]">Details for session #{{ session.id }}</p>
+            <p class="text-lg text-gray-400 font-normal leading-[15px]">Details for session #{{ workout_session.id }}</p>
         </div>
         <div class="flex justify-end items-center gap-2">
             <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
@@ -18,32 +15,50 @@
     <div class="p-6 border gap-4 w-full max-w-4xl flex flex-col font-Helvetica border-gray-300 bg-white rounded-3xl">
         <div class="flex justify-between w-full items-center">
             <h1 class="text-2xl font-bold">Session Summary</h1>
-            </div>
+            
+            {% if not workout_session.end_time %}
+            <form action="{{ url_for('manual_complete_session', session_id=workout_session.id) }}" method="POST">
+                <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-2xl font-bold transition-all flex items-center gap-2 shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-circle"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    Complete Session
+                </button>
+            </form>
+            {% endif %}
+        </div>
 
         <hr class="border-gray-100">
 
         <div class="ml-2 flex gap-1 flex-col">
-            <div class="grid grid-cols-[3%_10%_1fr] gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-activity-icon lucide-activity"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+            <div class="grid grid-cols-[3%_10%_1fr] gap-1 items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-activity"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
                 <h1 class="text-lg">Status:</h1>
-                {% if session.end_time %}
-                    <p class="text-lg self-end font-bold text-gray-700">Completed</p>
+                {% if workout_session.end_time %}
+                    <p class="text-lg self-end font-bold text-green-600">Completed</p>
                 {% else %}
-                    <p class="text-lg self-end font-bold text-green-600">Active</p>
+                    <div class="flex items-center gap-2">
+                        <p class="text-lg font-bold text-blue-600">Active</p>
+                        <span class="relative flex h-3 w-3">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                        </span>
+                    </div>
                 {% endif %}
             </div>
+
             <div class="grid grid-cols-[3%_10%_1fr] gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-round-icon lucide-user-round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
                 <h1 class="text-lg">Trainer:</h1>
                 <p class="text-lg self-end font-bold">{{ user.firstname }} {{ user.lastname }}</p>
             </div>
+
             <div class="grid grid-cols-[3%_10%_1fr] gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clock-icon lucide-clock"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></svg> 
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clock"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></svg> 
                 <h1 class="text-lg">Duration:</h1>
                 <p class="text-lg self-end font-bold">{{ duration }}</p>
             </div>
+
             <div class="grid grid-cols-[3%_10%_1fr] gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar-icon lucide-calendar"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
                 <h1 class="text-lg">Date:</h1>
                 <p class="text-lg self-end font-bold">{{ workout_session.start_time.strftime('%b %d, %Y') }}</p>
             </div>
@@ -57,7 +72,7 @@
                 <div class="w-1/2 h-40 px-4 py-6 border flex justify-between flex-col border-gray-200 rounded-2xl">
                     <div class="grid grid-cols-[12%_1fr] gap-2 items-center">
                         <div class="rounded-full bg-[#FFB84C] flex justify-center items-center p-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert-icon lucide-triangle-alert"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
                         </div>
                         <h1 class="text-lg">Normal Errors</h1>
                     </div>
@@ -66,7 +81,7 @@
                 <div class="w-1/2 h-40 px-4 py-6 border flex justify-between flex-col border-gray-200 rounded-2xl">
                     <div class="grid grid-cols-[12%_1fr] gap-2 items-center">
                         <div class="rounded-full bg-[#F16767] flex justify-center items-center p-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skull-icon lucide-skull"><path d="m12.5 17-.5-1-.5 1h1z"/><path d="M15 22a1 1 0 0 0 1-1v-1a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20v1a1 1 0 0 0 1 1z"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="12" r="1"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skull"><path d="m12.5 17-.5-1-.5 1h1z"/><path d="M15 22a1 1 0 0 0 1-1v-1a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20v1a1 1 0 0 0 1 1z"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="12" r="1"/></svg>
                         </div>
                         <h1 class="text-lg">Critical Errors</h1>
                     </div>
@@ -74,12 +89,16 @@
                 </div>
             </div>
         </div>
+
         <div class="border border-gray-200 bg-white h-67 w-full rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
             <h1 class="text-xl font-bold font-Helvetica mb-2">Error Log ({{ recent_errors | length }} errors)</h1>
-            <div classD="flex flex-col overflow-y-auto h-[100%] max-h-[300px]"> {% for error in recent_errors %}
+            <div class="flex flex-col overflow-y-auto h-[100%] max-h-[300px]"> 
+                {% for error in recent_errors %}
                 <div class="border-t border-b border-gray-100 hover:bg-gray-50 w-full items-center px-5 py-3 grid grid-cols-[1fr_auto] justify-center">
                     <div class="justify-self-start">
-                        <p class="text-gray-600 text-md font-semibold">{{ error.exercise_name }} - (Rep {{ error.rep_number }})</p>
+                        <p class="text-gray-600 text-md font-semibold">
+                            {{ error.exercise_name | replace('uprightRow', 'Upright Row') | replace('bicepCurl', 'Bicep Curl') | replace('lateralRaise', 'Lateral Raise') | replace('shoulderPress', 'Shoulder Press') | replace('bentOverRow', 'Bent Over Row') }} - (Rep {{ error.rep_number }})
+                        </p>
                         
                         {% if error.error_type.startswith("Repeated Error") %}
                             <p class="text-red-600 text-sm font-bold">CRITICAL: {{ error.error_type.replace('Repeated Error: ', '') }}</p>
@@ -92,7 +111,6 @@
                 {% else %}
                 <div class="p-3 text-center text-gray-500">No errors recorded for this session.</div>
                 {% endfor %}
-                
             </div>
         </div>
     </div>

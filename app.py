@@ -504,12 +504,34 @@ def logout():
 def dashboard(): 
     user_id = session['user_id']
     today = datetime.utcnow().date()
+    local_now = datetime.utcnow() + timedelta(hours=8)
+    today_local = local_now.date()
     start_of_week = today - timedelta(days=today.weekday())
     start_of_month = today.replace(day=1)
+    gym_id = session.get('user_gym_id')
+
+    sessions_today = WorkoutSession.query.filter(
+        WorkoutSession.gym_id == gym_id,
+        func.date(func.datetime(WorkoutSession.start_time, '+8 hours')) == today_local
+    ).order_by(WorkoutSession.start_time.desc()).all()
     
     total_errors_today = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, func.date(ErrorLog.timestamp) == today).scalar() or 0
-    most_common = db.session.query(ErrorLog.error_type, func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, ErrorLog.timestamp >= start_of_week).group_by(ErrorLog.error_type).order_by(func.count(ErrorLog.id).desc()).first()
-    most_common_error_week = most_common[0].replace('ERROR: ', '') if most_common else "N/A"
+    most_common = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')) \
+    .join(WorkoutSession) \
+    .filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_week) \
+    .group_by(ErrorLog.exercise_name) \
+    .order_by(func.count(ErrorLog.id).desc()) \
+    .first()
+
+    # Format it so 'uprightRow' becomes 'Upright Row'
+    if most_common:
+        raw_name = most_common[0]
+        # Simple regex to space out CamelCase names
+        import re
+        spaced_name = re.sub(r"([a-z])([A-Z])", r"\1 \2", raw_name)
+        most_common_error_week = spaced_name.title()
+    else:
+        most_common_error_week = "None"
     
     total_errors_month = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.user_id == user_id, ErrorLog.timestamp >= start_of_month).scalar() or 0
     recent_errors = db.session.query(ErrorLog, User).join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id).join(User, WorkoutSession.user_id == User.id).filter(User.id == user_id).order_by(ErrorLog.timestamp.desc()).limit(5).all()
@@ -533,7 +555,7 @@ def dashboard():
             current_month_chart_data[mapping.get(ex)] += count
     all_sessions = WorkoutSession.query.filter_by(user_id=user_id).filter(WorkoutSession.end_time != None).order_by(WorkoutSession.start_time.desc()).all()
 
-    return render_template("dashboard.html", total_errors_today=total_errors_today, most_common_error_week=most_common_error_week, total_errors_month=total_errors_month, recent_errors=recent_errors, current_month_chart_data=current_month_chart_data, sessions=all_sessions)
+    return render_template("dashboard.html", sessions_today=sessions_today, total_errors_today=total_errors_today, most_common_error_week=most_common_error_week, total_errors_month=total_errors_month, recent_errors=recent_errors, current_month_chart_data=current_month_chart_data, sessions=all_sessions)
 
 @app.route("/my_sessions")
 @login_required
@@ -673,7 +695,7 @@ def admin_dashboard():
     most_common = db.session.query(ErrorLog.error_type, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_week).group_by(ErrorLog.error_type).order_by(func.count(ErrorLog.id).desc()).first()
     most_common_error_week = most_common[0].replace('ERROR: ', '') if most_common else "N/A"
     
-    recent_errors = db.session.query(ErrorLog, User).join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id).join(User, WorkoutSession.user_id == User.id).filter(WorkoutSession.gym_id == gym_id).order_by(ErrorLog.timestamp.desc()).limit(5).all()
+    recent_errors = db.session.query(ErrorLog, User).join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id).join(User, WorkoutSession.user_id == User.id).filter(WorkoutSession.gym_id == gym_id).order_by(ErrorLog.timestamp.desc()).limit(20).all()
     initial_critical_errors = db.session.query(ErrorLog, User).join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id).join(User, WorkoutSession.user_id == User.id).filter(WorkoutSession.gym_id == gym_id).filter(ErrorLog.error_type.contains("Repeated Error")).order_by(ErrorLog.timestamp.desc()).limit(5).all()
 
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
@@ -837,6 +859,19 @@ def trainer_session_log(user_id):
     trainer = User.query.filter_by(id=user_id, gym_id=gym_id).first_or_404()
     sessions = WorkoutSession.query.filter_by(gym_id=gym_id, user_id=user_id).filter(WorkoutSession.end_time != None).order_by(WorkoutSession.start_time.desc()).all()
     return render_template("trainer_session_log.html", sessions=sessions, trainer=trainer)
+
+@app.route("/session/complete/<int:session_id>", methods=['POST'])
+@login_required
+def manual_complete_session(session_id):
+    workout_session = db.session.get(WorkoutSession, session_id)
+    
+    # Only update if it hasn't been ended yet
+    if workout_session and not workout_session.end_time:
+        workout_session.end_time = datetime.utcnow()
+        db.session.commit()
+        flash('Session completed successfully!', 'success')
+        
+    return redirect(url_for('trainer_session_detail', session_id=session_id))
 
 @app.route("/session/<int:session_id>")
 @login_required
