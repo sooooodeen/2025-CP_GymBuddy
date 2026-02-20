@@ -19,16 +19,29 @@
             <div class="border border-gray-300 bg-white h-full w-110 rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
                 <h1 class="text-xl font-bold font-Helvetica mb-2">Recent Error Log</h1>
                 <div class="flex flex-col overflow-y-auto gap-2 h-[100%]">
+                    
                     {% for log, user in recent_errors %}
-                    <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center">
-                        <div class="justify-self-start">
-                            <p class="text-[#5a5757] text-md font-semibold">{{ log.error_type.replace('ERROR: ', '') }}</p>
+                        <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center">
+                            <div class="justify-self-start">
+                                <p class="text-md font-bold text-[#F16767] uppercase">
+                                    {{ log.exercise_name.replace('uprightRow', 'Upright Row')
+                                    .replace('bicepCurl', 'Bicep Curl')
+                                    .replace('lateralRaise', 'Lateral Raise')
+                                    .replace('bentOverRow', 'Bent Over Row')
+                                    .replace('shoulderPress', 'Shoulder Press') }}
+                                </p>
+                                <p class="text-gray-500 text-xs font-light">
+                                    {{ log.error_type.replace('ERROR: ', '') }}
+                                </p>
+                            </div>
+                            <span class="text-sm text-gray-500 time-ago" data-timestamp="{{ log.timestamp.isoformat() }}"></span>
                         </div>
-                        <span class="text-sm text-gray-500 time-ago" data-timestamp="{{ log.timestamp.isoformat() }}"></span>
-                    </div>
                     {% else %}
-                    <div class="text-center text-gray-500 p-4 h-full flex items-center justify-center">No errors recorded yet.</div>
+                        <div class="text-center text-gray-500 p-4 h-full flex items-center justify-center">
+                            No errors recorded yet.
+                        </div>
                     {% endfor %}
+
                 </div>
             </div>
 
@@ -52,7 +65,7 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-octagon-alert-icon lucide-octagon-alert"><path d="M12 16h.01"/><path d="M12 8v4"/><path d="M15.312 2a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586l-4.688-4.688A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2z"/></svg>
                     </div>
                     <div>
-                        <h1 class=" text-center text-lg font-semibold">Common Workout Error</h1>
+                        <h1 class=" text-center text-lg font-semibold">Highest Error Frequency</h1>
                         <h1 class="rounded-full flex justify-center items-center py-1 px-3 bg-gray-200 text-xs w-22 text-gray-500 font-Helvetica font-semibold tracking-wider">This week</h1>
                     </div>
                 </div>
@@ -70,25 +83,62 @@
                 </div>
                 <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">{{ total_errors_month }}</h1>
             </div>
-              <div class="border border-gray-300 bg-white h-full w-full rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
-                <h1 class="text-xl font-bold font-Helvetica mb-2">Immediate Action Needed</h1>
+            <div class="border border-gray-300 bg-white h-full w-full rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
+                <h1 class="text-xl font-bold font-Helvetica mb-2">Recent Sessions Today</h1>
                 <div class="flex flex-col overflow-y-auto gap-2 max-h-[50vh]">
-                    <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center">
-                        <div class="justify-self-start grid grid-cols-[15%_1fr_15%] w-full gap-2 items-center flex-row">
-                            <div class="flex justify-center items-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F16767" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-triangle-alert-icon lucide-triangle-alert"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                    
+                    {% for session in sessions_today %}
+                        <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] hover:bg-gray-50 transition-colors">
+                            <div class="justify-self-start grid grid-cols-[10%_1fr] w-full gap-4 items-center">
+                                <div class="flex justify-center items-center">
+                                    {% if session.end_time %}
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4CAF50" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-circle"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                    {% else %}
+                                        <span class="relative flex h-3 w-3">
+                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                            <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                                        </span>
+                                    {% endif %}
+                                </div>
+
+                                <div class="leading-tight">
+                                    <div class="flex gap-3 items-baseline">
+                                        <p class="text-[#5a5757] text-md font-bold">
+                                            {{ to_gmt8(session.start_time).strftime('%I:%M %p') }}
+                                        </p> 
+                                        
+                                    </div>
+
+                                    <span class="text-sm text-gray-500">
+                                        {% if session.end_time %}
+                                        <div class="gap-2">
+                                            <p class="text-sm font-semibold text-gray-500 rounded-md">
+                                                {{ session.total_reps or 0 }} Reps
+                                            </p>
+
+                                            {% set duration = session.end_time - session.start_time %}
+                                            {% set hours = (duration.total_seconds() // 3600) | int %}
+                                            {% set minutes = ((duration.total_seconds() % 3600) // 60) | int %}
+                                            
+                                            {% if hours > 0 %}{{ hours }}h {% endif %}{{ minutes }}m duration
+                                        </div>
+                                        {% else %}
+                                            <span class="text-red-500 font-medium">Session Active...</span>
+                                        {% endif %}
+                                    </span>
+                                </div>
                             </div>
-                            <div class="leading-tight">
-                                <p class="text-[#5a5757] text-xl font-semibold">"Workout Error"</p>
-                                <span class="text-md text-gray-500 time-ago">"Time"</span>
-                            </div>
-                            <div class="w-full flex justify-center items-center">
-                                <button class="rounded-full bg-green-500 h-10 hover:bg-green-400 transition ease-in-out delay-50 w-10 flex justify-center items-center cursor-pointer">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-icon lucide-check"><path d="M20 6 9 17l-5-5"/></svg>
-                                </button>
-                            </div>
+
+                            <a href="{{ url_for('trainer_session_detail', session_id=session.id) }}" class="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right text-gray-400"><path d="m9 18 6-6-6-6"/></svg>
+                            </a>
                         </div>
-                    </div>
+                    {% else %}
+                        <div class="flex flex-col items-center justify-center py-10 text-gray-400">
+                            <p class="text-sm">No sessions recorded yet today.</p>
+                        </div>
+                    {% endfor %}
+
                 </div>
             </div>
             <div class="border border-gray-300 h-full flex flex-col col-span-2 justify-around rounded-2xl bg-white p-6 px-8">
