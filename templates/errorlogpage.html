@@ -44,12 +44,12 @@
             <div class="text-sm text-gray-700" id="pagination-info"></div>
             <div class="flex space-x-2" id="pagination-controls">
                 <button onclick="changePage(currentPage - 1)" 
-                class="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100"
+                class="px-3 py-1 text-sm font-medium text-gray-700 bg-white border cursor-pointer border-gray-300 rounded-lg hover:bg-gray-100"
                 id="prev-button" disabled>
                 Previous
                 </button>
                 <button onclick="changePage(currentPage + 1)" 
-                class="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100"
+                class="px-3 py-1 text-sm font-medium text-gray-700 bg-white border cursor-pointer border-gray-300 rounded-lg hover:bg-gray-100"
                 id="next-button">
                 Next
                 </button>
@@ -122,7 +122,6 @@
             row.className = 'border-b border-gray-100 hover:bg-gray-100';
 
             if (item.empty) {
-                // --- ROW FIX: Update empty rows to 5 columns ---
                 row.innerHTML = `
                     <td class="w-[50px] px-4 py-3 opacity-0">.</td>
                     <td class="w-[250px] h-[65px] gap-2 py-3"></td>
@@ -132,7 +131,6 @@
                 `;
                 row.classList.remove('hover:bg-gray-100'); 
             } else {
-                // --- ROW FIX: Use real data fields ---
                 const sequentialNumber = start + index + 1;
                 row.innerHTML = `
                     <td class="w-[50px] px-4">${sequentialNumber}</td>
@@ -153,7 +151,6 @@
                     
                     <td class="w-[200px] py-5 px-4">${item.timeOfError}</td>
                 `;
-                // --- END ROW FIX ---
             }
             wrapper.appendChild(row);
         });
@@ -182,7 +179,6 @@
         const existingPages = controlsWrapper.querySelectorAll('.page-btn, .ellipsis');
         existingPages.forEach(btn => btn.remove());
 
-        // This logic is complex but should work fine if totalPages is correct
         if (totalPages > 1) {
             controlsWrapper.classList.remove('hidden');
             
@@ -205,7 +201,7 @@
             
             const createButton = (pageNumber, isCurrent) => {
                 const btn = document.createElement('button');
-                btn.classList.add('page-btn', 'px-3', 'py-1', 'text-sm', 'font-medium', 'border', 'rounded-lg', 'transition-colors');
+                btn.classList.add('page-btn', 'cursor-pointer', 'px-3', 'py-1', 'text-sm', 'font-medium', 'border', 'rounded-lg', 'transition-colors');
                 btn.textContent = pageNumber;
                 btn.onclick = () => changePage(pageNumber);
 
@@ -273,7 +269,6 @@
         allOption.textContent = 'All Months';
         selectElement.appendChild(allOption);
         
-        // Find which months actually have data
         const availableMonths = [...new Set(allErrors.map(error => error.month))];
         const sortedMonths = ALL_MONTHS.filter(month => availableMonths.includes(month));
 

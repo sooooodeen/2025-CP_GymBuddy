@@ -24,7 +24,7 @@ from functools import wraps
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from werkzeug.utils import secure_filename
-from sqlalchemy import ForeignKey, func
+from sqlalchemy import ForeignKey, func, and_
 from sqlalchemy.orm import relationship
 from ultralytics import YOLO 
 from datetime import timedelta
@@ -367,6 +367,8 @@ def login():
             session['user_gym_name'] = user.gym.name
             session['user_firstname'] = user.firstname
             session['user_lastname'] = user.lastname
+
+            session['user_photo_url'] = user.photo_url or 'src/images/Default_pfp.jpg'
             
             if user.role == 'Gym Owner':
                 return redirect(url_for('admin_dashboard'))
@@ -560,10 +562,42 @@ def dashboard():
 @app.route("/my_sessions")
 @login_required
 def my_sessions():
+    # 1. Check if the user is actually a Trainer
     if session.get('user_role') != 'Trainer':
         return redirect(url_for('admin_dashboard'))
-    sessions = WorkoutSession.query.filter_by(gym_id=session['user_gym_id'], user_id=session['user_id']).filter(WorkoutSession.end_time != None).order_by(WorkoutSession.start_time.desc()).all()
-    return render_template("trainer_session_log.html", sessions=sessions, trainer=db.session.get(User, session['user_id']))
+
+    user_id = session.get('user_id')
+    gym_id = session.get('user_gym_id')
+    
+    # 2. Get the Trainer object for the header
+    trainer = db.session.get(User, user_id)
+    
+    # 3. Query sessions belonging to THIS Trainer
+    sessions = WorkoutSession.query.filter_by(user_id=user_id, gym_id=gym_id)\
+                                   .order_by(WorkoutSession.start_time.desc()).all()
+    
+    # 4. Convert to JSON (This is what the JS pagination needs!)
+    sessions_list = []
+    for s in sessions:
+        duration_str = "In Progress"
+        end_time_str = "---"
+        if s.end_time:
+            diff = s.end_time - s.start_time
+            duration_str = f"{int(diff.total_seconds() // 3600)}h {int((diff.total_seconds() % 3600) // 60)}m"
+            end_time_str = to_gmt8(s.end_time).strftime('%I:%M %p')
+
+        sessions_list.append({
+            'date': s.start_time.strftime('%b %d, %Y'),
+            'start_time': to_gmt8(s.start_time).strftime('%I:%M %p'),
+            'end_time': end_time_str,
+            'duration': duration_str,
+            'total_reps': s.total_reps or 0,
+            'detail_url': url_for('trainer_session_detail', session_id=s.id)
+        })
+    
+    return render_template("trainer_session_log.html", 
+                           trainer=trainer, 
+                           sessions_json=json.dumps(sessions_list))
 
 @app.route("/monitor")
 @login_required
@@ -573,8 +607,27 @@ def monitor():
 @app.route("/errorlogpage")
 @login_required
 def errorlogpage(): 
-    logs = db.session.query(ErrorLog, User).join(WorkoutSession).join(User).filter(WorkoutSession.gym_id == session['user_gym_id']).order_by(ErrorLog.timestamp.desc()).all()
-    js_errors = [{'id': l.id, 'userName': f"{u.firstname} {u.lastname}", 'userPhoto': url_for('static', filename=u.photo_url or 'src/images/Default_pfp.jpg'), 'errorType': l.error_type.replace('ERROR: ', ''), 'exerciseName': format_exercise_name(l.exercise_name), 'timeOfError': l.timestamp.strftime('%Y-%m-%d %H:%M:%S'), 'month': l.timestamp.strftime('%b')} for l, u in logs]
+    gym_id = session.get('user_gym_id')
+    
+    # We explicitly join ErrorLog -> WorkoutSession -> User
+    logs = db.session.query(ErrorLog, User)\
+        .join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id)\
+        .join(User, WorkoutSession.user_id == User.id)\
+        .filter(WorkoutSession.gym_id == gym_id)\
+        .order_by(ErrorLog.timestamp.desc())\
+        .all()
+    
+    # Keeping your existing JSON formatting logic
+    js_errors = [{
+        'id': l.id, 
+        'userName': f"{u.firstname} {u.lastname}", 
+        'userPhoto': url_for('static', filename=u.photo_url or 'src/images/Default_pfp.jpg'), 
+        'errorType': l.error_type.replace('ERROR: ', ''), 
+        'exerciseName': format_exercise_name(l.exercise_name), 
+        'timeOfError': l.timestamp.strftime('%Y-%m-%d %H:%M:%S'), 
+        'month': l.timestamp.strftime('%b')
+    } for l, u in logs]
+    
     return render_template("errorlogpage.html", all_errors_json=json.dumps(js_errors))
 
 @app.route("/settings")
@@ -592,36 +645,59 @@ def security_settings():
 def delete_account():
     return render_template("delete_account.html")
 
+def save_image(file, user_id):
+    # Set the folder where images are stored
+    upload_folder = os.path.join('static', 'src', 'images')
+    
+    # Ensure the directory exists
+    if not os.path.exists(upload_folder):
+        os.makedirs(upload_folder)
+    
+    # Get the file extension (e.g., .jpg, .png)
+    ext = os.path.splitext(file.filename)[1]
+    
+    # Rename file to 'user_ID_profile.ext' to keep it unique
+    filename = secure_filename(f"user_{user_id}_profile{ext}")
+    
+    # Save the file to the path
+    file_path = os.path.join(upload_folder, filename)
+    file.save(file_path)
+    
+    return filename
+
 @app.route("/profile", methods=['GET', 'POST'])
 @login_required
 def profile():
+    # Fetch the actual user object from the database using the session ID
     user = db.session.get(User, session['user_id']) 
+    
     if request.method == 'POST':
+        # 1. Update Personal Details in the Database
         user.firstname = request.form.get('firstname')
         user.lastname = request.form.get('lastname')
         user.email = request.form.get('email')
         user.phone_num = request.form.get('phone_num')
         user.gender = request.form.get('gender')
         
-        if 'photo' in request.files:
-            file = request.files['photo']
-            if file and allowed_file(file.filename):
-                fname = secure_filename(f"{user.id}_{file.filename}")
-                os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], fname))
-                user.photo_url = f"uploads/profiles/{fname}"
-                session['user_photo_url'] = user.photo_url
+        # 2. Handle Image Upload
+        file = request.files.get('photo')
+        if file and file.filename != '':
+            # Pass the file and the user_id to our new function
+            filename = save_image(file, user.id)
+            user.photo_url = f"src/images/{filename}"
+            # Update the session so the sidebar pfp updates immediately
+            session['user_photo_url'] = user.photo_url
         
-        if 'gym_name' in request.form and session.get('user_role') == 'Gym Owner': 
-            gym = db.session.get(Gym, user.gym_id) 
-            gym.name = request.form.get('gym_name')
-            session['user_gym_name'] = gym.name
+        # 3. CRITICAL: Commit changes to the .db file
+        db.session.commit() 
         
-        db.session.commit()
-        session.update({'user_firstname': user.firstname, 'user_lastname': user.lastname, 'user_email': user.email, 'user_phone_num': user.phone_num})
-        flash('Updated.', 'success')
+        # Update session names for immediate UI feedback
+        session['user_firstname'] = user.firstname
+        session['user_lastname'] = user.lastname
+        
         return redirect(url_for('profile'))
-    return render_template("profile.html", user=user)
+
+    return render_template('profile.html', user=user)
 
 @app.route("/change_password", methods=['GET', 'POST'])
 @login_required
@@ -664,6 +740,7 @@ def delete_user_account():
 @app.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
+    
     gym_id = session['user_gym_id']
     today = datetime.utcnow().date()
     start_of_current_month = today.replace(day=1)
@@ -675,7 +752,7 @@ def admin_dashboard():
     error_rate_change = 0
     error_rate_color = "gray"
     error_rate_status = "Month in Progress"
-
+   
     if errors_last > 0:
         change_percent = ((errors_current - errors_last) / errors_last) * 100
         error_rate_color = "green" if change_percent < 0 else "red"
@@ -852,13 +929,59 @@ def unassign_by_trainer_id(trainer_id):
         return jsonify({'status': 'success', 'message': 'Unassigned.'})
     return jsonify({'status': 'error', 'message': 'Not assigned.'})
 
+def to_gmt8(utc_dt):
+    if not utc_dt: 
+        return None
+    return utc_dt + timedelta(hours=8)
+
 @app.route("/admin/session_log/<int:user_id>")
 @admin_required
 def trainer_session_log(user_id):
-    gym_id = session['user_gym_id']
-    trainer = User.query.filter_by(id=user_id, gym_id=gym_id).first_or_404()
-    sessions = WorkoutSession.query.filter_by(gym_id=gym_id, user_id=user_id).filter(WorkoutSession.end_time != None).order_by(WorkoutSession.start_time.desc()).all()
-    return render_template("trainer_session_log.html", sessions=sessions, trainer=trainer)
+    # 1. Terminal Debugging
+    print(f"\n--- DATABASE DEBUG START ---")
+    print(f"Target User ID: {user_id}")
+    
+    trainer = db.session.get(User, user_id)
+    
+    # 2. Try to find ANY session for this user, regardless of gym or completion
+    sessions_query = WorkoutSession.query.filter_by(user_id=user_id).all()
+    
+    print(f"Found {len(sessions_query)} sessions for this specific ID.")
+    
+    if len(sessions_query) == 0:
+        # Check if sessions exist for OTHER users just to verify the table isn't empty
+        total_sessions = WorkoutSession.query.count()
+        print(f"Total sessions in entire database: {total_sessions}")
+    
+    sessions_list = []
+    for s in sessions_query:
+        # Fallback for start/end times if they are corrupted
+        try:
+            start_str = to_gmt8(s.start_time).strftime('%I:%M %p') if s.start_time else "N/A"
+            end_str = to_gmt8(s.end_time).strftime('%I:%M %p') if s.end_time else "Active"
+            
+            # Simple duration calc to prevent crashes
+            dur = "In Progress"
+            if s.end_time and s.start_time:
+                diff = s.end_time - s.start_time
+                dur = f"{int(diff.total_seconds() // 60)} mins"
+
+            sessions_list.append({
+                'date': s.start_time.strftime('%b %d, %Y') if s.start_time else "N/A",
+                'start_time': start_str,
+                'end_time': end_str,
+                'duration': dur,
+                'total_reps': s.total_reps or 0,
+                'detail_url': url_for('trainer_session_detail', session_id=s.id)
+            })
+        except Exception as e:
+            print(f"Row skip error: {e}")
+
+    print(f"--- DATABASE DEBUG END ---\n")
+    
+    return render_template("trainer_session_log.html", 
+                           trainer=trainer, 
+                           sessions_json=json.dumps(sessions_list))
 
 @app.route("/session/complete/<int:session_id>", methods=['POST'])
 @login_required

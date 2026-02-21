@@ -1,56 +1,153 @@
 {% extends "house.html" %}
 {% block title %}Trainer Session Log{% endblock %}
 {% block content %}
-<div class="p-10 bg-[#f1f1f1] h-full font-Helvetica flex flex-col">
+
+<div id="sessions-data-store" data-sessions='{{ sessions_json | safe }}' style="display: none;"></div>
+
+<div class="p-10 bg-[#f1f1f1] min-h-[100dvh] font-Helvetica flex flex-col">
     <div id="header" class="w-full grid grid-cols-2 h-[7%] mb-5">
         <div>
-            <h1 class="text-4xl font-semibold">Trainer Session History</h1>
+            <h1 class="text-4xl font-semibold text-gray-800">Trainer Session History</h1>
             <p class="text-lg text-gray-400 font-normal leading-[15px]">View past recorded trainer sessions</p>
         </div>
         <div class="flex justify-end items-center gap-2">
             <h1 class="text-xl font-Helvetica font-semibold">{{ session.get('user_gym_name', 'Admin') }}</h1>
         </div>
     </div>
-    <h2 class="text-2xl text-gray-600 mb-2">History for {{ trainer.firstname }} {{ trainer.lastname }}</h2>
-    
-    <div class="border border-gray-300">
-        <table class="w-full">
-            <thead class="border-b text-white bg-[#222831]  border-gray-200">
-                <tr>
-                    <th class="p-5 text-left">Date</th>
-                    <th class="p-5 text-left">Start Time</th>
-                    <th class="p-5 text-left">End Time</th>
-                    <th class="p-5 text-left">Duration</th>
-                    <th class="p-5 text-left">Total Reps</th>
-                    <th class="p-5 text-left">Action</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white">
-                {% for session in sessions %}
-                <tr class="hover:bg-gray-50 border-b border-gray-100">
-                    <td class="p-3">{{ session.start_time.strftime('%b %d, %Y') }}</td>
-                    <td class="p-3">{{ to_gmt8(session.start_time).strftime('%I:%M %p') }}</td>
-                    <td class="p-3">{{ to_gmt8(session.end_time).strftime('%I:%M %p') }}</td>
-                    <td class="p-3">
-                        {% set duration = session.end_time - session.start_time %}
-                        {% set hours = (duration.total_seconds() // 3600) | int %}
-                        {% set minutes = ((duration.total_seconds() % 3600) // 60) | int %}
-                        {{ hours }}hrs {{ minutes }}mins
-                    </td>
-                    <td class="p-3">{{ session.total_reps }}</td>
-                    <td class="p-3">
-                        <a href="{{ url_for('trainer_session_detail', session_id=session.id) }}" class="text-blue-500 hover:underline">
-                            View Details
-                        </a>
-                    </td>
-                </tr>
-                {% else %}
-                <tr class="h-[50dvh]">
-                    <td colspan="6" class="p-3 text-center text-gray-500">No completed sessions found for this trainer.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+
+    <h2 class="text-2xl text-gray-600 mb-4 font-medium">History for {{ trainer.firstname }} {{ trainer.lastname }}</h2>
+    <div class="flex justify-center">
+        <div class="bg-white border border-gray-300 rounded-xl shadow-sm overflow-hidden w-[80%] flex justify-center flex-col">
+            <table class="w-full text-left border-collapse">
+                <thead class="text-white bg-[#222831]">
+                    <tr>
+                        <th class="p-5 font-semibold uppercase text-sm tracking-wider">Date</th>
+                        <th class="p-5 font-semibold uppercase text-sm tracking-wider">Start Time</th>
+                        <th class="p-5 font-semibold uppercase text-sm tracking-wider">End Time</th>
+                        <th class="p-5 font-semibold uppercase text-sm tracking-wider text-center">Duration</th>
+                        <th class="p-5 font-semibold uppercase text-sm tracking-wider text-center">Total Reps</th>
+                        <th class="p-5 font-semibold uppercase text-sm tracking-wider text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="session-log-body" class="bg-white divide-y ">
+                    </tbody>
+            </table>
+
+            <div class="flex justify-between items-center p-5 bg-gray-50 border-t border-gray-200">
+                <div class="text-sm text-gray-600 font-medium" id="pagination-info">
+                    Loading entries...
+                </div>
+                <div class="flex items-center gap-2" id="pagination-controls">
+                    <button onclick="changePage(currentPage - 1)" 
+                        class="px-3 py-1 text-sm cursor-pointer text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        id="prev-button">
+                        Previous
+                    </button>
+                    <button onclick="changePage(currentPage + 1)" 
+                        class="px-3 py-1 text-sm cursor-pointer text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        id="next-button">
+                        Next
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tableBody = document.getElementById('session-log-body');
+    const dataStore = document.getElementById('sessions-data-store');
+    
+    const rawJson = dataStore.getAttribute('data-sessions');
+    const allSessions = JSON.parse(rawJson || "[]");
+
+    const rowsPerPage = 8;
+    window.currentPage = 1; 
+    let totalPages = Math.ceil(allSessions.length / rowsPerPage);
+
+    window.changePage = function(page) {
+        if (page < 1 || page > totalPages) return;
+        window.currentPage = page;
+        displayList(window.currentPage);
+        document.getElementById('header').scrollIntoView({ behavior: 'smooth' });
+    };
+
+    function displayList(page) {
+        tableBody.innerHTML = "";
+        
+        if (allSessions.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" class="p-20 text-center text-gray-500 font-medium italic">No sessions found.</td></tr>`;
+            return;
+        }
+
+        let start = rowsPerPage * (page - 1);
+        let end = start + rowsPerPage;
+        let paginatedItems = allSessions.slice(start, end);
+
+        paginatedItems.forEach(item => {
+            const row = document.createElement('tr');
+            row.className = 'hover:bg-blue-50/30 transition-colors border-b border-gray-100';
+            row.innerHTML = `
+                <td class="p-5 text-gray-700">${item.date}</td>
+                <td class="p-5 font-bold text-gray-800">${item.start_time}</td>
+                <td class="p-5 text-gray-600">${item.end_time}</td>
+                <td class="p-5 text-center"><span class="px-3 py-1 bg-gray-200 rounded-full text-xs">${item.duration}</span></td>
+                <td class="p-5 text-gray-700 font-bold text-center">${item.total_reps}</td>
+                <td class="p-5 text-center">
+                    <a href="${item.detail_url}" class="bg-blue-600 text-white px-4 py-2 rounded-full text-sm hover:bg-blue-700 transition-all shadow-sm inline-block">View Details</a>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+
+        document.getElementById('pagination-info').textContent = 
+            `Showing ${start + 1} to ${Math.min(end, allSessions.length)} of ${allSessions.length} entries`;
+        
+        setupPaginationButtons();
+    }
+
+    function setupPaginationButtons() {
+        const controls = document.getElementById('pagination-controls');
+        const nextBtn = document.getElementById('next-button');
+        const prevBtn = document.getElementById('prev-button');
+
+        controls.querySelectorAll('.page-num').forEach(n => n.remove());
+
+        const createBtn = (i) => {
+            const btn = document.createElement('button');
+            btn.className = `page-num px-3 py-1 text-sm border cursor-pointer rounded-lg transition-all ${i === window.currentPage ? 'bg-[#222831] text-white border-[#222831]' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`;
+            btn.textContent = i;
+            btn.onclick = () => window.changePage(i);
+            controls.insertBefore(btn, nextBtn);
+        };
+
+        const createEllipsis = () => {
+            const span = document.createElement('span');
+            span.className = 'page-num px-2 text-gray-400';
+            span.textContent = '...';
+            controls.insertBefore(span, nextBtn);
+        };
+
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) createBtn(i);
+        } else {
+            createBtn(1);
+            if (window.currentPage > 3) createEllipsis();
+            
+            let start = Math.max(2, window.currentPage - 1);
+            let end = Math.min(totalPages - 1, window.currentPage + 1);
+            for (let i = start; i <= end; i++) createBtn(i);
+            
+            if (window.currentPage < totalPages - 2) createEllipsis();
+            createBtn(totalPages);
+        }
+
+        prevBtn.disabled = window.currentPage === 1;
+        nextBtn.disabled = window.currentPage === totalPages || totalPages === 0;
+    }
+
+    displayList(window.currentPage);
+});
+</script>
 {% endblock %}
