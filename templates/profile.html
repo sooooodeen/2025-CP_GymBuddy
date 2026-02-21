@@ -16,94 +16,95 @@
         </div>
     </div>
 
-    <div class="p-8 border grid grid-cols-[200px_1fr_15%] gap-6 items-center w-[70%] font-Helvetica border-gray-300 bg-white rounded-3xl">
+    <div class="p-8 border grid grid-cols-[200px_1fr_15%] gap-6 items-center w-[70%] font-Helvetica border-gray-300 bg-white rounded-3xl shadow-sm">
         <div class="flex justify-center">
-            <img class="h-[180px] w-[180px] self-center object-cover rounded-full" 
-                 src="{{ url_for('static', filename=session.get('user_photo_url', 'src/images/Default_pfp.jpg')) }}" 
+            <img class="h-[180px] w-[180px] self-center object-cover rounded-full border-4 border-gray-50" 
+                 src="{{ url_for('static', filename=user.photo_url or 'src/images/Default_pfp.jpg') }}" 
                  alt="Profile Picture">
         </div>
         <div class="flex justify-center flex-col">
-            <h1 class="text-2xl font-semibold">{{ session.get('user_firstname')|title }} {{ session.get('user_lastname')|title }}</h1>
-            <h1 class="text-xl">{{ session.get('user_gym_name') }}</h1>
-            <h1 class="text-xl text-[#F05454]">{{ session.get('user_role')|title }}</h1>
+            <h1 class="text-2xl font-semibold">{{ user.firstname|title }} {{ user.lastname|title }}</h1>
+            <h1 class="text-xl text-gray-600">{{ session.get('user_gym_name') }}</h1>
+            <h1 class="text-xl text-[#F05454] font-medium">{{ user.role|title }}</h1>
         </div>
-        <button id="editProfileBtn" class="flex cursor-pointer justify-center gap-1 w-[90%] bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-3 py-2 rounded-lg items-center text-white font-Helvetica">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white" stroke="" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil-icon lucide-pencil"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path stroke="#F05454" d="m15 5 4 4"/></svg>
+        <button id="editProfileBtn" class="flex cursor-pointer justify-center gap-2 bg-[#F05454] hover:bg-[#f77777] transition px-4 py-2 rounded-xl items-center text-white font-Helvetica shadow-md">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
             Edit Profile
         </button>
     </div>
 
     <form method="POST" action="{{ url_for('profile') }}" id="profileForm" class="w-full flex flex-col items-center gap-6" enctype="multipart/form-data">
-
-        <div class="p-8 w-[70%] flex flex-col gap-x-4 gap-y-1 border border-gray-300 bg-white rounded-3xl">
+        
+        <div class="p-8 w-[70%] flex flex-col gap-x-4 gap-y-1 border border-gray-300 bg-white rounded-3xl shadow-sm">
             <h1 class="text-2xl font-semibold col-span-2 mb-3">Profile Picture</h1>
-            <div class="flex justify-center mb-2">
-                <img id="uploadPfpPreview" class="h-[180px] w-[180px] self-center object-cover rounded-full" 
-                     src="{{ url_for('static', filename=session.get('user_photo_url', 'src/images/Default_pfp.jpg')) }}" 
-                     alt="Profile Picture">
+            <div class="flex justify-center mb-4">
+                <img id="uploadPfpPreview" class="h-[180px] w-[180px] self-center object-cover rounded-full border-2 border-dashed border-gray-200 p-1" 
+                     src="{{ url_for('static', filename=user.photo_url or 'src/images/Default_pfp.jpg') }}" 
+                     alt="Profile Picture Preview">
             </div>
             
             <div id="uploadContainer" class="flex w-full justify-center hidden"> 
                 <input type="file" id="upload-img-input" name="photo" class="hidden" accept="image/*">
-                <label for="upload-img-input" class="flex cursor-pointer justify-center gap-1 w-[20%] bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-3 py-2 rounded-lg items-center text-white font-Helvetica">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-cloud-upload-icon lucide-cloud-upload"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/></svg> Upload photo
+                <label for="upload-img-input" class="flex cursor-pointer justify-center gap-2 bg-[#F05454] hover:bg-[#f77777] transition px-6 py-2 rounded-xl items-center text-white font-Helvetica shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/></svg> 
+                    Upload photo
                 </label>
             </div>
         </div>
         
-        <div class="p-8 w-[70%] grid grid-auto-rows-min grid-cols-2 gap-x-4 gap-y-1 border border-gray-300 bg-white rounded-3xl" id="personalDetailsSection">
-            <h1 class="text-2xl font-semibold col-span-2 mb-3">Personal Details</h1>
+        <div class="p-8 w-[70%] grid grid-cols-2 gap-x-6 gap-y-4 border border-gray-300 bg-white rounded-3xl shadow-sm" id="personalDetailsSection">
+            <h1 class="text-2xl font-semibold col-span-2 mb-2">Personal Details</h1>
             
-            <div>
-                <label for="firstNameInput">First Name</label>
-                <div id="firstNameDisplay" class="px-4 py-2 border border-gray-300 rounded-lg w-full">
-                    <h1 class="text-xl">{{ session.get('user_firstname')|title }}</h1>
+            <div class="flex flex-col gap-1">
+                <label class="text-sm font-bold text-gray-500 ml-1">First Name</label>
+                <div id="firstNameDisplay" class="px-4 py-2 border border-gray-100 bg-gray-50 rounded-xl w-full">
+                    <h1 class="text-lg">{{ user.firstname|title }}</h1>
                 </div>
-                <input type="text" id="firstNameInput" name="firstname" value="{{ session.get('user_firstname')|title }}" class="px-4 text-xl py-2 border border-gray-300 rounded-lg w-full hidden">
+                <input type="text" id="firstNameInput" name="firstname" value="{{ user.firstname|title }}" class="px-4 text-lg py-2 border border-gray-300 rounded-xl w-full focus:ring-2 focus:ring-[#F05454] outline-none hidden">
             </div>
 
-            <div>
-                <label for="lastNameInput">Last Name</label>
-                <div id="lastNameDisplay" class="px-4 py-2 border border-gray-300 rounded-lg w-full">
-                    <h1 class="text-xl">{{ session.get('user_lastname')|title }}</h1>
+            <div class="flex flex-col gap-1">
+                <label class="text-sm font-bold text-gray-500 ml-1">Last Name</label>
+                <div id="lastNameDisplay" class="px-4 py-2 border border-gray-100 bg-gray-50 rounded-xl w-full">
+                    <h1 class="text-lg">{{ user.lastname|title }}</h1>
                 </div>
-                <input type="text" id="lastNameInput" name="lastname" value="{{ session.get('user_lastname')|title }}" class="px-4 text-xl py-2 border border-gray-300 rounded-lg w-full hidden">
+                <input type="text" id="lastNameInput" name="lastname" value="{{ user.lastname|title }}" class="px-4 text-lg py-2 border border-gray-300 rounded-xl w-full focus:ring-2 focus:ring-[#F05454] outline-none hidden">
             </div>
 
-            <div>
-                <label for="emailInput">Email</label>
-                <div id="emailDisplay" class="px-4 py-2 border border-gray-300 rounded-lg w-full">
-                    <h1 class="text-xl">{{ session.get('user_email')|capitalize }}</h1>
+            <div class="flex flex-col gap-1">
+                <label class="text-sm font-bold text-gray-500 ml-1">Email Address</label>
+                <div id="emailDisplay" class="px-4 py-2 border border-gray-100 bg-gray-50 rounded-xl w-full">
+                    <h1 class="text-lg">{{ user.email }}</h1>
                 </div>
-                <input type="email" id="emailInput" name="email" value="{{ session.get('user_email') }}" class="px-4 text-xl py-2 border border-gray-300 rounded-lg w-full hidden">
+                <input type="email" id="emailInput" name="email" value="{{ user.email }}" class="px-4 text-lg py-2 border border-gray-300 rounded-xl w-full focus:ring-2 focus:ring-[#F05454] outline-none hidden">
             </div>
             
-            <div>
-                <label for="phoneInput">Phone Number</label>
-                <div id="phoneDisplay" class="px-4 py-2 border border-gray-300 rounded-lg w-full">
-                    <h1 class="text-xl ">{{ session.get('user_phone_num')|default('N/A')|title }}</h1>
+            <div class="flex flex-col gap-1">
+                <label class="text-sm font-bold text-gray-500 ml-1">Phone Number</label>
+                <div id="phoneDisplay" class="px-4 py-2 border border-gray-100 bg-gray-50 rounded-xl w-full">
+                    <h1 class="text-lg">{{ user.phone_num|default('Not Set')|title }}</h1>
                 </div>
-                <input type="tel" id="phoneInput" name="phone_num" value="{{ session.get('user_phone_num') }}" class="px-4 text-xl py-2 border border-gray-300 rounded-lg w-full hidden">
+                <input type="tel" id="phoneInput" name="phone_num" value="{{ user.phone_num }}" class="px-4 text-lg py-2 border border-gray-300 rounded-xl w-full focus:ring-2 focus:ring-[#F05454] outline-none hidden">
             </div>
             
-            <div>
-                <label for="genderInput">Gender</label>
-                <div id="genderDisplay" class="px-4 py-2 border border-gray-300 rounded-lg w-full">
-                    <h1 class="text-xl ">{{ session.get('user_gender')|default('N/A')|title }}</h1>
+            <div class="flex flex-col gap-1">
+                <label class="text-sm font-bold text-gray-500 ml-1">Gender</label>
+                <div id="genderDisplay" class="px-4 py-2 border border-gray-100 bg-gray-50 rounded-xl w-full">
+                    <h1 class="text-lg">{{ user.gender|default('Not Set')|title }}</h1>
                 </div>
-                <select id="genderInput" name="gender" class="px-4 text-xl py-2 border border-gray-300 rounded-lg w-full hidden">
-                    <option value="male" {% if session.get('user_gender') == 'male' %}selected{% endif %}>Male</option>
-                    <option value="female" {% if session.get('user_gender') == 'female' %}selected{% endif %}>Female</option>
-                    <option value="other" {% if session.get('user_gender') == 'other' %}selected{% endif %}>Other</option>
+                <select id="genderInput" name="gender" class="px-4 text-lg py-2 border border-gray-300 rounded-xl w-full focus:ring-2 focus:ring-[#F05454] outline-none hidden">
+                    <option value="male" {% if user.gender == 'male' %}selected{% endif %}>Male</option>
+                    <option value="female" {% if user.gender == 'female' %}selected{% endif %}>Female</option>
+                    <option value="other" {% if user.gender == 'other' %}selected{% endif %}>Other</option>
                 </select>
             </div>
         </div>
         
-        <div id="buttons" class="col-span-2 flex w-[70%] justify-end gap-2 hidden">
-            <button id="cancelBtn" type="button" class="flex cursor-pointer justify-center gap-1 bg-gray-400 hover:bg-gray-500 transition delay-75 ease-in px-3 py-2 rounded-lg items-center text-white font-Helvetica">
+        <div id="buttons" class="col-span-2 flex w-[70%] justify-end gap-3 hidden">
+            <button id="cancelBtn" type="button" class="px-6 py-2 bg-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-300 transition shadow-sm">
                 Cancel
             </button>
-            <button id="saveChangesBtn" type="submit" class="flex cursor-pointer justify-center gap-1 bg-[#F05454] hover:bg-[#f77777] transition delay-75 ease-in px-3 py-2 rounded-lg items-center text-white font-Helvetica">
+            <button id="saveChangesBtn" type="submit" class="px-6 py-2 bg-[#F05454] text-white font-bold rounded-xl hover:bg-[#d94444] transition shadow-md">
                 Save Changes
             </button>
         </div>
@@ -113,86 +114,52 @@
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const editBtn = document.getElementById('editProfileBtn');
-        const saveBtn = document.getElementById('saveChangesBtn');
-        const cancelBtn = document.getElementById('cancelBtn');
         const buttons = document.getElementById('buttons');
-        const profileForm = document.getElementById('profileForm');
-        const personalDetailsSection = document.getElementById('personalDetailsSection');
-        
-        // Photo Upload Elements
-        const uploadContainer = document.getElementById('uploadContainer'); // The whole upload button/label container
-        const uploadImgInput = document.getElementById('upload-img-input'); // The file input
-        const uploadPfpPreview = document.getElementById('uploadPfpPreview'); // The image tag for preview
-        const originalPfpUrl = uploadPfpPreview.src; // Store the current URL for the Cancel button
-        
-        // Corrected Element References (Personal Details)
-        const firstNameDisplay = document.getElementById('firstNameDisplay');
-        const lastNameDisplay = document.getElementById('lastNameDisplay');
-        const emailDisplay = document.getElementById('emailDisplay');
-        const phoneDisplay = document.getElementById('phoneDisplay');
-        const genderDisplay = document.getElementById('genderDisplay');
-        const firstNameInput = document.getElementById('firstNameInput');
-        const lastNameInput = document.getElementById('lastNameInput');
-        const emailInput = document.getElementById('emailInput');
-        const phoneInput = document.getElementById('phoneInput');
-        const genderInput = document.getElementById('genderInput');
+        const uploadContainer = document.getElementById('uploadContainer');
+        const uploadImgInput = document.getElementById('upload-img-input');
+        const uploadPfpPreview = document.getElementById('uploadPfpPreview');
+        const originalPfpUrl = uploadPfpPreview.src;
 
-        // Initial values tracking
-        const initialValues = {
-            firstName: firstNameInput.value,
-            lastName: lastNameInput.value,
-            email: emailInput.value,
-            phone: phoneInput.value,
-            gender: genderInput.value,
-        };
+        // Display/Input Groups
+        const displayEls = [
+            document.getElementById('firstNameDisplay'), document.getElementById('lastNameDisplay'),
+            document.getElementById('emailDisplay'), document.getElementById('phoneDisplay'),
+            document.getElementById('genderDisplay')
+        ];
+        const inputEls = [
+            document.getElementById('firstNameInput'), document.getElementById('lastNameInput'),
+            document.getElementById('emailInput'), document.getElementById('phoneInput'),
+            document.getElementById('genderInput')
+        ];
+
+        // Store initial values for cancel action
+        const initialValues = inputEls.map(el => el.value);
 
         function toggleEditMode(isEditing) {
-            const displayElements = [firstNameDisplay, lastNameDisplay, emailDisplay, phoneDisplay, genderDisplay];
-            const inputElements = [firstNameInput, lastNameInput, emailInput, phoneInput, genderInput];
-
-            if (isEditing) {
-                displayElements.forEach(el => el.classList.add('hidden'));
-                inputElements.forEach(el => el.classList.remove('hidden'));
-                buttons.classList.remove('hidden');
-                editBtn.classList.add('hidden');
-                uploadContainer.classList.remove('hidden'); // SHOW upload button
-            } else {
-                displayElements.forEach(el => el.classList.remove('hidden'));
-                inputElements.forEach(el => el.classList.add('hidden'));
-                editBtn.classList.remove('hidden');
-                buttons.classList.add('hidden');
-                uploadContainer.classList.add('hidden'); // HIDE upload button
-            }
+            displayEls.forEach(el => el.classList.toggle('hidden', isEditing));
+            inputEls.forEach(el => el.classList.toggle('hidden', !isEditing));
+            buttons.classList.toggle('hidden', !isEditing);
+            editBtn.classList.toggle('hidden', isEditing);
+            uploadContainer.classList.toggle('hidden', !isEditing);
         }
 
         editBtn.addEventListener('click', () => {
-            personalDetailsSection.scrollIntoView({ behavior: 'smooth' });
             toggleEditMode(true);
+            document.getElementById('personalDetailsSection').scrollIntoView({ behavior: 'smooth' });
         });
 
-        cancelBtn.addEventListener('click', () => {
-            // Revert personal detail inputs
-            firstNameInput.value = initialValues.firstName;
-            lastNameInput.value = initialValues.lastName;
-            emailInput.value = initialValues.email;
-            phoneInput.value = initialValues.phone;
-            genderInput.value = initialValues.gender;
-            
-            // Revert photo preview and clear file input
-            uploadPfpPreview.src = originalPfpUrl; 
+        document.getElementById('cancelBtn').addEventListener('click', () => {
+            inputEls.forEach((el, i) => el.value = initialValues[i]);
+            uploadPfpPreview.src = originalPfpUrl;
             uploadImgInput.value = "";
-            
             toggleEditMode(false);
         });
 
-        // NEW: Photo Preview Logic
-        uploadImgInput.addEventListener('change', function(event) {
-            const file = event.target.files[0];
+        uploadImgInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = function(e) {
-                    uploadPfpPreview.src = e.target.result; // Update the image source for preview
-                };
+                reader.onload = (event) => uploadPfpPreview.src = event.target.result;
                 reader.readAsDataURL(file);
             }
         });

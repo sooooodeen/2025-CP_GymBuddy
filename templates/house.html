@@ -5,10 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='src/images/favicon.ico') }}">
-</head>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         a:is(:link, :active, :visited).active{
             background-color: #D9D9D9;
@@ -18,6 +16,7 @@
             stroke: #2D2C2C;
         }
     </style>
+</head>
 <body>
     <div class="flex h-[100dvh]">
         <nav class="bg-[#222831] w-[240px] flex-shrink-0 p-4 flex flex-col justify-between">
@@ -33,7 +32,7 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
                         <h1>Trainers</h1>
                     </a>
-                    {% else %}
+                {% else %}
                     <h2 class="self-center text-[34px] text-white font-bold font-Helvetica italic -tracking-[4px]">GYM BUDDY</h2>
                     <a href="{{ url_for('dashboard') }}" class="flex tracking-wide text-lg items-center gap-3 p-2 rounded-lg text-white hover:bg-[#343a44] transition delay-50 duration-150 ease-in-out">
                         <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
@@ -63,11 +62,16 @@
 
             <div class="grid grid-cols-[1fr_15%] h-[10%] items-center gap-2">
                 <a href="{{ url_for('profile') }}" class="flex gap-2 items-center py-2 px-3 rounded-2xl !bg-transparent hover:!bg-[#343a44] transition delay-50 duration-150 ease-in-out">
-                    <img class="h-[40px] w-[40px] object-cover rounded-4xl" src="{{ url_for('static', filename=session.get('user_photo_url', 'src/images/Default_pfp.jpg')) }}" alt="User Profile Photo">
-                    <h1 class="text-white font-Helvetica text-sm !bg-none">{{ session.get('user_firstname', '')|title }} {{ session.get('user_lastname', '')|title }}</h1>
+                    <img class="h-[40px] w-[40px] object-cover rounded-full" 
+                         src="{{ url_for('static', filename=session.get('user_photo_url') or 'src/images/Default_pfp.jpg') }}" 
+                         alt="User Profile Photo">
+                    
+                    <h1 class="text-white font-Helvetica text-sm !bg-none" id="sidebar-username">
+                        {{ session.get('user_firstname', '')|title }} {{ session.get('user_lastname', '')|title }}
+                    </h1>
                 </a>
                 <div>
-                    <a href="{{ url_for('logout') }}" class="Logout " id="logout-link" title="Logout">
+                    <a href="{{ url_for('logout') }}" class="Logout" id="logout-link" title="Logout">
                         <svg class="hover:!stroke-amber-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>
                     </a>
                 </div>
@@ -79,29 +83,36 @@
     </div>
 </body>
 <script>
-    const activePage = window.location.pathname;
-    const navLinks = document.querySelectorAll('nav a');
-    navLinks.forEach(link => {
-        if (link.pathname === activePage) {
-            link.classList.add('active');
-        }
-    });
-
-    document.getElementById('logout-link').addEventListener('click', function(event) {
-        event.preventDefault(); 
-        Swal.fire({
-            title: 'Are you sure?',
-            text: "You will be logged out of your account.",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#3085d6',
-            cancelButtonColor: '#d33',
-            confirmButtonText: 'Logout'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                window.location.href = "{{ url_for('logout') }}";
+    document.addEventListener('DOMContentLoaded', () => {
+        // Active page link highlighting (Keep this)
+        const activePage = window.location.pathname;
+        const navLinks = document.querySelectorAll('nav a');
+        navLinks.forEach(link => {
+            if (link.pathname === activePage) {
+                link.classList.add('active');
             }
         });
+
+        // Logout Confirmation (Keep this)
+        const logoutLink = document.getElementById('logout-link');
+        if (logoutLink) {
+            logoutLink.addEventListener('click', function(event) {
+                event.preventDefault(); 
+                Swal.fire({
+                    title: 'Are you sure?',
+                    text: "You will be logged out of your account.",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Logout'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.href = "{{ url_for('logout') }}";
+                    }
+                });
+            });
+        }
     });
 </script>
 </html>
