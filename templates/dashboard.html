@@ -16,32 +16,25 @@
     <div class="flex w-full h-full gap-4">
         <div class="flex flex-col justify-between h-full gap-4">
             <!-- Error Rate Comparison here -->
-            <div class="border border-gray-300 bg-white h-full w-110 rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
+            <div class="border border-gray-300 bg-white h-full w-110 rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2 shadow-sm">
                 <h1 class="text-xl font-bold font-Helvetica mb-2">Recent Error Log</h1>
-                <div class="flex flex-col overflow-y-auto gap-2 h-[100%]">
-                    
+                
+                <div id="recent-log-container" class="flex flex-col overflow-y-auto gap-2 h-[720px] pr-2 custom-scrollbar">
                     {% for log, user in recent_errors %}
-                        <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center justify-center">
-                            <div class="justify-self-start">
-                                <p class="text-md font-bold text-[#F16767] uppercase">
-                                    {{ log.exercise_name.replace('uprightRow', 'Upright Row')
-                                    .replace('bicepCurl', 'Bicep Curl')
-                                    .replace('lateralRaise', 'Lateral Raise')
-                                    .replace('bentOverRow', 'Bent Over Row')
-                                    .replace('shoulderPress', 'Shoulder Press') }}
-                                </p>
-                                <p class="text-gray-500 text-xs font-light">
-                                    {{ log.error_type.replace('ERROR: ', '') }}
-                                </p>
-                            </div>
-                            <span class="text-sm text-gray-500 time-ago" data-timestamp="{{ log.timestamp.isoformat() }}"></span>
+                    <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] place-items-center">
+                        <div class="justify-self-start leading-tight">
+                            <p class="text-md font-bold text-[#F16767] uppercase">
+                                {{ log.exercise_name }}
+                            </p>
+                            <p class="text-gray-500 text-sm font-normal">
+                                {{ log.error_type.replace('ERROR: ', '') }} 
+                            </p>
                         </div>
+                        <span class="text-xs text-gray-400 time-ago" data-timestamp="{{ log.timestamp.isoformat() }}"></span>
+                    </div>
                     {% else %}
-                        <div class="text-center text-gray-500 p-4 h-full flex items-center justify-center">
-                            No errors recorded yet.
-                        </div>
+                    <div id="no-errors-msg" class="text-center text-gray-500 p-4 h-full flex items-center justify-center">No errors recorded yet.</div>
                     {% endfor %}
-
                 </div>
             </div>
 
@@ -83,10 +76,9 @@
                 </div>
                 <h1 class="text-3xl h-full w-full flex justify-center items-center font-bold">{{ total_errors_month }}</h1>
             </div>
-            <div class="border border-gray-300 bg-white h-full w-full rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2">
+            <div class="border border-gray-300 bg-white h-full w-full rounded-2xl p-4 px-5 pb-6 flex flex-col gap-2 shadow-sm">
                 <h1 class="text-xl font-bold font-Helvetica mb-2">Recent Sessions Today</h1>
-                <div class="flex flex-col overflow-y-auto gap-2 max-h-[50vh]">
-                    
+                <div class="flex flex-col overflow-y-auto gap-2 max-h-[51vh] pr-2 custom-scrollbar">
                     {% for session in sessions_today %}
                         <div class="border border-[#e2dbdb] w-full rounded-2xl items-center p-3 grid grid-cols-[1fr_auto] hover:bg-gray-50 transition-colors">
                             <div class="justify-self-start grid grid-cols-[10%_1fr] w-full gap-4 items-center">

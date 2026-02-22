@@ -551,6 +551,14 @@ def dashboard():
         'squat': 'legs',
         'gobletSquat': 'legs'
     }
+
+    recent_errors = db.session.query(ErrorLog, User)\
+        .join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id)\
+        .join(User, WorkoutSession.user_id == User.id)\
+        .filter(WorkoutSession.user_id == session['user_id'])\
+        .order_by(ErrorLog.timestamp.desc())\
+        .limit(20)\
+        .all()
     
     for ex, count in errors_month:
         if mapping.get(ex) in current_month_chart_data:
@@ -740,14 +748,25 @@ def delete_user_account():
 @app.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
-    
     gym_id = session['user_gym_id']
-    today = datetime.utcnow().date()
-    start_of_current_month = today.replace(day=1)
+    # Define "Today" in local time (GMT+8) to prevent late-night sessions from disappearing
+    today_local = (datetime.utcnow() + timedelta(hours=8)).date()
+    today_utc = datetime.utcnow().date()
+    
+    start_of_current_month = today_utc.replace(day=1)
     start_of_last_month = start_of_current_month - relativedelta(months=1)
     
-    errors_current = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_current_month).scalar() or 0
-    errors_last = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_last_month, ErrorLog.timestamp < start_of_current_month).scalar() or 0
+    # --- ERROR RATE CALCULATION ---
+    errors_current = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(
+        WorkoutSession.gym_id == gym_id, 
+        ErrorLog.timestamp >= start_of_current_month
+    ).scalar() or 0
+    
+    errors_last = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(
+        WorkoutSession.gym_id == gym_id, 
+        ErrorLog.timestamp >= start_of_last_month, 
+        ErrorLog.timestamp < start_of_current_month
+    ).scalar() or 0
 
     error_rate_change = 0
     error_rate_color = "gray"
@@ -763,37 +782,92 @@ def admin_dashboard():
         error_rate_status = "More Error"
         error_rate_change = 100 
 
-    start_of_week = today - timedelta(days=today.weekday())
+    # --- RECENT SESSIONS TODAY (ALL TRAINERS) ---
+    # We filter by gym_id and use GMT+8 offset for the date check
+    sessions_today_query = WorkoutSession.query.filter(
+        WorkoutSession.gym_id == gym_id,
+        func.date(func.datetime(WorkoutSession.start_time, '+8 hours')) == today_local
+    ).order_by(WorkoutSession.start_time.desc()).all()
+
+    recent_sessions_today = []
+    for s in sessions_today_query:
+        # Calculate duration or label as Active
+        duration_str = "Active"
+        if s.end_time:
+            diff = s.end_time - s.start_time
+            duration_str = f"{int(diff.total_seconds() // 60)}m"
+
+        recent_sessions_today.append({
+            'user': s.user,
+            'start_time': s.start_time,
+            'duration_formatted': duration_str,
+            'total_reps': s.total_reps or 0
+        })
+
+    # --- STATS & LOGS ---
+    start_of_week = today_utc - timedelta(days=today_utc.weekday())
     current_assignment = db.session.query(Assignment).join(User).filter(User.gym_id == gym_id).first()
     
     last_24_hours = datetime.utcnow() - timedelta(hours=24)
-    total_errors_today = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= last_24_hours).scalar() or 0
+    total_errors_today = db.session.query(func.count(ErrorLog.id)).join(WorkoutSession).filter(
+        WorkoutSession.gym_id == gym_id, 
+        ErrorLog.timestamp >= last_24_hours
+    ).scalar() or 0
     
-    most_common = db.session.query(ErrorLog.error_type, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_week).group_by(ErrorLog.error_type).order_by(func.count(ErrorLog.id).desc()).first()
-    most_common_error_week = most_common[0].replace('ERROR: ', '') if most_common else "N/A"
-    
-    recent_errors = db.session.query(ErrorLog, User).join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id).join(User, WorkoutSession.user_id == User.id).filter(WorkoutSession.gym_id == gym_id).order_by(ErrorLog.timestamp.desc()).limit(20).all()
-    initial_critical_errors = db.session.query(ErrorLog, User).join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id).join(User, WorkoutSession.user_id == User.id).filter(WorkoutSession.gym_id == gym_id).filter(ErrorLog.error_type.contains("Repeated Error")).order_by(ErrorLog.timestamp.desc()).limit(5).all()
+    # Highest Error Frequency: Finding the most common WORKOUT name instead of error type
+    most_common_q = db.session.query(
+        ErrorLog.exercise_name, 
+        func.count(ErrorLog.id).label('count')
+    ).join(WorkoutSession).filter(
+        WorkoutSession.gym_id == gym_id, 
+        ErrorLog.timestamp >= start_of_week
+    ).group_by(ErrorLog.exercise_name).order_by(func.count(ErrorLog.id).desc()).first()
 
+    # Mapping CamelCase to readable names
+    name_map = {
+        'uprightRow': 'Upright Row', 'bicepCurl': 'Bicep Curl', 
+        'lateralRaise': 'Lateral Raise', 'bentOverRow': 'Bent Over Row', 
+        'shoulderPress': 'Shoulder Press'
+    }
+    most_common_workout_error_week = name_map.get(most_common_q[0], most_common_q[0]) if most_common_q else "N/A"
+    
+    recent_errors = db.session.query(ErrorLog, User).join(
+        WorkoutSession, ErrorLog.session_id == WorkoutSession.id
+    ).join(User, WorkoutSession.user_id == User.id).filter(
+        WorkoutSession.gym_id == gym_id
+    ).order_by(ErrorLog.timestamp.desc()).limit(20).all()
+
+    # --- CHART DATA ---
     current_month_chart_data = {'chest': 0, 'back': 0, 'legs': 0, 'arms': 0}
-    errors_this_month = db.session.query(ErrorLog.exercise_name, func.count(ErrorLog.id).label('count')).join(WorkoutSession).filter(WorkoutSession.gym_id == gym_id, ErrorLog.timestamp >= start_of_current_month).group_by(ErrorLog.exercise_name).all()
+    errors_this_month = db.session.query(
+        ErrorLog.exercise_name, 
+        func.count(ErrorLog.id).label('count')
+    ).join(WorkoutSession).filter(
+        WorkoutSession.gym_id == gym_id, 
+        ErrorLog.timestamp >= start_of_current_month
+    ).group_by(ErrorLog.exercise_name).all()
     
     mapping = {
-        'bicepCurl': 'arms', 
-        'lateralRaise': 'arms', 
-        'shoulderPress': 'arms', 
-        'dumbbellReverseFly': 'back', 
-        'bentOverRow': 'back',
-        'romanianDeadlift': 'legs',
-        'squat': 'legs',
-        'gobletSquat': 'legs'
+        'bicepCurl': 'arms', 'lateralRaise': 'arms', 'shoulderPress': 'arms', 
+        'dumbbellReverseFly': 'back', 'bentOverRow': 'back',
+        'romanianDeadlift': 'legs', 'squat': 'legs', 'gobletSquat': 'legs'
     }
     
     for ex, count in errors_this_month:
         if mapping.get(ex) in current_month_chart_data:
             current_month_chart_data[mapping.get(ex)] += count
 
-    return render_template("admin_dashboard.html", assignment=current_assignment, total_errors_today=total_errors_today, most_common_error_week=most_common_error_week, total_errors_month=errors_current, recent_errors=recent_errors, current_month_chart_data=current_month_chart_data, error_rate_change=error_rate_change, error_rate_color=error_rate_color, error_rate_status=error_rate_status, critical_errors=initial_critical_errors)
+    return render_template("admin_dashboard.html", 
+                           assignment=current_assignment, 
+                           total_errors_today=total_errors_today, 
+                           most_common_workout_error_week=most_common_workout_error_week, 
+                           total_errors_month=errors_current, 
+                           recent_errors=recent_errors, 
+                           recent_sessions_today=recent_sessions_today,
+                           current_month_chart_data=current_month_chart_data, 
+                           error_rate_change=error_rate_change, 
+                           error_rate_color=error_rate_color, 
+                           error_rate_status=error_rate_status)
 
 @app.route("/admin/analytics/<int:user_id>")
 @admin_required
@@ -937,47 +1011,38 @@ def to_gmt8(utc_dt):
 @app.route("/admin/session_log/<int:user_id>")
 @admin_required
 def trainer_session_log(user_id):
-    # 1. Terminal Debugging
-    print(f"\n--- DATABASE DEBUG START ---")
-    print(f"Target User ID: {user_id}")
-    
+    gym_id = session['user_gym_id']
     trainer = db.session.get(User, user_id)
     
-    # 2. Try to find ANY session for this user, regardless of gym or completion
-    sessions_query = WorkoutSession.query.filter_by(user_id=user_id).all()
-    
-    print(f"Found {len(sessions_query)} sessions for this specific ID.")
-    
-    if len(sessions_query) == 0:
-        # Check if sessions exist for OTHER users just to verify the table isn't empty
-        total_sessions = WorkoutSession.query.count()
-        print(f"Total sessions in entire database: {total_sessions}")
+    # Fetch sessions for this trainer
+    sessions = WorkoutSession.query.filter_by(user_id=user_id, gym_id=gym_id)\
+                                   .order_by(WorkoutSession.start_time.desc()).all()
     
     sessions_list = []
-    for s in sessions_query:
-        # Fallback for start/end times if they are corrupted
-        try:
-            start_str = to_gmt8(s.start_time).strftime('%I:%M %p') if s.start_time else "N/A"
-            end_str = to_gmt8(s.end_time).strftime('%I:%M %p') if s.end_time else "Active"
+    for s in sessions:
+        # --- UNIFIED FORMATTING LOGIC ---
+        duration_str = "In Progress"
+        end_time_str = "Active"
+        
+        if s.end_time:
+            # Use the same to_gmt8 function we defined earlier
+            end_time_str = to_gmt8(s.end_time).strftime('%I:%M %p')
             
-            # Simple duration calc to prevent crashes
-            dur = "In Progress"
-            if s.end_time and s.start_time:
-                diff = s.end_time - s.start_time
-                dur = f"{int(diff.total_seconds() // 60)} mins"
+            # Calculate Duration correctly
+            duration_delta = s.end_time - s.start_time
+            hours = int(duration_delta.total_seconds() // 3600)
+            minutes = int((duration_delta.total_seconds() % 3600) // 60)
+            duration_str = f"{hours}h {minutes}m"
 
-            sessions_list.append({
-                'date': s.start_time.strftime('%b %d, %Y') if s.start_time else "N/A",
-                'start_time': start_str,
-                'end_time': end_str,
-                'duration': dur,
-                'total_reps': s.total_reps or 0,
-                'detail_url': url_for('trainer_session_detail', session_id=s.id)
-            })
-        except Exception as e:
-            print(f"Row skip error: {e}")
-
-    print(f"--- DATABASE DEBUG END ---\n")
+        sessions_list.append({
+            'id': s.id,
+            'date': s.start_time.strftime('%b %d, %Y'),
+            'start_time': to_gmt8(s.start_time).strftime('%I:%M %p'), # Convert to GMT+8
+            'end_time': end_time_str,
+            'duration': duration_str,
+            'total_reps': s.total_reps or 0,
+            'detail_url': url_for('trainer_session_detail', session_id=s.id)
+        })
     
     return render_template("trainer_session_log.html", 
                            trainer=trainer, 
