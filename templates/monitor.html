@@ -187,7 +187,6 @@
         elements.exercise.innerText = (primaryPerson.stable_prediction || "Neutral").replace(/([A-Z])/g, ' $1').trim();
         elements.reps.innerText = primaryPerson.rep_counter; elements.feedback.innerText = primaryPerson.form_status;
         
-        // Updated Status Color Logic
         if (primaryPerson.form_status.includes("ERROR")) elements.feedback.className = "text-xl font-medium text-red-400 mt-2";
         else if (primaryPerson.form_status.includes("WARNING")) elements.feedback.className = "text-xl font-medium text-yellow-400 mt-2";
         else elements.feedback.className = "text-xl font-medium text-green-400 mt-2";
@@ -210,8 +209,46 @@
         const elements = elementMap[data.camera_id]; if (elements) updateUi(data, elements);
     });
 
-    socket.on('form_error', function(data) { if (!speechSynthesis.speaking) speechSynthesis.speak(new SpeechSynthesisUtterance(data.message)); });
-    socket.on('trainer_alert', function(data) { Swal.fire({ title: `TRAINER ALERT (${data.camera_id})`, text: data.message, icon: 'error', toast: true, position: 'bottom-end', showConfirmButton: false, timer: 5000, timerProgressBar: true, showCloseButton: true }); });
-</script>
+    // INSTANT ERROR POPUP TRIGGER
+    socket.on('form_error', function(data) { 
+        if (!speechSynthesis.speaking) {
+            speechSynthesis.speak(new SpeechSynthesisUtterance(data.message)); 
+        }
+
+        Swal.fire({ 
+            title: `FORM ERROR (${data.camera_id.toUpperCase()})`, 
+            text: data.message, 
+            icon: 'warning', 
+            toast: true, 
+            position: 'bottom-end', 
+            showConfirmButton: false, 
+            timer: 10000, 
+            timerProgressBar: true, 
+            showCloseButton: true,
+            background: '#F05454', 
+            color: '#ffffff',       
+            iconColor: '#ffffff',  
+            customClass: {
+                popup: 'colored-toast'
+            }
+        }); 
+    });
+
+    socket.on('trainer_alert', function(data) { 
+        Swal.fire({ 
+            title: `CRITICAL ALERT (${data.camera_id.toUpperCase()})`, 
+            text: data.message, 
+            icon: 'error', 
+            toast: true, 
+            position: 'bottom-end', 
+            showConfirmButton: false, 
+            timer: 10000, 
+            timerProgressBar: true, 
+            showCloseButton: true,
+            background: '#b91c1c', 
+            color: '#ffffff',
+            iconColor: '#ffffff'
+        }); 
+    });</script>
 </div>
 {% endblock %}
