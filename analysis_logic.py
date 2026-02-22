@@ -210,6 +210,14 @@ class ExerciseAnalyzer:
         if scaler:
             try: features = scaler.transform(features.reshape(1, -1)).flatten()
             except: pass
+
+            if len(self.angle_sequence_buffer) == 0:
+                # If this is the first frame, copy it 90 times to fill the buffer instantly
+                for _ in range(self.expected_seq_len):
+                    self.angle_sequence_buffer.append(features)
+            else:
+                # Otherwise, just add the new frame normally
+                self.angle_sequence_buffer.append(features)
         self.angle_sequence_buffer.append(features)
 
         if len(self.angle_sequence_buffer) == self.expected_seq_len and self.frame_count % self.PREDICTION_INTERVAL == 0:
