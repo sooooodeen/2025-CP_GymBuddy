@@ -11,9 +11,11 @@
 </head>
 <body class="overflow-x-hidden">
       <div id="main-header" class="main-header w-full flex justify-center h-20 sticky top-0 z-50 bg-white/95 backdrop-blur-sm shadow-sm">
-            <div class="flex justify-between w-[30%] h-full items-center font-Helvetica font-semibold text-xl">
+            <div class="flex justify-between w-[50%] h-full items-center font-Helvetica font-semibold text-xl">
                 <a class="scroll-link hover:hover:text-[#ca1d2c] text-[#2D2C2C] transition duration-150" href="#home">Home</a>
                 <a class="scroll-link hover:hover:text-[#ca1d2c] text-[#2D2C2C] transition duration-150" href="#features">Features</a>
+                <a class="scroll-link hover:hover:text-[#ca1d2c] text-[#2D2C2C] transition duration-150" href="#supportedWorkouts">Supported Workouts</a>
+                <a class="scroll-link hover:hover:text-[#ca1d2c] text-[#2D2C2C] transition duration-150" href="#howItWorks">How It Works</a>
                 <a class="scroll-link hover:hover:text-[#ca1d2c] text-[#2D2C2C] transition duration-150" href="#about-us">About Us</a>
                 <a href="/login" class="text-[#F05454] hover:text-[#ca1d2c] transition duration-150">Login</a>
             </div>
@@ -83,12 +85,58 @@
         </div>
     </div>
     <!-- endofSecondsec -->
-    <hr class="border-t-1 border-black-500 w-[96%] rounded mx-auto my-4">
+    
     <!-- Third Section -->
-    <div id="supportedWorkouts" class="relative w-full min-h-[100dvh] mb-15 overflow-hidden">
-        <div class="flex flex-col items-center h-full pt-10">
-            <h1 class="font-Helvetica font-bold text-5xl">Supported Workouts</h1>
-            <!-- chest -->
+    <div id="supportedWorkouts" class="relative w-full min-h-[100dvh] overflow-hidden bg-gradient-to-b from-black/75 via-black/30 to-transparent">
+        <div class="flex flex-col items-center h-full">
+            <div id="Chest" class="relative flex flex-col gap-20 items-center w-full h-full min-h-[100vh] overflow-hidden">
+                <h1 class="font-Helvetica font-bold text-5xl z-20 text-white pt-10">Supported Workouts</h1>
+                <div class="absolute h-full inset-0 z-[-1] overflow-hidden self-end flex">
+                    <img class="w-full object-cover object-center" src="/static/src/images/gifs/Back/bentoverrow.jpg">
+                    <div class="absolute inset-0 bg-black/60"></div>
+                </div>
+                <div class="relative z-10 flex gap-20 justify-center items-center w-full">
+                    <div class="flex gap-8">
+                        <div class="grid grid-rows-[90%_10%] place-items-center gap-2">
+                            <div class="w-[200px] h-[500px] overflow-hidden rounded-xl shadow-xl">
+                                <img class="w-full h-full object-cover object-center" src="/static/src/images/gifs/Back/Bent Over Row.gif" alt="">
+                            </div>
+                            <h1 class="font-Helvetica text-center font-bold text-2xl max-w-[150px] text-white">Bent Over Row</h1>
+                        </div>
+
+                         <div class="grid grid-rows-[90%_10%] place-items-center gap-2">
+                            <div class="w-[200px] h-[500px] overflow-hidden rounded-xl shadow-xl">
+                                <img class="w-full h-full object-cover object-[70%_40%]" src="/static/src/images/gifs/Shoulder/Lateral Raise.gif" alt="">
+                            </div>
+                            <h1 class="font-Helvetica text-center font-bold text-2xl max-w-[150px] text-white">Lateral Raise</h1>
+                        </div>
+
+                        <div class="grid grid-rows-[90%_10%] place-items-center gap-2">
+                            <div class="w-[200px] h-[500px] overflow-hidden rounded-xl shadow-xl">
+                                <img class="w-full h-full object-cover object-[46%_40%]" src="/static/src/images/gifs/Shoulder/Shoulder Press.gif" alt="">
+                            </div>
+                            <h1 class="font-Helvetica text-center font-bold text-2xl max-w-[150px] text-white">Shoudler Press</h1>
+                        </div>
+
+                        <div class="grid grid-rows-[90%_10%] place-items-center gap-2">
+                            <div class="w-[200px] h-[500px] overflow-hidden rounded-xl shadow-xl">
+                                <img class="w-full h-full object-cover object-center" src="/static/src/images/gifs/Shoulder/upright row.gif" alt="">
+                            </div>
+                            <h1 class="font-Helvetica text-center font-bold text-2xl max-w-[150px] text-white">Upright Row</h1>
+                        </div>
+                        <div class="grid grid-rows-[90%_10%] place-items-center gap-2">
+                            <div class="w-[200px] h-[500px] overflow-hidden rounded-xl shadow-xl">
+                                <img class="w-full h-full object-cover object-[60%_40%]" src="/static/src/images/gifs/Arms/Bicep Curl.gif" alt="">
+                            </div>
+                            <h1 class="font-Helvetica text-center font-bold text-2xl max-w-[150px] text-white">Bicep Curl</h1>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!--
+            ***** 16 Workouts ******
+            chest
             <div id="Chest" class="relative flex justify-around items-center w-full min-h-[600px] overflow-hidden">
                 <div class="absolute h-1/2 inset-0 z-0 overflow-hidden self-center flex items-center">
                     <img class="w-full object-cover object-center -scale-x-100" src="/static/src/images/gifs/Chest/bench press.jpg">
@@ -120,7 +168,7 @@
                     </div>
                 </div>
             </div>
-            <!-- back -->
+            back
             <div id="Chest" class="relative flex justify-around items-center w-full min-h-[600px] overflow-hidden">
                 <div class="absolute h-1/2 inset-0 z-0 overflow-hidden self-center flex items-center">
                     <img class="w-full object-cover object-center" src="/static/src/images/gifs/Back/bentoverrow.jpg">
@@ -152,7 +200,7 @@
                     <h1 class="font-Helvetica font-bold text-[150px] italic text-white/90 drop-shadow-2xl">Back Workout</h1>
                 </div>
             </div>
-            <!-- Legs -->
+            Legs
             <div id="Chest" class="relative flex justify-around items-center w-full min-h-[600px] overflow-hidden">
                 <div class="absolute h-1/2 inset-0 z-0 overflow-hidden self-center flex items-center">
                     <img class="w-full object-cover object-center" src="/static/src/images/gifs/Legs/rdl.jpg">
@@ -184,7 +232,7 @@
                     </div>
                 </div>
             </div>
-            <!-- Shoulder -->
+            Shoulder
             <div id="Chest" class="relative flex justify-around items-center w-full min-h-[600px] overflow-hidden">
                 <div class="absolute h-1/2 inset-0 z-0 overflow-hidden self-center flex items-center">
                     <img class="w-full object-cover object-center" src="/static/src/images/gifs/Shoulder/lateralraise.jpg">
@@ -216,7 +264,7 @@
                     <h1 class="font-Helvetica font-bold text-[100px] italic text-white/90 drop-shadow-2xl">Shoulder Workout</h1>
                 </div>
             </div>
-            <!-- Arms -->
+             Arms 
             <div id="Chest" class="relative flex justify-around items-center w-full min-h-[600px] overflow-hidden">
                 <div class="absolute h-1/2 inset-0 z-0 overflow-hidden self-center flex items-center">
                     <img class="w-full object-cover object-center" src="/static/src/images/gifs/Arms/tricepKickback.jpg">
@@ -247,9 +295,73 @@
                         </div>
                     </div>
                 </div>
-            </div>
+            </div> -->
         </div>
     </div>
+    <div id="howItWorks" class="relative w-full max-w-7xl mx-auto px-6 pb-15 pt-10 flex flex-col items-center min-h-[100dvh]">
+    <h1 class="font-Helvetica font-bold text-5xl z-20 mb-12 text-black text-center">How to use the GymBuddy System</h1>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full auto-rows-fr">
+        
+        <div id="id1" class="col-span-1 flex flex-col justify-between p-6 bg-gray-100 rounded-3xl border border-gray-300 ease-in duration-200 hover:border-red-500">
+            <div class="flex-1 flex items-center justify-center mb-6">
+                <img class="max-h-48 w-auto object-contain" src="/static/src/images/Tutorial/1.png" alt="">
+            </div>
+            <div class="text-lg font-semibold"><span class="text-red-500">1. </span> Login with an Admin Account.</div>
+        </div>
+
+        <div id="id2" class="col-span-1 lg:col-span-2 flex gap-3 p-6 bg-gray-100 rounded-3xl border border-gray-300 ease-in duration-200 hover:border-red-500">
+            <div class="flex items-center justify-center gap-6">
+                <img class="max-h-48 w-auto object-contain" src="/static/src/images/Tutorial/2.png" alt="">
+                <img class="max-h-48 w-auto object-contain" src="/static/src/images/Tutorial/2.1.png" alt="">
+            </div>
+            <div class="flex flex-col justify-center gap-4 text-lg font-semibold border-l border-gray-300/50 pl-3">
+                <span><span class="text-red-500">2. </span> Navigate to the Trainers Section.</span> 
+                <span><span class="text-red-500">3. </span> Add a New Trainer Account.</span>
+            </div>
+        </div>
+
+        <div id="id3" class="col-span-1 flex flex-col justify-between p-6 bg-gray-100 rounded-3xl border border-gray-300 ease-in duration-200  hover:border-red-500">
+            <div class="flex-1 flex items-center justify-center mb-6">
+                <img class="max-h-48 w-auto object-contain" src="/static/src/images/Tutorial/3.png" alt="">
+            </div>
+            <div class="text-lg font-semibold"><span class="text-red-500">4. </span> Add the Trainer.</div>
+        </div>
+
+        <div id="id4" class="col-span-1 flex flex-col justify-between p-6 bg-gray-100 rounded-3xl border border-gray-300 ease-in duration-200  hover:border-red-500">
+            <div class="flex-1 flex items-center justify-center mb-6">
+                <img class="max-h-48 w-auto object-contain" src="/static/src/images/Tutorial/4.png" alt="">
+            </div>
+            <div class="text-lg font-semibold"><span class="text-red-500">5. </span> Click the "Green Check" Button.</div>
+        </div>
+
+        <div id="id5" class="col-span-1 flex flex-col justify-between p-6 bg-gray-100 rounded-3xl border border-gray-300 ease-in duration-200  hover:border-red-500">
+            <div class="flex-1 flex items-center justify-center mb-6">
+                <img class="max-h-48 w-auto object-contain" src="/static/src/images/Tutorial/5.png" alt="">
+            </div>
+            <div class="text-lg font-semibold"><span class="text-red-500">6. </span> Assign the Chosen Trainer.</div>
+        </div>
+
+        <div id="id6" class="col-span-1 flex flex-col justify-between p-6 bg-gray-100 rounded-3xl border border-gray-300 ease-in duration-200  hover:border-red-500">
+            <div class="flex-1 flex items-center justify-center mb-6">
+                <img class="max-h-48 w-auto object-contain rounded-xl" src="/static/src/images/Tutorial/6.png" alt="">
+            </div>
+            <div class="text-lg font-semibold"><span class="text-red-500">7. </span> Login with the Trainer Account.</div>
+        </div>
+
+        <div id="id7" class="col-span-1 lg:col-span-2 flex flex-col md:flex-row items-center justify-between gap-3 p-6 bg-gray-100 rounded-3xl border border-gray-300 ease-in duration-200  hover:border-red-500">
+            <div class="flex-1 flex items-center justify-center">
+                <img class="max-h-48 w-auto object-contain" src="/static/src/images/Tutorial/7.png" alt="">
+            </div>
+            <div class="flex-1 flex flex-col justify-center gap-4 text-lg font-semibold pl-3  border-l border-gray-300/50"> 
+                <span><span class="text-red-500">8. </span> Navigate to the Monitor Workout Section.</span>
+                <span><span class="text-red-500">9. </span> Select Two (2) Cameras.</span> 
+                <span><span class="text-red-500">10. </span> Select "Open Cameras" and Start Working Out!</span>
+            </div>
+        </div>
+
+    </div>
+</div>
     <!-- endofThirdsec -->
     <!-- Fourth section -->
     <div id="about-us" class="h-[130dvh] mb-20">
@@ -278,10 +390,11 @@
     </div>
     <div class="w-full h-[20dvh] bg-[#2D2C2C] items-center grid grid-cols-3 grid-rows-1 px-80">
         <div class="text-white font-Helvetica ml-20">
-            <a class="scroll-link" href="#home">Home</a><br>
-            <a class="scroll-link" href="#features">Features</a><br>
-            <a class="scroll-link" href="#about-us">About Us</a><br>
-            <a href="{{ url_for('login') }}">Login</a>
+            <a class="scroll-link hover:underline" href="#home">Home</a><br>
+            <a class="scroll-link hover:underline" href="#features">Features</a><br>
+            <a class="scroll-link hover:underline" href="#supportedWorkouts">Supported Workouts</a><br>
+            <a class="scroll-link hover:underline" href="#howItWorks">How It Works</a><br>
+            <a class="scroll-link hover:underline" href="{{ url_for('login') }}">Login</a>
         </div>
         <div class="flex flex-col justify-center items-center gap-2">
             <button id="back-to-top-btn" class="font-Helvetica bg-none cursor-pointer underline text-white">Back to top</button>
