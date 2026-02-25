@@ -286,16 +286,31 @@ class ExerciseAnalyzer:
                 if sh > 80 and self.stage == "down":
                     if now - self.last_rep_time > 0.6: 
                         self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
-                if sh > 160: self.form_status = "WARNING: TOO HIGH"
+                        
+                # NEW RED CRITICAL ERROR: Checks if wrists physically go higher than the shoulders
+                if (lw.y < ls.y - 0.08) or (rw.y < rs.y - 0.08): 
+                    self.form_status = "ERROR: ARMS TOO HIGH"
 
             # --- 3. SHOULDER PRESS ---
             elif exercise_name == 'shoulderPress':
                 elb = max(calculate_angle_3d(ls, le, lw), calculate_angle_3d(rs, re, rw))
-                self.debug_angles = {"Elbow": int(elb)}
+                
+                # RE-DEFINED FOR SAFETY: Explicitly declare sh_width here so the math never breaks
+                sh_width_press = max(abs(ls.x - rs.x), 0.01)
+                l_sway = abs(lw.x - le.x) / sh_width_press
+                r_sway = abs(rw.x - re.x) / sh_width_press
+                forearm_sway = max(l_sway, r_sway)
+                
+                self.debug_angles = {"Elbow": int(elb), "Sway": round(forearm_sway, 2)}
+                
                 if elb < 90: self.stage = "down"
                 if elb > 155 and self.stage == "down":
                     if now - self.last_rep_time > 0.6: 
                         self.rep_counter += 1; self.stage = "up"; self.last_rep_time = now
+
+                # RED CRITICAL ERROR: Triggers if wrist drifts outward > 60% of shoulder width
+                if forearm_sway > 0.60:
+                    self.form_status = "ERROR: ARMS SWAYING"
 
             # --- 4. BENT OVER ROW ---
             elif exercise_name == 'bentOverRow': 
@@ -363,4 +378,4 @@ class ExerciseAnalyzer:
         # Bicep Curl = Half body or Knee Level
         # Shoulder Pres = Show Higher part for arm / Knee Level
         # Upright Row = Below Knee Level 
-        # Bent Over Row = Half Body or Knee Level
+        # Bent Over Row  (Barbell) = Half Body or Knee Level
