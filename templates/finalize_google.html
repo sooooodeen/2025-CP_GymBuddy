@@ -7,25 +7,35 @@
     <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
 </head>
 <body class="bg-gray-50 h-screen flex items-center justify-center font-Helvetica">
-    <div class="w-[90%] max-w-md bg-white p-10 rounded-3xl shadow-xl">
-        <div class="text-center mb-6">
-            <h2 class="text-3xl font-bold text-[#2D2C2C]">Almost there!</h2>
-            <p class="text-gray-500 text-sm mt-2">We've got your details from Google. Now, tell us about your gym.</p>
-        </div>
+    <div class="h-[100dvh] w-full">
+        <div class="w-[100dvw] top-0 absolute z-11 h-[100dvh] bg-black/25 flex items-center justify-end pr-30">
+            <div class="w-[90%] max-w-md bg-white p-10 rounded-3xl shadow-xl absolute z-10">
+                <div class="text-center mb-6">
+                    <h2 class="text-3xl font-bold text-[#2D2C2C]">Almost there!</h2>
+                    <p class="text-gray-500 text-sm mt-2">Google Registration Successful! Tell us about your gym!</p>
+                </div>
 
-        <form method="POST" action="{{ url_for('finalize_google_reg') }}" class="space-y-6">
-            <div class="flex flex-col gap-2">
-                <label for="gymName" class="font-bold text-lg text-[#2D2C2C]">Gym Name</label>
-                <input id="gymName" name="gymName" type="text" 
-                       class="border border-gray-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-black" 
-                       placeholder="e.g. KENO Fitness Center" required>
+                <form method="POST" action="{{ url_for('finalize_google_reg') }}" class="space-y-6">
+                    <div class="flex flex-col gap-2">
+                        <label for="gymName" class="font-bold text-lg text-[#2D2C2C]">Gym Name</label>
+                        <input id="gymName" name="gymName" type="text" 
+                            class="border border-gray-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-black" 
+                            placeholder="e.g. KENO Fitness Center" required>
+                    </div>
+
+                    <button type="submit" 
+                            class="bg-[#2D2C2C] text-white py-3 rounded-4xl font-bold hover:bg-[#474646] transition-all w-full cursor-pointer">
+                        Finish Registration
+                    </button>
+                </form>
             </div>
-
-            <button type="submit" 
-                    class="bg-[#2D2C2C] text-white py-3 rounded-4xl font-bold hover:bg-[#474646] transition-all w-full">
-                Finish Registration
-            </button>
-        </form>
+        </div>
+        <div class="h-full p-3 ">
+            <img class="object-cover h-full w-full rounded-2xl" src="/static/src/images/home.jpg" alt="">
+            <div class="absolute bottom-5 -left-12 z-10 w-[80%]">
+                <h2 class="text-[550px] text-white font-bold font-Helvetica italic -tracking-[50px] leading-110">GYM BUDDY</h2>
+            </div>
+        </div>
     </div>
 </body>
 </html>
