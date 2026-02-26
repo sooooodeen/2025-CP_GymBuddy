@@ -233,13 +233,24 @@ def confirm_verification_token(token, expiration=3600):
         return None
 
 def send_verification_email(user_email, token):
+    # This creates the absolute URL (e.g., http://yourdomain.com/verify/TOKEN)
     verify_url = url_for('verify_account', token=token, _external=True)
+    
     msg = Message(
-        subject="Confirm Your Gym Buddy Account",
+        subject="Action Required: Verify Your Gym Buddy Account",
         recipients=[user_email],
-        html=f"<p><a href='{verify_url}'>Verify My Email</a></p>"
+        # render_template looks in your /templates folder
+        # url=verify_url passes the link to the {{ url }} variable in your HTML
+        html=render_template('verify_email.html', url=verify_url)
     )
-    mail.send(msg)
+    
+    try:
+        mail.send(msg)
+        print(f"✅ Professional verification email sent to {user_email}")
+    except Exception as e:
+        # This will catch issues like SMTP timeouts or credential errors
+        print(f"❌ Failed to send email: {e}")
+        # Consider raising the error or flashing a message to the user here
     
 def format_exercise_name(name):
     s1 = re.sub('(.)([A-Z][a-z]+)', r'\1 \2', name)
@@ -329,6 +340,10 @@ def register():
         
         return redirect(url_for("verify_message")) 
     return render_template("register.html")
+
+@app.route('/test-style')
+def test_style():
+    return render_template('verify_email.html')
 
 @app.route("/verify/<string:token>")
 def verify_account(token):
