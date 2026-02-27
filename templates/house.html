@@ -63,7 +63,8 @@
             <div class="grid grid-cols-[1fr_15%] h-[10%] items-center gap-2">
                 <a href="{{ url_for('profile') }}" class="flex gap-2 items-center py-2 px-3 rounded-2xl !bg-transparent hover:!bg-[#343a44] transition delay-50 duration-150 ease-in-out">
                     <img class="h-[40px] w-[40px] object-cover rounded-full" 
-                         src="{{ url_for('static', filename=session.get('user_photo_url') or 'src/images/Default_pfp.jpg') }}" 
+                         src="{{ user.photo_url if user.photo_url and user.photo_url.startswith('http') 
+            else url_for('static', filename=user.photo_url or 'src/images/Default_pfp.jpg') }}" 
                          alt="User Profile Photo">
                     
                     <h1 class="text-white font-Helvetica text-sm !bg-none" id="sidebar-username">
