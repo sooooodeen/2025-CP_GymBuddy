@@ -233,14 +233,11 @@ def confirm_verification_token(token, expiration=3600):
         return None
 
 def send_verification_email(user_email, token):
-    # This creates the absolute URL (e.g., http://yourdomain.com/verify/TOKEN)
     verify_url = url_for('verify_account', token=token, _external=True)
     
     msg = Message(
         subject="Action Required: Verify Your Gym Buddy Account",
         recipients=[user_email],
-        # render_template looks in your /templates folder
-        # url=verify_url passes the link to the {{ url }} variable in your HTML
         html=render_template('verify_email.html', url=verify_url)
     )
     
@@ -248,9 +245,7 @@ def send_verification_email(user_email, token):
         mail.send(msg)
         print(f"✅ Professional verification email sent to {user_email}")
     except Exception as e:
-        # This will catch issues like SMTP timeouts or credential errors
         print(f"❌ Failed to send email: {e}")
-        # Consider raising the error or flashing a message to the user here
     
 def format_exercise_name(name):
     s1 = re.sub('(.)([A-Z][a-z]+)', r'\1 \2', name)
@@ -399,7 +394,7 @@ def google_login():
     """
     # _external=True is required to generate a full URL (http://...) for Google
     redirect_uri = url_for('google_authorize', _external=True)
-    return google.authorize_redirect(redirect_uri)
+    return google.authorize_redirect(redirect_uri, prompt='select_account')
 
 @app.route('/authorize')
 def google_authorize():
