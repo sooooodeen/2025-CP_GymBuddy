@@ -632,6 +632,7 @@ def my_sessions():
 def monitor():
     return render_template("monitor.html")
 
+@app.route("/errorlogpage")
 def errorlogpage(): 
     gym_id = session.get('user_gym_id')
     
