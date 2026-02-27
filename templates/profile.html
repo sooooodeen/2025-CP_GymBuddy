@@ -19,7 +19,8 @@
     <div class="p-8 border grid grid-cols-[200px_1fr_15%] gap-6 items-center w-[70%] font-Helvetica border-gray-300 bg-white rounded-3xl shadow-sm">
         <div class="flex justify-center">
             <img class="h-[180px] w-[180px] self-center object-cover rounded-full border-4 border-gray-50" 
-                 src="{{ url_for('static', filename=user.photo_url or 'src/images/Default_pfp.jpg') }}" 
+                 src="{{ user.photo_url if user.photo_url and user.photo_url.startswith('http') 
+            else url_for('static', filename=user.photo_url or 'src/images/Default_pfp.jpg') }}" 
                  alt="Profile Picture">
         </div>
         <div class="flex justify-center flex-col">
@@ -39,7 +40,8 @@
             <h1 class="text-2xl font-semibold col-span-2 mb-3">Profile Picture</h1>
             <div class="flex justify-center mb-4">
                 <img id="uploadPfpPreview" class="h-[180px] w-[180px] self-center object-cover rounded-full border-2 border-dashed border-gray-200 p-1" 
-                     src="{{ url_for('static', filename=user.photo_url or 'src/images/Default_pfp.jpg') }}" 
+                     src="{{ user.photo_url if user.photo_url and user.photo_url.startswith('http') 
+            else url_for('static', filename=user.photo_url or 'src/images/Default_pfp.jpg') }}" 
                      alt="Profile Picture Preview">
             </div>
             
