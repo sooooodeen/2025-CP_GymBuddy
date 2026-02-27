@@ -34,7 +34,8 @@
                         <th class="py-5 px-4 uppercase font-semibold text-sm text-left">User</th>
                         <th class="py-5 px-4 uppercase font-semibold text-sm text-left w-96">Error</th>
                         <th class="py-5 px-4 uppercase font-semibold text-sm text-left w-96">Exercise</th>
-                        <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Time of Error</th>
+                        <th class="py-5 px-4 font-semibold text-sm text-left">Date</th>
+                        <th class="py-5 px-4 uppercase font-semibold text-sm text-left">Time</th>
                         </tr>
                 </thead>
                 <tbody id="error-log-body" class="text-gray-700 h-[500px]">
@@ -148,7 +149,7 @@
                     <td class="w-[350px] py-5 px-4">
                         <h1 class="text-lg font-medium leading-5">${item.exerciseName}</h1>
                     </td>
-                    
+                    <td class="py-5 px-4">${item.date}</td>
                     <td class="w-[200px] py-5 px-4">${item.timeOfError}</td>
                 `;
             }

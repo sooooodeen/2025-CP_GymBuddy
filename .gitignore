@@ -20,3 +20,4 @@ training/raw_videos
 *.mov
 training/exercise_sequences_landmarks.csv
 training/exercise_sequences_augmented.csv
+config.env

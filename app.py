@@ -338,7 +338,7 @@ def register():
 
 @app.route('/test-style')
 def test_style():
-    return render_template('verify_email.html')
+    return render_template('finalize_google.html')
 
 @app.route("/verify/<string:token>")
 def verify_account(token):
@@ -386,6 +386,16 @@ def login():
         else:
             flash('Invalid credentials.', 'error')
     return render_template("login.html")
+
+@app.context_processor
+def inject_user():
+    user = None
+    # Check if the user is logged in via session
+    if 'user_id' in session:
+        # Import User model here if not already imported at top
+        user = User.query.get(session['user_id'])
+    return dict(user=user)
+
 @app.route('/login/google')
 def google_login():
     """
@@ -622,12 +632,9 @@ def my_sessions():
 def monitor():
     return render_template("monitor.html")
 
-@app.route("/errorlogpage")
-@login_required
 def errorlogpage(): 
     gym_id = session.get('user_gym_id')
     
-    # We explicitly join ErrorLog -> WorkoutSession -> User
     logs = db.session.query(ErrorLog, User)\
         .join(WorkoutSession, ErrorLog.session_id == WorkoutSession.id)\
         .join(User, WorkoutSession.user_id == User.id)\
@@ -635,16 +642,20 @@ def errorlogpage():
         .order_by(ErrorLog.timestamp.desc())\
         .all()
     
-    # Keeping your existing JSON formatting logic
-    js_errors = [{
-        'id': l.id, 
-        'userName': f"{u.firstname} {u.lastname}", 
-        'userPhoto': url_for('static', filename=u.photo_url or 'src/images/Default_pfp.jpg'), 
-        'errorType': l.error_type.replace('ERROR: ', ''), 
-        'exerciseName': format_exercise_name(l.exercise_name), 
-        'timeOfError': l.timestamp.strftime('%Y-%m-%d %H:%M:%S'), 
-        'month': l.timestamp.strftime('%b')
-    } for l, u in logs]
+    js_errors = []
+    for l, u in logs:
+        local_time = l.timestamp + timedelta(hours=8)
+        
+        js_errors.append({
+            'id': l.id, 
+            'userName': f"{u.firstname} {u.lastname}", 
+            'userPhoto': url_for('static', filename=u.photo_url or 'src/images/Default_pfp.jpg'), 
+            'errorType': l.error_type.replace('ERROR: ', ''), 
+            'exerciseName': format_exercise_name(l.exercise_name), 
+            'date': local_time.strftime('%b %d, %Y'),      # Added Date
+            'timeOfError': local_time.strftime('%I:%M:%S %p'), 
+            'month': local_time.strftime('%b')
+        })
     
     return render_template("errorlogpage.html", all_errors_json=json.dumps(js_errors))
 
@@ -1086,7 +1097,7 @@ def trainer_session_detail(session_id):
         minutes, _ = divmod(remainder, 60)
         duration = f"{int(hours)}hrs {int(minutes)}mins"
 
-    errors = ErrorLog.query.filter_by(session_id=session_id).all()
+    errors = ErrorLog.query.filter_by(session_id=session_id).order_by(ErrorLog.timestamp.desc()).all()
     normal_errors = [e for e in errors if not e.error_type.startswith("Repeated Error")]
     critical_errors = [e for e in errors if e.error_type.startswith("Repeated Error")]
 
