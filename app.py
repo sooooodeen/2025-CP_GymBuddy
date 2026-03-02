@@ -387,6 +387,64 @@ def login():
             flash('Invalid credentials.', 'error')
     return render_template("login.html")
 
+@app.route("/forgot-password", methods=['GET', 'POST'])
+def forgot_password():
+    error = None
+    if request.method == 'POST':
+        email = request.form.get('email')
+        user = User.query.filter_by(email=email).first()
+        
+        if user:
+            # 1. User exists: Generate token and send email
+            token = s.dumps(email, salt='password-reset-salt')
+            reset_url = url_for('reset_password', token=token, _external=True)
+            
+            msg = Message(
+                subject="Gym Buddy: Password Reset Request",
+                recipients=[email],
+                html=render_template('reset_password_email.html', url=reset_url)
+            )
+            try:
+                mail.send(msg)
+                return redirect(url_for('password_sent_message'))
+            except Exception as e:
+                print(f"❌ Mail Error: {e}")
+                error = "Could not send email. Please try again later."
+        else:
+            # 2. User does not exist: Explicitly tell them
+            error = "We couldn't find an account with that email address."
+            
+    return render_template("forgot_password.html", error=error)
+
+@app.route("/password-sent")
+def password_sent_message():
+    return render_template("password_sent.html")
+
+@app.route("/reset-password/<token>", methods=['GET', 'POST'])
+def reset_password(token):
+    try:
+        email = s.loads(token, salt='password-reset-salt', max_age=3600)
+    except:
+        flash("Link expired or invalid.", "error")
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+
+        # Check if they match
+        if password != confirm_password:
+            return render_template("reset_password.html", error="Passwords do not match.")
+
+        user = User.query.filter_by(email=email).first()
+        if user:
+            user.set_password(password)
+            db.session.commit()
+            flash("Password updated successfully!", "success")
+            return redirect(url_for('login'))
+            
+    return render_template("reset_password.html")
+
 @app.context_processor
 def inject_user():
     user = None
