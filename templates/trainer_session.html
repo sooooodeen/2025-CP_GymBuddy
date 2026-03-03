@@ -75,7 +75,9 @@
                         <p class="text-gray-600 text-md font-semibold">
                             {{ error.exercise_name | replace('uprightRow', 'Upright Row') | replace('bicepCurl', 'Bicep Curl') | replace('lateralRaise', 'Lateral Raise') | replace('shoulderPress', 'Shoulder Press') | replace('bentOverRow', 'Bent Over Row') }} - (Rep {{ error.rep_number }})
                         </p>
-                        
+                        <span class="text-xs text-gray-500 font-semibold">
+                            Person ID: {{ error.tracking_id if error.tracking_id is not none else 'N/A' }}
+                        </span>
                         {% if error.error_type.startswith("Repeated Error") %}
                             <p class="text-red-600 text-sm font-bold">CRITICAL: {{ error.error_type.replace('Repeated Error: ', '') }}</p>
                         {% else %}
