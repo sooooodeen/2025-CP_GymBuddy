@@ -28,6 +28,7 @@ from sqlalchemy import ForeignKey, func, and_
 from sqlalchemy.orm import relationship
 from ultralytics import YOLO 
 from datetime import timedelta
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Import the UPDATED analyzer
 from analysis_logic import ExerciseAnalyzer 
@@ -38,6 +39,7 @@ from authlib.integrations.flask_client import OAuth
 load_dotenv('config.env') # Load the file first
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.secret_key = os.environ.get('SECRET_KEY') # Pulls the long hex string
 
 oauth = OAuth(app)
