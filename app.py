@@ -124,6 +124,7 @@ class WorkoutSession(db.Model):
 class ErrorLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('workout_session.id'), nullable=False)
+    tracking_id = db.Column(db.Integer, nullable=True)
     exercise_name = db.Column(db.String(100), nullable=False)
     rep_number = db.Column(db.Integer, nullable=False)
     error_type = db.Column(db.String(200), nullable=False)
@@ -711,6 +712,7 @@ def errorlogpage():
             'id': l.id, 
             'userName': f"{u.firstname} {u.lastname}", 
             'userPhoto': url_for('static', filename=u.photo_url or 'src/images/Default_pfp.jpg'), 
+            'trackingId': l.tracking_id,
             'errorType': l.error_type.replace('ERROR: ', ''), 
             'exerciseName': format_exercise_name(l.exercise_name), 
             'date': local_time.strftime('%b %d, %Y'),      # Added Date
@@ -1375,7 +1377,7 @@ def process_frame_task(sid, data, session_context):
                         elif is_new: dat = {'e': pred, 'r': reps, 't': form.replace('ERROR: ', '')}
                         if dat:
                             with app.app_context():
-                                db.session.add(ErrorLog(session_id=sess_id, exercise_name=dat['e'], rep_number=dat['r'], error_type=dat['t']))
+                                db.session.add(ErrorLog(session_id=sess_id, exercise_name=dat['e'], rep_number=dat['r'], error_type=dat['t'], tracking_id=tid))
                                 db.session.commit()
                     
                     if is_new:

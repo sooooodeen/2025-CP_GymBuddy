@@ -139,7 +139,12 @@
                     <td class="w-[250px] h-15 flex items-center gap-2 py-3 px-4">
                         <img class="h-[45px] w-[45px] object-cover rounded-full" 
                                 src="${item.userPhoto}" alt="User photo">
-                        <span class="font-medium">${item.userName}</span>
+                        <div class="flex flex-col">
+                            <span class="font-medium">${item.userName}</span>
+                            <span class="text-xs text-gray-500 font-semibold">
+                                Person ID: ${item.trackingId !== null && item.trackingId !== undefined ? item.trackingId : 'N/A'}
+                            </span>
+                        </div>
                     </td>
                     
                     <td class="w-[350px] py-5 px-4">
